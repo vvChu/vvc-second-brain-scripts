@@ -1,0 +1,88 @@
+# ============================================================
+# VvC Second Brain — Compiler Agent Configuration
+# ============================================================
+
+# --- Paths ---
+vault:
+  root: "D:\\VvC_Notes"
+  fleeting_dir: "05 - Fleeting"
+  concepts_dir: "04 - Permanent/concepts"
+  sources_dir: "04 - Permanent/sources"
+  archive_dir: "99 - Archive"
+  resources_books_dir: "03 - Resources/books"
+  moc_dir: "00 - Maps of Content"
+  command_file: "00 - Maps of Content/Command.md"
+  dump_file: "05 - Fleeting/Brain_Dump.md"
+  log_file: "log.md"
+  index_file: "00 - Maps of Content/index.md"
+
+# --- AI Gateway (Server Spark via Tailscale VPN: 100.83.192.30) ---
+ai_gateway:
+  url: "http://100.83.192.30:8090/v1"
+  api_key: "sk-spark-secure-key-2026"
+  proxy_model: "gemini-3.5-flash-low"
+  direct_model: "gemini-3.5-flash-low"
+  correction_model: "gemini-3.1-flash-lite"
+
+# --- Backend Selection ---
+# Options: "gemini-cli" | "copilot-cli" | "gateway"
+backend: "gateway"
+fallback: "copilot-cli"
+
+# --- Gemini CLI + API ---
+# CLI: text completion (gemini-2.5-pro, signed-in account)
+# API: vision/OCR (needs api_key from https://aistudio.google.com/apikey)
+# Auto-rotation: switches to batch model when approaching daily quota
+gemini_cli:
+  cmd: "C:\\Users\\chuvu\\AppData\\Roaming\\npm\\gemini.cmd"
+  model: "gemini-3-flash-preview"
+  vision_model: "gemini-3.1-flash-lite-preview"          # Primary: best OCR quality + speed
+  vision_model_batch: "gemini-3.1-flash-lite-preview"    # Batch: high throughput (500 RPD)
+  text_synthesis_model: "gemini-3.1-pro-preview"         # Upgrade to Pro-level for premium Tier 3 synthesis fallback!
+  text_correction_model: "gemini-3.1-flash-lite-preview" # Exact CLI name for correction
+
+  api_key: ""  # Set via System Env Var: GEMINI_API_KEY (never hardcode here — synced to GDrive)
+  vision_rpd_limit: 15                         # Switch to batch model after N calls/day
+  text_rpd_limit: 450                          # Switch text to CLI after N text-API calls/day
+  timeout: 180                                 # Long timeout to allow full concept synthesis
+  vision_timeout: 300                          # Long timeout for OCR and vision models
+
+# --- Copilot CLI (Reasoning Worker — Copilot Pro, 11 models available) ---
+# Model tier for Command.md reasoning queries:
+#   BEST:    claude-sonnet-4.6         ← Current
+#   FAST:    gpt-5-mini                (fast, less deep reasoning, 0x cost)
+#   LARGE:   gpt-5.4                   (deepest)
+# Also available: gpt-5.4-mini, gpt-4.1, claude-haiku-4.5, gpt-4o
+copilot_cli:
+  cmd: "C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\GitHub.Copilot_Microsoft.Winget.Source_8wekyb3d8bbwe\\copilot.exe"
+  model: "claude-sonnet-4.6"          # Best model for reasoning fallback
+  vision_model: "gpt-5.4"
+  correction_model: "gpt-5-mini" # Use free/fast model for bulk correction
+  timeout: 180                        # Long timeout to allow full concept synthesis
+  vision_timeout: 300                 # Long timeout for Copilot vision fallbacks
+
+# --- Reasoning Config ---
+# Model used by the dedicated Reasoning Worker thread for Command.md queries.
+# Primary: Gateway (VPN required). Fallback: Copilot CLI → Gemini CLI.
+# Gateway thinking models available: claude-opus-4-6-thinking (best),
+#   claude-sonnet-4-6-thinking (fast), reasoning-gemma (local GPU, no VPN)
+reasoning:
+  gateway_model: "claude-opus-4-6-thinking"  # Strongest: native <think> tags, ~3-5 min
+  # gateway_model: "claude-sonnet-4-6-thinking"  # Balanced: ~1-2 min
+  # gateway_model: "reasoning-gemma"             # Local GPU: fast, no VPN needed
+  timeout: 600                               # Longest timeout allowed for deep reasoning
+
+# --- Model Routing ---
+# To switch models, change values here. Daemon restart required.
+# Only keys actually read by config.py are listed here.
+models:
+  default: ""                             # Not used in current routing — task-based selection via call_llm(task=)
+  ocr_vision: "ocr-primary"              # Primary Vision/OCR model alias on Gateway
+  ocr_vision_fallback: ""                # Fallback if primary fails (set via Gateway routing)
+
+# --- Excalidraw Theme (Academic Book Theme) ---
+excalidraw_theme:
+  stroke_color: "#000000"
+  background_color: "transparent"
+  font_family: 3
+  stroke_width: 2

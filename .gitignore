@@ -1,0 +1,71 @@
+# ==============================================================================
+# VvC Second Brain - Strict Gitignore
+# Protection for personal notes, media, and local virtual environments
+# ==============================================================================
+
+# --- Python & Environment ---
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.md/
+.trash/
+.stignore
+
+# --- Logs & Dynamic Pipeline Outputs ---
+*.log
+log.md
+cleanup_report.txt
+test_result.xml
+context.txt
+matches.txt
+help.txt
+llm-wiki.md
+.subsume_journal.jsonl
+.rejected_stubs.json
+.domain_suggestions.json
+scripts/.daemon.pid
+scripts/.dump_state.json
+scripts/_embedding_index.npz*
+scripts/_query_log.jsonl
+scripts/_sync_manifest.json
+
+# --- Obsidian Core & Syncthing ---
+.obsidian/
+.trash/
+
+# --- Personal Knowledge Layers (EXCLUDE FROM GIT) ---
+00 - Maps of Content/
+01 - Projects/
+02 - Areas/
+03 - Resources/
+04 - Permanent/
+05 - Fleeting/
+99 - Archive/
+
+# Legacy and redundant directories
+concepts/
+sources/
+wiki/
+copilot/
+raw/
+scratch/
+scripts_recovered/
+
+# --- Temp & Miscellaneous files in root ---
+*.txt
+*.xml
+*.xlsx
+*.csv
+check_json.py
+fix_co_cau_diagram.py
+
+# --- Allow Core Codebase & System Context ---
+!scripts/
+!templates/
+!AGENTS.md
+!GEMINI.md
+!.gitignore
