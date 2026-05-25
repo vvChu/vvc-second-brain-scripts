@@ -19,9 +19,10 @@
 >
 > | File | What to sync | Type |
 > |:---|:---|:---|
-> | `GEMINI.md` (vault root) | Changelog entry + relevant summary sections | Project Context |
-> | `scripts/GEMINI.md` | Architecture Reference + Concept Note Format section | Pipeline Override |
-> | `scripts/README.md` | Version header + Concept Note Format section | Developer Docs |
+> | `GEMINI.md` (vault root) | Version number in title only (lean pointer) | Project Context |
+> | `CHANGELOG.md` | New version entry (2-3 lines) | Version History |
+> | `scripts/GEMINI.md` | Architecture Reference version header | Pipeline Override |
+> | `scripts/README.md` | Version header + changelog line | Developer Docs |
 > | `templates/concept.md` | Obsidian template body structure | User Template |
 > | `scripts/pipeline/synthesize.py` | LLM prompt `<rules>` + `<output_template>` | Book Pipeline Code |
 > | `scripts/services/brain_dump.py` | LLM prompt `<rules>` + `<output_template>` in `_REDUCE_PROMPT` | Brain Dump Code |
