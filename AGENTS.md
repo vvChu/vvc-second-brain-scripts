@@ -295,10 +295,35 @@ scripts/
 - **Vault Sync**: Handled transparently by Google Drive Desktop via Windows Directory Junctions. The `D:\VvC_Notes` vault folders (e.g. `04 - Permanent`) are `mklink /J` junctions pointing directly to `G:\My Drive\VvC_Vault\...`. Python environments (`.venv`, `scripts`) remain isolated locally to prevent cloud contamination.
 - **Code Standards**: All scripts use top-level `try/except` imports (no local imports in hot paths). Shutdown signals use `threading.Event` (not global bool). State tracking uses `@dataclass`.
 - **PowerShell stdout fix**: Scripts with `__main__` block phải dùng `logging.basicConfig(stream=sys.stdout)`. Python mặc định ghi log vào `stderr` — PowerShell sẽ tự động return exit code 1 khi có bất kỳ output nào trên stderr, dù không có lỗi thực sự. Đồng thời, nếu script in ký tự Unicode (tiếng Việt có dấu) ra terminal Windows, bắt buộc gọi `sys.stdout.reconfigure(encoding='utf-8')` ở đầu để ngăn lỗi `UnicodeEncodeError` (charmap).
+---
+
+## 7. Research & Proposal Discipline — Double-Pass Adversarial Review
+
+Trước khi đề xuất bất kỳ thay đổi kỹ thuật nào đối với pipeline, codebase, hoặc kiến trúc vault, Agent **PHẢI** thực hiện **2 vòng kiểm chứng** tuần tự. Không được trình bày đề xuất nếu chưa hoàn thành cả 2 vòng.
+
+> [!IMPORTANT]
+> Quy tắc này ra đời từ bài học thực tế trong phiên v8.7: 4/6 đề xuất tối ưu ban đầu đều SAI — bao gồm cả đề xuất tính năng đã tồn tại sẵn trong codebase (`encode_image()` đã resize ảnh), ước lượng hiệu suất lạc quan gấp 20 lần, và giả định phá hủy tính năng highlight detection.
+
+### Vòng 1 — Code-First Research (Đọc code trước khi đề xuất)
+- **KHÔNG BAO GIỜ** đề xuất tính năng "mới" mà chưa `grep`/search codebase để xác nhận nó chưa tồn tại.
+- Đọc **implementation thực tế** của các hàm liên quan — không suy đoán hành vi từ tên hàm hay docstring.
+- Kiểm tra data flow thực tế end-to-end: input format → transform logic → output format.
+- Nếu đề xuất liên quan đến hiệu suất: **đo lường thực tế** hoặc phân tích log — KHÔNG đưa ra con số ước lượng lý thuyết như kết luận.
+
+### Vòng 2 — Self-Adversarial Review (Tự phản biện trước khi trình bày)
+- Sau khi hình thành đề xuất, **tự hỏi**: "Đề xuất này có thể SAI ở đâu? Những giả định nào chưa được kiểm chứng?"
+- Xác định và kiểm tra **ít nhất 3 giả định cốt lõi** bằng dữ liệu thực (code, logs, file system).
+- Nếu đề xuất ảnh hưởng đến pipeline hiện có: kiểm tra xem nó có vi phạm các design constraints đã ghi nhận trong `AGENTS.md` hoặc `GEMINI.md` không.
+- Phân loại rõ ràng mỗi đề xuất: **"đã tồn tại"** vs **"cần triển khai mới"** vs **"cần thay đổi code hiện có"**.
+
+### Quy tắc trình bày kết quả
+- Mọi con số (tốc độ, dung lượng, thời gian) PHẢI kèm **nguồn**: `[đo thực tế]`, `[phân tích log]`, hoặc `[ước lượng lý thuyết — chưa kiểm chứng]`.
+- Khi so sánh giải pháp: đánh giá theo ma trận **Giá trị × Độ phức tạp × Rủi ro × KISS** thay vì chỉ liệt kê ưu điểm.
+- Nếu phát hiện đề xuất ban đầu sai trong quá trình kiểm chứng → **thẳng thắn ghi nhận và loại bỏ**, không cố biện minh.
 
 ---
 
-## 7. AI Infrastructure — 3-Tier Routing (v7.7)
+## 8. AI Infrastructure — 3-Tier Routing (v7.7)
 
 ```
 Tier 1 (Primary):  AI Gateway (ccba-ai SDK)  ← 22 models via LiteLLM
