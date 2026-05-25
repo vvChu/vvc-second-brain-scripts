@@ -99,9 +99,9 @@ def apply_sugiyama_layout(elements: list[dict]) -> bool:
     for c in g.C:
         sug = SugiyamaLayout(c)
         sug.init_all()
-        # You can configure spacing here
-        sug.xspace = 80
-        sug.yspace = 80
+        # Wider spacing for readability
+        sug.xspace = 120
+        sug.yspace = 100
         sug.draw()
         
         # Ensure all vertices have an 'xy' attribute (fallback for isolated nodes)
@@ -136,9 +136,12 @@ def apply_sugiyama_layout(elements: list[dict]) -> bool:
             shape["roughness"] = 0
             if shape.get("type") == "rectangle" and "roundness" not in shape:
                 shape["roundness"] = {"type": 3}
-            if "strokeColor" not in shape or shape["strokeColor"] == "#000000" or shape["strokeColor"] == "#0f172a":
+            # Only override colors if they are default/placeholder values
+            cur_stroke = shape.get("strokeColor", "")
+            if cur_stroke in ("", "#000000", "#0f172a"):
                 shape["strokeColor"] = cfg.excalidraw_stroke_color
-            if "backgroundColor" not in shape or shape["backgroundColor"] == "transparent":
+            cur_bg = shape.get("backgroundColor", "")
+            if cur_bg in ("", "transparent"):
                 shape["backgroundColor"] = cfg.excalidraw_background_color
             
             # Move bound text

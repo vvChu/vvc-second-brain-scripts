@@ -135,3 +135,35 @@ def test_clean_mermaid_invalid():
 
     assert _clean_mermaid("This is just text") == ""
     assert _clean_mermaid("") == ""
+
+
+# --- MOC Diagram Tests ---
+
+def test_group_by_chapter():
+    """Should group concepts by ground_truth_chapter with fallback."""
+    from services.moc_diagram import group_by_chapter
+
+    concepts = [
+        {"_stem": "a", "ground_truth_chapter": '[[07_CHAPTER 4]]'},
+        {"_stem": "b", "ground_truth_chapter": '[[07_CHAPTER 4]]'},
+        {"_stem": "c", "ground_truth_chapter": '[[08_Chapter 5]]'},
+        {"_stem": "d", "ground_truth_chapter": "", "source_chapter": ""},
+        {"_stem": "e"},  # No chapter at all
+    ]
+    groups = group_by_chapter(concepts)
+
+    assert "07_CHAPTER 4" in groups
+    assert len(groups["07_CHAPTER 4"]) == 2
+    assert "08_Chapter 5" in groups
+    assert "_ungrouped" in groups
+    assert len(groups["_ungrouped"]) == 2
+
+
+def test_clean_chapter_name():
+    """Should clean chapter key into display-friendly name."""
+    from services.moc_diagram import clean_chapter_name
+
+    assert clean_chapter_name("09_Chuong_6_Hop_phan_van_de") == "Chuong 6 Hop Phan Van De"
+    assert clean_chapter_name("07_CHAPTER 4") == "Chapter 4"
+
+
