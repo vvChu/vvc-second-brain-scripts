@@ -258,3 +258,50 @@ Phân tích thuần tiếng Việt ở đây.
     bq = _extract_core_idea_blockquote(content)
     assert '> "Trích dẫn nguyên văn tiếng Việt nằm ở preamble."' in bq
     assert '> — **Tác giả**' in bq
+
+
+# --- Archive / WebP Compression Tests ---
+
+def test_archive_image_webp_compression():
+    """Should archive image as WebP with reduced file size."""
+    import tempfile
+    from PIL import Image
+    from core.config import cfg
+    from pipeline.post_process import _archive_image
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        # Create a dummy 200x300 RGB JPEG image (~15KB)
+        src_img = Image.new("RGB", (200, 300), color=(255, 200, 50))
+        src_path = tmpdir / "test_photo.jpg"
+        src_img.save(src_path, "JPEG", quality=95)
+        src_img.close()
+        original_size = src_path.stat().st_size
+
+        # Temporarily redirect archive_dir
+        orig_archive = cfg.archive_dir
+        object.__setattr__(cfg, "archive_dir", tmpdir / "archive")
+
+        try:
+            result_name = _archive_image(src_path, book_name="TestBook")
+
+            # Verify output is .webp
+            assert result_name.endswith(".webp"), f"Expected .webp, got {result_name}"
+
+            # Verify the file exists
+            dest_path = tmpdir / "archive" / "TestBook" / result_name
+            assert dest_path.exists(), f"Archived file not found at {dest_path}"
+
+            # Verify WebP is smaller than original JPEG
+            webp_size = dest_path.stat().st_size
+            assert webp_size < original_size, (
+                f"WebP ({webp_size}) should be smaller than JPEG ({original_size})"
+            )
+
+            # Verify the WebP is a valid image (close handle to avoid Windows lock)
+            reopened = Image.open(dest_path)
+            assert reopened.format == "WEBP"
+            reopened.close()
+        finally:
+            object.__setattr__(cfg, "archive_dir", orig_archive)

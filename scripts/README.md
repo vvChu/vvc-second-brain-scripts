@@ -1,4 +1,4 @@
-# VvC Second Brain — Pipeline Scripts (v8.6 3-Tier Merge Control)
+# VvC Second Brain — Pipeline Scripts (v8.7 WebP Archive Compression)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
 *Rebuilt in v7.4: Separated God Objects into specialized Micro-services and created a Modular LLM Package.*
@@ -10,6 +10,7 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 *Upgraded in v7.5 (Architecture Hardening): 3 systemic fixes — Reverse Metadata Sync (`_toc.json` → Source Note), Deterministic File Stability Guard (replaces `time.sleep`), Temporal Batching Engine (10s cooldown → multi-page batch → 1 Concept Note).*
 *Upgraded in v8.5 (Consolidation, Merger & Dynamic Limits): Scan-Once Sleep Architecture, AI Gateway Embeddings (7.5x speed), Semantic Knowledge Merger (Cosine 0.85 + Arbitrator + cross-linking), Proportional Dynamic Limit (Brain Dump Map-Reduce).*
 *Upgraded in v8.6 (3-Tier Merge Control & SUBSUME): Replaced static 10KB hard limit with data-driven 3-tier system — Tier 1: Hook Count Gate (≥4 hooks → SEPARATE), Tier 2: Dynamic Size Limit (P95×1.3 ~7.7KB), Tier 3: LLM Arbitrator with 3-way decision (MERGE/SEPARATE/SUBSUME). SUBSUME drops redundant concepts entirely, logs to `.subsume_journal.jsonl` for weekly review.*
+*Upgraded in v8.7 (WebP Archive Compression): `_archive_image()` now compresses images to WebP (RGB, 1536px max, Q80) instead of raw copy, reducing archive storage by ~92% (2.19GB → ~170MB for 1,074 images). Fallback to raw copy if Pillow fails.*
 
 ## Architecture (v7.4)
 

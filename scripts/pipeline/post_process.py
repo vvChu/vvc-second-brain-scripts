@@ -1,6 +1,6 @@
-"""VvC Second Brain — Post-Processing Stage (v8.6).
+"""VvC Second Brain — Post-Processing Stage (v8.7).
 
-Save concept note, archive image, trigger MOC rebuild.
+Save concept note, archive image (WebP compressed), trigger MOC rebuild.
 Supports 3-Tier Merge Control + SUBSUME deduplication.
 """
 
@@ -301,13 +301,13 @@ def _archive_image(
         
         # Base structured name
         base_name = f"{concept_slug}{c_part}{p_part}"
-        archive_name = f"{base_name}{image_path.suffix}"
+        archive_name = f"{base_name}.webp"
         dest = archive_dir / archive_name
         
         # Collision prevention: append suffix if file exists
         suffix = 2
         while dest.exists():
-            archive_name = f"{base_name}_{suffix}{image_path.suffix}"
+            archive_name = f"{base_name}_{suffix}.webp"
             dest = archive_dir / archive_name
             suffix += 1
     else:
@@ -316,22 +316,34 @@ def _archive_image(
         p_part = f"_p{page}" if page else ""
         b_part = f"{safe_book_name}" if safe_book_name else "unknown_book"
         
-        archive_name = f"{b_part}{c_part}{p_part}_{image_path.stem}_{today}{image_path.suffix}"
+        archive_name = f"{b_part}{c_part}{p_part}_{image_path.stem}_{today}.webp"
         dest = archive_dir / archive_name
         
         # Collision prevention
         suffix = 2
         base_name = dest.stem
         while dest.exists():
-            archive_name = f"{base_name}_{suffix}{image_path.suffix}"
+            archive_name = f"{base_name}_{suffix}.webp"
             dest = archive_dir / archive_name
             suffix += 1
 
     try:
-        shutil.copy(str(image_path), str(dest))
-        _logger.info(f"Archived (copied): {image_path.name} → {dest.name}")
-    except OSError as e:
-        _logger.warning(f"Archive failed: {e}")
+        from PIL import Image as PILImage
+        img = PILImage.open(image_path)
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        img.thumbnail((1536, 1536), PILImage.Resampling.LANCZOS)
+        img.save(dest, "WEBP", quality=80)
+        _logger.info(f"Archived (WebP): {image_path.name} → {dest.name}")
+    except Exception as e:
+        _logger.warning(f"WebP compression failed, falling back to raw copy: {e}")
+        dest = dest.with_suffix(image_path.suffix)
+        archive_name = dest.name
+        try:
+            shutil.copy(str(image_path), str(dest))
+            _logger.info(f"Archived (raw copy fallback): {image_path.name} → {dest.name}")
+        except OSError as copy_err:
+            _logger.warning(f"Archive failed completely: {copy_err}")
         
     return archive_name
 
