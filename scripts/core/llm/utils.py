@@ -62,22 +62,30 @@ _GARBAGE_PATTERNS = [
     r"quota exceeded",
 ]
 
-def is_garbage(text: str, allowed_shorts: tuple[str, ...] = ()) -> bool:
-    """Check if LLM output is garbage (timeout, error, garbled)."""
+def is_garbage(text: str, allowed_shorts: tuple[str, ...] = (), *, min_length: int = 10) -> bool:
+    """Check if LLM output is garbage (timeout, error, garbled).
+
+    Args:
+        text: LLM output to validate.
+        allowed_shorts: Extra short strings to whitelist (exact match or startswith).
+        min_length: Minimum character threshold. Responses shorter than this
+            (after strip) are rejected unless whitelisted. Default 10.
+            Callers expecting legitimately short responses (e.g. titles,
+            status codes) can lower this to avoid False Rejection.
+    """
     if not text:
         return True
     clean = text.strip().upper()
     
     # Combined default boolean whitelist with dynamic permitted short strings
-    default_shorts = ("YES", "NO", "TRUE", "FALSE")
+    default_shorts = ("YES", "NO", "TRUE", "FALSE", "OK")
     custom_shorts = tuple(str(x).upper() for x in allowed_shorts)
     full_whitelist = default_shorts + custom_shorts
     
     if clean in full_whitelist or any(clean.startswith(w) for w in full_whitelist):
         return False
-    if len(clean) < 10:
+    if len(clean) < min_length:
         return True
-    text_lower = text.lower()
     return any(re.search(pat, text, re.IGNORECASE) for pat in _GARBAGE_PATTERNS)
 
 # --- Image Encoding ---

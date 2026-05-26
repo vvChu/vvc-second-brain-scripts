@@ -233,6 +233,13 @@ def test_is_garbage():
     assert is_garbage("Error connecting to API") is True
     assert is_garbage("This is a valid response with enough content.") is False
 
+    # min_length parameter tests (dynamic threshold)
+    assert is_garbage("Tải trọng") is True          # 9 chars, default min_length=10 → garbage
+    assert is_garbage("Tải trọng", min_length=3) is False  # 9 chars, lowered threshold → OK
+    assert is_garbage("Ab", min_length=3) is True    # 2 chars, still below min_length=3
+    assert is_garbage("OK") is False                 # whitelisted, always passes
+    assert is_garbage("MERGE", allowed_shorts=("MERGE",)) is False  # dynamic whitelist
+
 
 def test_extract_blockquote_preamble():
     """Should extract blockquote from preamble (v7.7+ format) before first H2."""

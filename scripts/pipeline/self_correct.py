@@ -58,6 +58,7 @@ def verify_and_correct(concept_content: str, ground_truth: str) -> str:
     result = call_llm(
         _VERIFY_PROMPT.format(blockquote=blockquote, ground_truth=ground_truth),
         task="correction",
+        allowed_shorts=("OK",),
     )
 
     if not result:

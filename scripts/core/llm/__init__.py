@@ -28,6 +28,7 @@ def call_llm(
     strategy: str = "fallback",
     validator: Callable[[str], bool] | None = None,
     allowed_shorts: tuple[str, ...] = (),
+    min_length: int = 10,
 ) -> str:
     """Call LLM with automatic 3-tier fallback routing.
 
@@ -46,6 +47,8 @@ def call_llm(
             - "round_robin": Rotate the primary tier for each call to balance load.
         validator: Optional function to validate the output. If it returns False, fallback to next tier.
         allowed_shorts: Optional list of short strings permitted in is_garbage check.
+        min_length: Minimum character threshold for is_garbage check. Default 10.
+            Lower this when expecting legitimately short responses (e.g. titles).
 
     Returns:
         LLM response text, or empty string if all tiers fail.
@@ -77,7 +80,7 @@ def call_llm(
     for tier_name, tier_fn in tiers:
         try:
             result = tier_fn()
-            if result and not is_garbage(result, allowed_shorts=allowed_shorts):
+            if result and not is_garbage(result, allowed_shorts=allowed_shorts, min_length=min_length):
                 if validator is not None and not validator(result):
                     _logger.warning(f"[llm] {tier_name} OK but failed validation. Triggering fallback...")
                     continue

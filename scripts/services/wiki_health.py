@@ -671,7 +671,7 @@ class TitleStandardizer:
                 f"3. Loại bỏ toàn bộ các ký tự lỗi như gạch dưới, viết tắt thô sơ."
             )
 
-            result = call_llm(prompt, task="correction")
+            result = call_llm(prompt, task="correction", min_length=3)
             if not result:
                 continue
 
