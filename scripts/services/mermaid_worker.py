@@ -1,4 +1,4 @@
-"""VvC Second Brain — Mermaid Worker (v7.0).
+"""VvC Second Brain — Mermaid Worker (v8.0 — Template-Enhanced).
 
 Generates Mermaid diagrams via LLM. Saves as .mermaid.md for Obsidian native rendering.
 
@@ -16,7 +16,7 @@ from pathlib import Path
 from core.config import cfg
 from core.llm import call_llm
 from core.log import log
-from services.diagram_base import find_diagram_context, spawn_worker, save_diagram_file
+from services.diagram_base import find_diagram_context, spawn_worker, save_diagram_file, select_template
 
 _logger = logging.getLogger("vvc.mermaid")
 
@@ -33,6 +33,19 @@ QUY TẮC:
 5. KHÔNG dùng HTML tags trong labels
 6. Giữ sơ đồ gọn gàng, tối đa 15-20 nodes
 7. Cấu trúc rõ ràng, sử dụng các kết nối nét liền (-->), nét đậm (==>) hoặc nét đứt (-.->) để thể hiện mối quan hệ chính phụ.
+8. CHỌN ĐÚNG LOẠI SƠ ĐỒ theo nội dung:
+   - `flowchart TD`: phân cấp, cây tổ chức, phân rã khái niệm
+   - `flowchart LR`: chuỗi tiến trình, pipeline, value chain ngang
+   - `timeline`: diễn biến theo thời gian, giai đoạn phát triển, lịch sử tiến hóa (VD: Strategy evolution qua các thập kỷ)
+   - `pie`: phân bổ tỷ lệ, cơ cấu thành phần, breakdown phần trăm (VD: 6 hợp phần EOS)
+   - `mindmap`: brainstorm, phân nhánh ý tưởng từ 1 chủ đề trung tâm
+   - `graph TD`: quan hệ đa chiều không phân cấp rõ ràng
+9. TEXT WRAPPING — BẮT BUỘC để đảm bảo text hiển thị đầy đủ trong node:
+   - Mỗi dòng trong label TỐI ĐA 20 ký tự (kể cả dấu cách)
+   - Dùng \\n để xuống dòng khi label dài hơn 20 ký tự
+   - Ví dụ ĐÚNG:  A["Nhận diện\\nbối cảnh\\nthị trường"]
+   - Ví dụ SAI:   A["Nhận diện bối cảnh thị trường và môi trường kinh doanh"]
+   - Với `timeline` và `pie`: không cần \\n vì Mermaid tự wrap
 """
 
 
@@ -46,14 +59,29 @@ def trigger_mermaid_generation(diagram_name: str, source_text: str) -> None:
 
 
 def _generate_mermaid(diagram_name: str, source_text: str) -> None:
-    """Worker function: generate Mermaid diagram."""
+    """Worker function: generate Mermaid diagram with template-enhanced prompting."""
     context = find_diagram_context(diagram_name, source_text)
 
     _logger.info(f"Generating Mermaid: {diagram_name}")
     log("diagram", f"Mermaid generation started: {diagram_name}")
 
+    # Dynamic template injection via embedding similarity
+    prompt = _MERMAID_PROMPT.format(context=context)
+    template = select_template(context, diagram_type="mermaid")
+    if template:
+        example_code = template.get("example", "")
+        desc = template.get("description", "")
+        source_ref = template.get("source", "")
+        prompt += (
+            f"\n\nVÍ DỤ THAM KHẢO (từ {source_ref}):\n"
+            f"Loại sơ đồ phù hợp: {desc}\n"
+            f"```\n{example_code.strip()}\n```\n"
+            f"Hãy tham khảo cấu trúc trên, nhưng PHẢI điều chỉnh nội dung theo ngữ cảnh thực tế."
+        )
+        _logger.info(f"Injected template: {desc[:50]}")
+
     mermaid_code = call_llm(
-        _MERMAID_PROMPT.format(context=context),
+        prompt,
         task="reasoning",
     )
 

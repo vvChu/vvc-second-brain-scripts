@@ -1,0 +1,330 @@
+# Diagram Template Library — Curated from VvC Book Figures
+# Source: 03 - Resources/books/ (Reinventing the Organization, EOS, Becoming Steve Jobs)
+# Version: 1.1 — source_figure updated after Vision API classification (106 figures, 2026-05-27)
+# figure_inventory.json: scripts/resources/figure_inventory.json
+
+mermaid:
+  hierarchy:
+    description: "Cây phân cấp, org chart, phân rã thành phần, taxonomy"
+    keywords:
+      - "phân cấp"
+      - "cơ cấu tổ chức"
+      - "org chart"
+      - "hierarchy"
+      - "cây"
+      - "decomposition"
+      - "phòng ban"
+      - "cấp bậc"
+      - "quản lý"
+    example: |
+      flowchart TD
+        CEO["CEO"] --> VP1["VP Marketing"]
+        CEO --> VP2["VP Engineering"]
+        CEO --> VP3["VP Operations"]
+        VP2 --> TL1["Team Lead\nFrontend"]
+        VP2 --> TL2["Team Lead\nBackend"]
+        VP3 --> TL3["Logistics"]
+        VP3 --> TL4["Supply Chain"]
+    source: "EOS Ch07 — Accountability Chart"
+    source_figure: "Sieu_tang_truong_ung_dung_EOS_Ch07_11.jpg"  # hierarchy cluster: Ch07_11-18 (8 figures)
+
+  hub_spoke:
+    description: "Mô hình trung tâm kết nối vệ tinh, platform-cell ecosystem"
+    keywords:
+      - "hub"
+      - "trung tâm"
+      - "platform"
+      - "vệ tinh"
+      - "ecosystem"
+      - "hệ sinh thái"
+      - "radial"
+      - "cell"
+      - "kết nối"
+      - "satellite"
+    example: |
+      flowchart TD
+        CORE["Platform\nShared Services"] --> C1["Cell A\nDev Team"]
+        CORE --> C2["Cell B\nDev Team"]
+        CORE --> C3["Cell C\nDev Team"]
+        CORE --> C4["Cell D\nDev Team"]
+        C1 -.-> P1["Publishing\nPartners"]
+        C2 -.-> P2["Marketing\nPartners"]
+        C4 -.-> P3["Technology\nPartners"]
+    source: "Reinventing the Org Fig 01-01 — Cell-Super Ecosystem (Haier model)"
+    source_figure: "Reinventing_the_Organization_H_Ch05_Figure_01-01.jpg"  # 20 hub_spoke figures total; also: EOS_Ch08_19, EOS_Ch09_23-25
+
+  matrix:
+    description: "Ma trận 2×2, quadrant, so sánh 2 chiều"
+    keywords:
+      - "matrix"
+      - "ma trận"
+      - "2x2"
+      - "quadrant"
+      - "trục"
+      - "phần tư"
+      - "đánh đổi"
+      - "trade-off"
+      - "behavior"
+      - "outcome"
+    example: |
+      flowchart TD
+        subgraph HIGH_RIGHT["✅ Góc 4"]
+          HR["Kết quả Tốt\n+ Hành vi Đúng"]
+        end
+        subgraph HIGH_LEFT["⚠️ Góc 2"]
+          HL["Kết quả Kém\n+ Hành vi Đúng"]
+        end
+        subgraph LOW_RIGHT["⚠️ Góc 3"]
+          LR["Kết quả Tốt\n+ Hành vi Sai"]
+        end
+        subgraph LOW_LEFT["❌ Góc 1"]
+          LL["Kết quả Kém\n+ Hành vi Sai"]
+        end
+    source: "Reinventing the Org Fig 07-01 — Behavior-Outcome Matrix"
+    source_figure: "Reinventing_the_Organization_H_Ch07_Figure_02-01.jpg"  # 5 matrix figures; also: Ch14_Figure_07-01, Ch11_Figure_05-03
+
+  flow:
+    description: "Chuỗi tiến trình, pipeline, value chain ngang, framework tuần tự"
+    keywords:
+      - "tiến trình"
+      - "pipeline"
+      - "value chain"
+      - "quy trình"
+      - "bước"
+      - "stages"
+      - "process"
+      - "flow"
+      - "giai đoạn"
+      - "transformation"
+      - "framework"
+    example: |
+      flowchart LR
+        E["Môi trường\n🔍 Nhận diện\nBối cảnh"] ==> S["Chiến lược\n📋 Xác định\nMục tiêu"]
+        S ==> C["Năng lực\n🔧 Chẩn đoán\nvà Xây dựng"]
+        C ==> M["Cấu trúc\n🏗️ Thiết kế\nvà Triển khai"]
+        M ==> G["Quản trị\n⚙️ Kiến tạo\nvà Vận hành"]
+        G ==> L["Lãnh đạo\n👥 Dẫn dắt\nvà Phát triển"]
+    source: "Reinventing the Org Fig III-01 — MOE Transformation Framework"
+    source_figure: "Reinventing_the_Organization_H_Ch12_Figure_III-01.jpg"  # 11 flow figures; also: Ch06_Figure_I-01, Ch15_Figure_08-02, EOS_Ch06_5
+
+  cycle:
+    description: "Vòng lặp phản hồi, chu kỳ, PDCA, iterative process"
+    keywords:
+      - "cycle"
+      - "vòng lặp"
+      - "feedback"
+      - "phản hồi"
+      - "iterative"
+      - "PDCA"
+      - "liên tục"
+      - "continuous"
+      - "loop"
+      - "tuần hoàn"
+    example: |
+      flowchart TD
+        P["Plan\n📋 Lập kế hoạch"] --> D["Do\n⚡ Thực hiện"]
+        D --> C["Check\n🔍 Kiểm tra"]
+        C --> A["Act\n🔧 Điều chỉnh"]
+        A --> P
+    source: "Reinventing the Org Fig 12-01 — Organizational Learning Cycle"
+    source_figure: "Reinventing_the_Organization_H_Ch20_Figure_12-01.jpg"  # only 2 cycle figures in vault; also: EOS_Ch10_30
+
+  timeline:
+    description: "Diễn biến theo thời gian, giai đoạn phát triển, lịch sử tiến hóa"
+    keywords:
+      - "timeline"
+      - "evolution"
+      - "tiến hóa"
+      - "lịch sử"
+      - "phát triển"
+      - "giai đoạn"
+      - "thập kỷ"
+      - "năm"
+      - "progression"
+      - "milestone"
+      - "era"
+    example: |
+      timeline
+        title Strategy Evolution
+        1960s-1980s : Strategic Planning
+                    : SWOT analysis
+                    : 1-to-3-year plans
+        1990s : Strategic Alignment
+              : Diagnose and align systems
+        2000s : Strategic Capabilities
+              : Core competence & culture
+        2010s-Present : Strategic Agility
+                      : Transform, disrupt, reinvent
+    source: "Reinventing the Org Fig 03-01 — Strategy Evolution Staircase"
+    source_figure: "Reinventing_the_Organization_H_Ch08_Figure_03-01.jpg"  # 5 timeline figures; also: Ch10_Figure_04-04, EOS_Ch11_35
+
+  pie:
+    description: "Phân bổ tỷ lệ, cơ cấu thành phần, breakdown phần trăm, wheel model"
+    keywords:
+      - "tỷ lệ"
+      - "phần trăm"
+      - "phân bổ"
+      - "cơ cấu"
+      - "thành phần"
+      - "component"
+      - "wheel"
+      - "proportion"
+      - "breakdown"
+      - "hợp phần"
+    example: |
+      pie title EOS — 6 Hợp Phần Doanh Nghiệp
+        "Tầm Nhìn" : 17
+        "Con Người" : 17
+        "Dữ Liệu" : 17
+        "Vấn Đề" : 17
+        "Quy Trình" : 16
+        "Lực Đẩy" : 16
+    source: "EOS Ch04 — EOS Model Wheel (6 Key Components)"
+    source_figure: "Sieu_tang_truong_ung_dung_EOS_Ch04_1.jpg"  # NOTE: classified as hub_spoke (wheel has 6 radial segments); pie=0 in vault
+
+  mindmap:
+    description: "Bản đồ tư duy, brainstorm, phân nhánh ý tưởng từ chủ đề trung tâm"
+    keywords:
+      - "mindmap"
+      - "brainstorm"
+      - "ý tưởng"
+      - "phân nhánh"
+      - "khám phá"
+      - "chủ đề"
+      - "liên kết"
+      - "khía cạnh"
+    example: |
+      mindmap
+        root("Chiến lược Tăng trưởng")
+          Thị trường
+            Phân khúc mới
+            Mở rộng địa lý
+          Sản phẩm
+            Đổi mới công nghệ
+            Cải tiến trải nghiệm
+          Con người
+            Tuyển dụng A-Player
+            Phát triển năng lực
+          Vận hành
+            Tối ưu quy trình
+            Tự động hóa
+    source: "Generic management strategy pattern"
+
+excalidraw:
+  hierarchy:
+    description: "Cây phân cấp, org chart, phân rã thành phần"
+    keywords:
+      - "phân cấp"
+      - "cơ cấu tổ chức"
+      - "org chart"
+      - "hierarchy"
+      - "cây"
+      - "phòng ban"
+    layout_tag: "#layout:tree #dir:td"
+    example_structure: |
+      Root node (rectangle) at top
+      ├── Child 1 (rectangle) connected by arrow
+      │   ├── Grandchild 1a
+      │   └── Grandchild 1b
+      └── Child 2 (rectangle) connected by arrow
+          └── Grandchild 2a
+      Use rectangles for all nodes. Arrows point downward (parent → child).
+
+  hub_spoke:
+    description: "Mô hình trung tâm kết nối vệ tinh, platform ecosystem"
+    keywords:
+      - "hub"
+      - "trung tâm"
+      - "platform"
+      - "ecosystem"
+      - "hệ sinh thái"
+      - "radial"
+      - "cell"
+    layout_tag: "#layout:radial"
+    example_structure: |
+      Central node (ellipse, larger) at center
+      Satellite nodes (ellipse) arranged around center
+      Solid arrows: center → satellites (strong connections)
+      Dashed arrows: satellites → external partners (weak connections)
+      External partners use dashed-border ellipses.
+
+  matrix:
+    description: "Ma trận 2×2, quadrant grid, scatter plot"
+    keywords:
+      - "matrix"
+      - "ma trận"
+      - "2x2"
+      - "quadrant"
+      - "scatter"
+    layout_tag: "#layout:matrix #style:cross"
+    example_structure: |
+      4 rectangles arranged in 2x2 grid:
+      Top-Left: Quadrant 2 | Top-Right: Quadrant 4
+      Bot-Left: Quadrant 1 | Bot-Right: Quadrant 3
+      Add axis labels as standalone text elements (not bound to shapes).
+      For scatter plot, use #layout:matrix #style:axis instead.
+
+  flow:
+    description: "Chuỗi tiến trình, pipeline, value chain"
+    keywords:
+      - "tiến trình"
+      - "pipeline"
+      - "value chain"
+      - "quy trình"
+      - "flow"
+      - "stages"
+    layout_tag: "#layout:value_chain"
+    example_structure: |
+      Main flow: rectangles connected left-to-right by solid arrows
+      Support activities: rectangles above main flow, connected by dashed arrows
+      Each stage has: header text (bold) + description text below
+      Use 200px horizontal spacing between stages.
+
+  cycle:
+    description: "Vòng lặp phản hồi, chu kỳ lặp, PDCA"
+    keywords:
+      - "cycle"
+      - "vòng lặp"
+      - "feedback"
+      - "PDCA"
+      - "loop"
+    layout_tag: "#layout:cycle"
+    example_structure: |
+      4-6 rectangles arranged in a circle
+      Arrows connect each node to the next in clockwise order
+      Last node's arrow connects back to the first node
+      Equal spacing between nodes on the circle.
+
+  concentric:
+    description: "Mô hình vòng tròn đồng tâm, onion model, layers"
+    keywords:
+      - "concentric"
+      - "đồng tâm"
+      - "layers"
+      - "tầng"
+      - "onion"
+      - "lõi"
+      - "core"
+    layout_tag: "#layout:concentric"
+    example_structure: |
+      Innermost circle: core concept (smallest ellipse)
+      Middle ring: supporting layer (medium ellipse)
+      Outer ring: external layer (largest ellipse)
+      All centered on the same point. Text elements bound to each ring.
+
+  sugiyama:
+    description: "Đồ thị phân tầng tổng quát, cause-effect, dependency layers"
+    keywords:
+      - "dependency"
+      - "phụ thuộc"
+      - "cause"
+      - "effect"
+      - "nguyên nhân"
+      - "kết quả"
+      - "layer"
+    layout_tag: "#layout:sugiyama"
+    example_structure: |
+      Nodes arranged in horizontal layers (top to bottom)
+      Arrows cross between layers showing dependencies
+      Minimize edge crossings (Sugiyama algorithm handles this)
+      Use rectangles for main concepts, diamonds for decision points.

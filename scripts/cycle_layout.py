@@ -1,6 +1,7 @@
 import math
 import networkx as nx
 from core.config import cfg
+from services.diagram_base import get_shape_boundary_point
 
 def apply_cycle_layout(elements: list[dict]) -> bool:
     shapes = {}
@@ -140,12 +141,13 @@ def apply_cycle_layout(elements: list[dict]) -> bool:
             my = my + (v_cy / v_dist) * push_amount
 
         if dist > 0:
-            s_rad = min(s_w, s_h) / 2 + 5
-            e_rad = min(e_w, e_h) / 2 + 5
-            start_x = sx + (dx / dist) * s_rad
-            start_y = sy + (dy / dist) * s_rad
-            end_x = ex - (dx / dist) * e_rad
-            end_y = ey - (dy / dist) * e_rad
+            # Exact boundary intersection (handles wide rectangles correctly)
+            bsx, bsy = get_shape_boundary_point(s_shape, dx, dy)
+            bex, bey = get_shape_boundary_point(e_shape, -dx, -dy)
+            start_x = bsx + (dx / dist) * 5
+            start_y = bsy + (dy / dist) * 5
+            end_x = bex - (dx / dist) * 5
+            end_y = bey - (dy / dist) * 5
         else:
             start_x, start_y, end_x, end_y = sx, sy, ex, ey
             

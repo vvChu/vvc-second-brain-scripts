@@ -479,15 +479,16 @@ def _arbitrate_and_merge(new_content: str, existing_stem: str) -> Path | None:
             f"```markdown\n{existing_content}\n```\n\n"
             f"GHI CHÚ MỚI CHUẨN BỊ LƯU:\n"
             f"```markdown\n{new_content}\n```\n\n"
-            f"YÊU CẦU ĐÁNH GIÁ:\n"
-            f"Hãy phân tích và quyết định xem chúng ta nên:\n"
-            f"- Trả về 'MERGE' nếu: Chúng thảo luận chung một khái niệm học thuật cốt lõi duy nhất VÀ ghi chú mới bổ sung thông tin/trích dẫn/góc nhìn mà ghi chú cũ CHƯA CÓ.\n"
-            f"- Trả về 'SEPARATE' nếu: Dù trùng lặp từ khóa, chúng bàn về hai khía cạnh, bối cảnh hoặc trường hợp hoàn toàn độc lập.\n"
-            f"- Trả về 'SUBSUME' nếu: Ghi chú hiện có đã BAO HÀM TOÀN BỘ nội dung, ý tưởng và trích dẫn của ghi chú mới. Ghi chú mới KHÔNG bổ sung bất kỳ giá trị mới nào — tạo ra sẽ chỉ gây dư thừa.\n\n"
-            f"QUY TẮC THIÊN VỊ QUAN TRỌNG:\n"
-            f"- Ưu tiên chọn 'SEPARATE' nếu hai ghi chú chỉ trùng lặp từ khóa bề nổi nhưng khác bối cảnh thực tế.\n"
-            f"- CHỈ chọn 'MERGE' khi chúng thực sự bàn về CÙNG MỘT KHÁI NIỆM HỌC THUẬT và ghi chú mới CÓ bổ sung giá trị.\n"
-            f"- Chọn 'SUBSUME' khi ghi chú mới là TẬP CON hoàn toàn của ghi chú cũ — không có thông tin mới.\n\n"
+            f"YÊU CẦU ĐÁNH GIÁ — Hãy phân biệt chính xác giữa ba quyết định:\n\n"
+            f"'MERGE' — Cùng một khái niệm học thuật cốt lõi. Ghi chú mới BỔ SUNG trích dẫn, dẫn chứng, góc nhìn, hoặc case study mà ghi chú cũ CHƯA CÓ. "
+            f"Ví dụ: cùng viết về mô hình tổ chức Supercell, nhưng ghi chú mới thêm quote mới từ trang khác → MERGE.\n\n"
+            f"'SEPARATE' — Dù chia sẻ từ khóa hoặc chủ đề chung, hai ghi chú bàn về hai khía cạnh, bối cảnh, hoặc luận điểm ĐỘC LẬP. "
+            f"Ví dụ: một ghi chú về 'tầm quan trọng của lực đẩy' và một về 'nguyên tắc lực đẩy trước tầm nhìn sau' → SEPARATE.\n\n"
+            f"'SUBSUME' — Ghi chú hiện có đã bao phủ ≥90% nội dung cốt lõi của ghi chú mới. Ghi chú mới không bổ sung trích dẫn, dẫn chứng hay ý tưởng mới đáng kể nào. "
+            f"Ví dụ: ghi chú mới diễn đạt lại nội dung ghi chú cũ bằng từ ngữ khác, cùng nguồn, không thêm thông tin → SUBSUME.\n\n"
+            f"HƯỚNG DẪN PHÂN BIỆT MERGE vs SUBSUME:\n"
+            f"- Nếu ghi chú mới có trích dẫn/quote MỚI (từ trang khác, chương khác) → nghiêng về MERGE.\n"
+            f"- Nếu ghi chú mới chỉ diễn đạt lại ý đã có trong ghi chú cũ, KHÔNG có dẫn chứng mới → nghiêng về SUBSUME.\n\n"
             f"Trả lời CHÍNH XÁC duy nhất một từ: 'MERGE', 'SEPARATE', hoặc 'SUBSUME'."
         )
         
@@ -520,7 +521,7 @@ def _arbitrate_and_merge(new_content: str, existing_stem: str) -> Path | None:
                 f"Trả về ĐÚNG tệp tin Markdown hoàn chỉnh bắt đầu từ '---' đến hết."
             )
             
-            merged_body = call_llm(merge_prompt, task="synthesis")
+            merged_body = call_llm(merge_prompt, model="gemini-3.5-flash-high")
             if merged_body and len(merged_body) > 200:
                 # Robustly extract from the first YAML marker
                 match = re.search(r"(---\n.*)", merged_body, re.DOTALL)

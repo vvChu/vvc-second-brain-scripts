@@ -1,4 +1,4 @@
-"""VvC Second Brain — Excalidraw Worker (v7.0).
+"""VvC Second Brain — Excalidraw Worker (v8.0 — Template-Enhanced).
 
 Generates Excalidraw JSON diagrams via Copilot CLI (claude-sonnet for spatial reasoning).
 Saves as .excalidraw.md files compatible with Obsidian Excalidraw plugin.
@@ -19,7 +19,7 @@ from pathlib import Path
 from core.config import cfg
 from core.log import log
 from core.llm import call_llm
-from services.diagram_base import find_diagram_context, spawn_worker, save_diagram_file
+from services.diagram_base import find_diagram_context, spawn_worker, save_diagram_file, select_template
 
 _logger = logging.getLogger("vvc.excalidraw")
 
@@ -41,8 +41,7 @@ CRITICAL RULES FOR EXCALIDRAW JSON:
 6. Use clean aesthetics: `roughness: 0`, `fontFamily: 3` (Monospace).
 7. Connect shapes with arrows using `startBinding` and `endBinding`.
 8. GRID SYSTEM: Assign coordinates (x, y) using a rigid 200px grid (e.g., x: 100, 300, 500 and y: 100, 300, 500) to ensure shapes are perfectly aligned and do not overlap.
-9. Ensure all text elements have double-newline (\\n\\n) for line breaks if needed.
-11. TOPOLOGY METADATA: You MUST include a standalone text element (not bound to any shape) containing EXACTLY ONE of these tags to tell the engine how to draw it: `#layout:sugiyama` (for general hierarchy), `#layout:radial` (for single star hub-and-spoke), `#layout:concentric` (for multi-layered concentric rings), `#layout:cycle` (for circular loops/wheels), `#layout:value_chain` (for horizontal Michael Porter value chains with upper support rows), `#layout:tree #dir:td` (for top-down tree/org charts), `#layout:tree #dir:lr` (for left-to-right tree charts), or `#layout:matrix #style:cross` / `#layout:matrix #style:axis` (for 2x2 grids or scatter plots).
+9. Ensure all text elements have double-newline (\n\n) for line breaks if needed.
 
 Generate a clean, professional diagram that visualizes the key relationships and concepts."""
 
@@ -80,17 +79,33 @@ def trigger_excalidraw_generation(diagram_name: str, source_text: str) -> None:
 
 
 def _generate_excalidraw(diagram_name: str, source_text: str) -> None:
-    """Worker function: generate Excalidraw diagram."""
+    """Worker function: generate Excalidraw diagram with template-enhanced prompting."""
     context = find_diagram_context(diagram_name, source_text)
 
     _logger.info(f"Generating Excalidraw: {diagram_name}")
     log("diagram", f"Excalidraw generation started: {diagram_name}")
 
+    # Dynamic template injection via embedding similarity
+    prompt = _EXCALIDRAW_PROMPT.format(context=context)
+    template = select_template(context, diagram_type="excalidraw")
+    if template:
+        layout_tag = template.get("layout_tag", "")
+        desc = template.get("description", "")
+        structure = template.get("example_structure", "")
+        prompt += (
+            f"\n\nRECOMMENDED LAYOUT based on context analysis:\n"
+            f"Diagram type: {desc}\n"
+            f"Suggested layout tag: {layout_tag}\n"
+            f"Structure guide:\n{structure.strip()}\n"
+            f"Follow this structure but ADAPT content to the actual context."
+        )
+        _logger.info(f"Injected Excalidraw template: {desc[:50]}")
+
     # Use generic call_llm with task="reasoning"
     # This automatically routes to Tier 1 (Gateway Opus-Thinking) -> Tier 2 (Copilot Sonnet)
     # and enforces the safe 600s reasoning_timeout.
     json_content = call_llm(
-        _EXCALIDRAW_PROMPT.format(context=context),
+        prompt,
         task="reasoning",
     )
 
@@ -217,6 +232,12 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                     else:
                         wrapped_lines.append(line)
                 elem["text"] = "\n".join(wrapped_lines)
+
+                # Recalculate height based on actual line count after wrapping
+                num_lines = len(wrapped_lines)
+                font_size = elem.get("fontSize", 16)
+                line_height = font_size * 1.25  # Excalidraw default line spacing
+                elem["height"] = num_lines * line_height
             
         # Apply deterministic layout engine via Central Router
         from core.layout_router import apply_smart_layout
