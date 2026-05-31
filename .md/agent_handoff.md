@@ -38,7 +38,8 @@ Hệ thống đã chạy thực tế cụm 10 hình ảnh fleeting mới chụp 
   4. `trien_khai_tai_nang_linh_hoat_va_luan_chuyen_noi_bo.md` (page 231) — **Ví dụ đỉnh cao:** Đã tự động nhúng inline thành công sơ đồ `reinventing_the_organization_h_ch16_figure_09_01.webp` và viết phân tích sâu 5 câu về hành trình của kỹ sư Facebook!
   5. `lien_ket_duong_ong_tai_nang_va_duong_ong_y_tuong.md` (page 234)
   6. `ba_loi_ich_cam_xuc_giu_chan_nhan_tai_tin_tuong_tro_thanh_thuoc_ve.md` (page 235)
-* **Bỏ qua an toàn các trang khảo sát:** Trang 227 & 228 tiếng Việt chụp thực tế (tương ứng trang 237 & 238 Ground Truth tiếng Anh) là bảng checklist Table 9-2 nên đã được Segmenter chủ động lọc bỏ an toàn không tạo concept để tránh rác Permanent Layer, đồng thời lưu trữ ảnh WebP phụ trợ gọn gàng ở `99 - Archive/`.
+* **Bỏ qua an toàn các trang khảo sát:** Trang 237 & 238 (cả trên ảnh chụp thực tế lẫn Ground Truth) là bảng checklist Table 9-2 nên đã được Segmenter chủ động lọc bỏ an toàn không tạo concept để tránh rác Permanent Layer, đồng thời lưu trữ ảnh WebP phụ trợ gọn gàng ở `99 - Archive/`.
+* **Hiện tượng trùng lặp trích dẫn (Hook Overlap) trên trang 227 & 228:** Do hai trang lý thuyết này nằm sát nhau và cùng bàn về phương trình tài năng, LLM trong quá trình tổng hợp (Stage 3 Synthesis) đã bị ảnh hưởng bởi ngữ cảnh chung và chọn cùng một đoạn định nghĩa tinh túy ở trang 228 để làm Evidence Hook cho cả hai concept, khiến một số dòng highlight phụ trên trang 227 bị đẩy xuống phần phân tích Core Idea chứ không được đưa lên blockquote đầu trang.
 
 ---
 
