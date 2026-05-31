@@ -42,6 +42,7 @@ radar
 | 2026-05-31 | `b7356aaa` (H4 & H5 fixes) | Micro (Refactor) | 35% | Rất tốt | Tốt | **SUCCESS** | Triển khai nạp `.env` JIT và bảo vệ metadata header trong `map_reduce.py`. Test suites (170/170 passed) chứng minh bối cảnh nạp chuẩn xác tuyệt đối. |
 | 2026-05-31 | `v8.12.0` (JIT Images) | Micro (Refactor) | 40% | Rất tốt | Tốt | **SUCCESS** | Triển khai JIT Image Alignment, nén WebP tự động, đặt tên thích ứng và dọn dẹp 104 tệp tin trùng lặp ở Archive. 173/173 tests passed sạch sẽ. |
 | 2026-05-31 | `v8.13.0` (Figure Inventory) | Micro (Feature) | 45% | Rất tốt | Tốt | **SUCCESS** | Triển khai công cụ tự động quét định vị hình vẽ, trích xuất ngữ cảnh thô, tích hợp Vision LLM dịch thuật và sinh alt-text cấu trúc sâu cho RAG. 175/175 tests passed. |
+| 2026-05-31 | `b7356aaa` (v8.15.0 Upgrade) | Macro (Phiên) | 50% | Rất tốt | Rất tốt | **SUCCESS** | Nâng cấp thành công v8.14.0 JIT Diagram Catalog & v8.15.0 JIT Self-Enriching Diagram Inventory. Bàn giao codebase qua `.md/agent_handoff.md`. Làm giàu 100% CSDL 106 sơ đồ, chạy thành công 177/177 tests passed. |
 
 ---
 
