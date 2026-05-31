@@ -1,27 +1,30 @@
 """VvC Second Brain — Post-Processing Stage (v8.7).
 
 Save concept note, archive image (WebP compressed), trigger MOC rebuild.
-Supports 3-Tier Merge Control + SUBSUME deduplication.
+Semantic Knowledge Merger logic extracted to pipeline/semantic_merger.py.
 """
 
 from __future__ import annotations
 
 import logging
 import re
-import json
 import shutil
-from datetime import date, datetime
+from datetime import date
 from pathlib import Path
 
 from core.config import cfg
-from core.frontmatter import parse_frontmatter, normalize_stem, extract_body, build_frontmatter
-from core.llm import call_llm
+from core.frontmatter import parse_frontmatter, normalize_stem
 from core.log import log
+from pipeline.semantic_merger import (
+    SUBSUME_SENTINEL,
+    find_semantic_overlap,
+    arbitrate_and_merge,
+    execute_cross_linking,
+    log_subsume,
+)
 
 _logger = logging.getLogger("vvc.postproc")
 
-# Sentinel returned by _arbitrate_and_merge when existing note fully subsumes new content
-_SUBSUME_SENTINEL = Path("__SUBSUMED__")
 
 # --- Quality Gate ---
 
@@ -127,18 +130,18 @@ def save_concept(
     concept_path = cfg.concepts_dir / filename
 
     # 1. Semantic Overlap Check for High Quality Concepts (Exclude Stubs)
-    overlap = _find_semantic_overlap(content)
+    overlap = find_semantic_overlap(content)
     if overlap:
         existing_stem, score = overlap
         # Arbitrate and try to merge
-        merged_path = _arbitrate_and_merge(content, existing_stem)
+        merged_path = arbitrate_and_merge(content, existing_stem)
         
         # SUBSUME: existing note fully covers new content — skip saving entirely
-        if merged_path == _SUBSUME_SENTINEL:
+        if merged_path == SUBSUME_SENTINEL:
             _logger.info(f"[Merger] SUBSUMED by '{existing_stem}'. Skipping save, archiving image only.")
             if image_path and image_path.exists():
                 _archive_image(image_path, book_name)
-            _log_subsume(title, existing_stem, score, image_path)
+            log_subsume(title, existing_stem, score, image_path)
             log("subsume", f"Subsumed by: {existing_stem}.md (score={score:.3f})", source=str(image_path.name) if image_path else "")
             return None
         
@@ -161,7 +164,14 @@ def save_concept(
                     merged_path.write_text(merged_content, encoding="utf-8")
                 except Exception as img_err:
                     _logger.warning(f"Failed to append image to merged file: {img_err}")
-                    
+            
+            # Hot-insert/update the merged file embedding in the index
+            try:
+                final_merged_content = merged_path.read_text(encoding="utf-8")
+                _hot_insert_embedding(merged_path, final_merged_content)
+            except Exception as hot_err:
+                _logger.warning(f"Failed to hot-insert merged embedding: {hot_err}")
+                
             return merged_path
 
     # Avoid overwriting existing concepts, unless the existing file is an empty STUB
@@ -205,12 +215,15 @@ def save_concept(
         _logger.info(f"Saved: {concept_path.name}")
         log("ingest", f"Created concept: {concept_path.name}", source=str(image_path.name) if image_path else "")
         
+        # Hot-insert embedding to keep index in sync
+        _hot_insert_embedding(concept_path, content)
+        
         # If we had a semantic overlap candidate but kept them separate, perform cross-linking now
         if overlap:
             existing_stem, _ = overlap
             existing_path = cfg.concepts_dir / f"{existing_stem}.md"
             if existing_path.exists():
-                _execute_cross_linking(concept_path, existing_path)
+                execute_cross_linking(concept_path, existing_path)
                 
     except OSError as e:
         _logger.error(f"Failed to save concept: {e}")
@@ -363,250 +376,84 @@ def archive_image(image_path: Path, book_name: str = "") -> str:
     return _archive_image(image_path, book_name=book_name)
 
 
-def _get_embedding_via_gateway(text: str) -> list[float] | None:
-    """Fetch L2-normalized embedding vector from AI Gateway."""
-    if not cfg.gateway_url or not cfg.gateway_api_key:
-        return None
-    try:
-        import requests
-        import numpy as np
-        url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
-        headers = {
-            "Authorization": f"Bearer {cfg.gateway_api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "gemini-embed",
-            "input": [text[:2000]],
-        }
-        resp = requests.post(url, json=payload, headers=headers, timeout=20)
-        resp.raise_for_status()
-        values = resp.json()["data"][0]["embedding"]
-        emb = np.array(values, dtype=np.float32)
-        norm = np.linalg.norm(emb)
-        normalized = emb / norm if norm > 0 else emb
-        return normalized.tolist()
-    except Exception as e:
-        _logger.warning(f"Failed to fetch embedding via Gateway in postproc: {e}")
-        return None
+def _hot_insert_embedding(concept_path: Path, content: str) -> None:
+    """Hot-insert/update a concept's embedding vector in _embedding_index.npz.
 
-
-def _find_semantic_overlap(new_text: str) -> tuple[str, float] | None:
-    """Find if a concept has extremely high semantic similarity with an existing one.
-    
-    Returns:
-        Tuple of (existing_stem, similarity_score) or None.
+    Args:
+        concept_path: Path to the saved concept note.
+        content: Full text of the concept note.
     """
     import numpy as np
+    import hashlib
+    from pipeline.semantic_merger import get_embedding_via_gateway
+
+    stem = concept_path.stem
+    _logger.info(f"Hot-inserting embedding for concept: {stem}")
+
+    # 1. Fetch query embedding
+    query_emb = get_embedding_via_gateway(content)
+    if query_emb is None:
+        _logger.warning(f"Could not fetch embedding for hot-insert of '{stem}'")
+        return
+
+    # 2. Paths
     index_path = Path(__file__).parent.parent / "_embedding_index.npz"
     bak_path = index_path.with_suffix(".npz.bak")
-    
+
+    # 3. Load existing arrays
+    existing_embeddings = []
+    existing_texts = []
+    existing_sources = []
+
     loaded_path = None
     if index_path.exists():
         loaded_path = index_path
     elif bak_path.exists():
         loaded_path = bak_path
-        
-    if not loaded_path:
-        return None
-        
-    try:
-        data = np.load(loaded_path, allow_pickle=True)
-        if "embeddings" not in data or "sources" not in data:
-            return None
-            
-        embeddings = data["embeddings"]
-        sources = data["sources"].tolist()
-        
-        # Fetch query embedding
-        query_emb = _get_embedding_via_gateway(new_text)
-        if query_emb is None:
-            return None
-            
-        # Fast dot product on pre-normalized vectors
-        similarities = np.dot(embeddings, np.array(query_emb, dtype=np.float32))
-        
-        # Find best match
-        best_idx = int(np.argmax(similarities))
-        best_score = float(similarities[best_idx])
-        
-        if best_score >= 0.88:
-            return sources[best_idx], best_score
-    except Exception as e:
-        _logger.warning(f"Failed to scan semantic overlap: {e}")
-        
-    return None
 
-
-def _arbitrate_and_merge(new_content: str, existing_stem: str) -> Path | None:
-    """Arbitrates if we should merge or separate two highly similar concepts.
-    
-    If MERGE: Synthesizes merged note, overwrites existing file.
-    If SEPARATE: Cross-links both notes.
-    """
-    import json
-    existing_path = cfg.concepts_dir / f"{existing_stem}.md"
-    if not existing_path.exists():
-        return None
-        
-    try:
-        existing_content = existing_path.read_text(encoding="utf-8")
-        
-        # Don't arbitrate if the existing file is an empty stub (hydration will handle this directly)
-        existing_fm = parse_frontmatter(existing_content)
-        if existing_fm.get("confidence") == "low" or existing_fm.get("source_type") == "stub":
-            return None
-            
-        # Tier 1: Hook Count Gate — block merge if too many evidence hooks accumulated
-        # Root cause of God Notes is unbounded quote stacking; 4 hooks = healthy upper bound
-        hook_count = len(re.findall(r'^> "', existing_content, re.MULTILINE))
-        if hook_count >= 4:
-            _logger.info(f"[Merger] Hook Count Gate: '{existing_stem}' has {hook_count} evidence hooks (max 4). Force KEEP SEPARATE.")
-            return None
-
-        # Tier 2: Dynamic Size Limit — P95 × 1.3 (~7.7KB), derived from vault-wide analysis
-        file_size = existing_path.stat().st_size
-        if file_size > 7700:
-            _logger.info(f"[Merger] Dynamic Size Limit: '{existing_stem}' ({file_size} bytes) exceeds limit (7,700 bytes). Force KEEP SEPARATE.")
-            return None
-            
-        _logger.info(f"[Merger] Overlap detected between new concept and '{existing_stem}'. Consulting Arbitrator...")
-        
-        # 1. Arbitrate Prompt (3-way: MERGE / SEPARATE / SUBSUME)
-        arbitrate_prompt = (
-            f"Bạn là Nhà biên soạn Zettelkasten tối cao. Hai ghi chú tri thức chất lượng cao này có độ tương đồng ngữ nghĩa rất cao.\n\n"
-            f"GHI CHÚ HIỆN CÓ ĐÃ LƯU:\n"
-            f"```markdown\n{existing_content}\n```\n\n"
-            f"GHI CHÚ MỚI CHUẨN BỊ LƯU:\n"
-            f"```markdown\n{new_content}\n```\n\n"
-            f"YÊU CẦU ĐÁNH GIÁ — Hãy phân biệt chính xác giữa ba quyết định:\n\n"
-            f"'MERGE' — Cùng một khái niệm học thuật cốt lõi. Ghi chú mới BỔ SUNG trích dẫn, dẫn chứng, góc nhìn, hoặc case study mà ghi chú cũ CHƯA CÓ. "
-            f"Ví dụ: cùng viết về mô hình tổ chức Supercell, nhưng ghi chú mới thêm quote mới từ trang khác → MERGE.\n\n"
-            f"'SEPARATE' — Dù chia sẻ từ khóa hoặc chủ đề chung, hai ghi chú bàn về hai khía cạnh, bối cảnh, hoặc luận điểm ĐỘC LẬP. "
-            f"Ví dụ: một ghi chú về 'tầm quan trọng của lực đẩy' và một về 'nguyên tắc lực đẩy trước tầm nhìn sau' → SEPARATE.\n\n"
-            f"'SUBSUME' — Ghi chú hiện có đã bao phủ ≥90% nội dung cốt lõi của ghi chú mới. Ghi chú mới không bổ sung trích dẫn, dẫn chứng hay ý tưởng mới đáng kể nào. "
-            f"Ví dụ: ghi chú mới diễn đạt lại nội dung ghi chú cũ bằng từ ngữ khác, cùng nguồn, không thêm thông tin → SUBSUME.\n\n"
-            f"HƯỚNG DẪN PHÂN BIỆT MERGE vs SUBSUME:\n"
-            f"- Nếu ghi chú mới có trích dẫn/quote MỚI (từ trang khác, chương khác) → nghiêng về MERGE.\n"
-            f"- Nếu ghi chú mới chỉ diễn đạt lại ý đã có trong ghi chú cũ, KHÔNG có dẫn chứng mới → nghiêng về SUBSUME.\n\n"
-            f"Trả lời CHÍNH XÁC duy nhất một từ: 'MERGE', 'SEPARATE', hoặc 'SUBSUME'."
-        )
-        
-        decision = call_llm(arbitrate_prompt, task="synthesis", allowed_shorts=("MERGE", "SEPARATE", "SUBSUME"))
-        if not decision:
-            decision = "SEPARATE"
-            
-        decision = decision.strip().upper()
-        
-        if "SUBSUME" in decision:
-            _logger.info(f"[Merger] Arbitrator DECIDED: SUBSUME — existing '{existing_stem}.md' fully covers new content. Dropping.")
-            return _SUBSUME_SENTINEL
-        
-        if "MERGE" in decision:
-            _logger.info(f"[Merger] Arbitrator DECIDED to MERGE into '{existing_stem}.md'. Synthesizing...")
-            
-            # 2. Synthesize Merge Prompt
-            merge_prompt = (
-                f"Bạn là Chuyên gia biên tập Zettelkasten v8.3. Hãy hợp nhất hai ghi chú tri thức này thành một ghi chú học thuật duy nhất có giá trị tích lũy cao.\n\n"
-                f"GHI CHÚ 1:\n"
-                f"```markdown\n{existing_content}\n```\n\n"
-                f"GHI CHÚ 2:\n"
-                f"```markdown\n{new_content}\n```\n\n"
-                f"QUY TẮC HỢP NHẤT BẮT BUỘC:\n"
-                f"1. FRONTMATTER YAML: Phải gộp tất cả các tags, sources (thành mảng), related links. Đặt trạng thái `status: evergreen`, `confidence: high`.\n"
-                f"2. EVIDENCE HOOKS (Consolidation): Hãy kiểm tra và xếp chồng các Evidence Hooks lên đầu note (standalone blockquotes độc lập ở đầu tệp tin, ghi rõ Citation Line học thuật có wiki-link). TUYÊN BỐ QUAN TRỌNG: Nếu hai trích dẫn có ý nghĩa tương đương hoặc lặp ý, hãy cô đọng lại và chỉ giữ lại tối đa 3 trích dẫn tiếng Việt sắc bén nhất đại diện cho các nguồn/trang khác nhau. Tránh xếp chồng quá nhiều blockquotes gây loãng giá trị ghi chú.\n"
-                f"3. CORE IDEA: Viết lại phần Core Idea phân tích tổng hợp chiều sâu, chỉ ra điểm giao thoa tri thức, phản biện hoặc bổ trợ giữa hai góc nhìn. Tuyệt đối không lặp lại trích dẫn.\n"
-                f"4. GROUND TRUTH: Gom tất cả các đoạn văn tiếng Anh nguyên bản từ phần Ground Truth của cả hai ghi chú cũ.\n"
-                f"5. REFERENCES: Gom tất cả các liên kết nguồn thô.\n\n"
-                f"Trả về ĐÚNG tệp tin Markdown hoàn chỉnh bắt đầu từ '---' đến hết."
-            )
-            
-            merged_body = call_llm(merge_prompt, model="gemini-3.5-flash-high")
-            if merged_body and len(merged_body) > 200:
-                # Robustly extract from the first YAML marker
-                match = re.search(r"(---\n.*)", merged_body, re.DOTALL)
-                if match:
-                    merged_clean = match.group(1)
-                    merged_clean = re.sub(r"\n```\s*$", "", merged_clean)
-                    
-                    from pipeline.synthesize import fix_section_ordering
-                    merged_clean = fix_section_ordering(merged_clean)
-                    
-                    existing_path.write_text(merged_clean, encoding="utf-8")
-                    _logger.info(f"[Merger] Synthesized merge saved successfully to '{existing_path.name}'.")
-                    log("merge", f"Merged new concept into: {existing_path.name}")
-                    return existing_path
-                    
-            _logger.warning("[Merger] Merge synthesis failed. Falling back to SEPARATE.")
-            
-        # 3. SEPARATE strategy (Cross-Linking)
-        _logger.info(f"[Merger] Arbitrator DECIDED to KEEP SEPARATE.")
-        return None
-    except Exception as e:
-        _logger.warning(f"[Merger] Exception during arbitration: {e}")
-        return None
-
-
-def _execute_cross_linking(path_a: Path, path_b: Path) -> None:
-    """Create bidirectional links between A and B in their related YAML array and References."""
-    for current_path, target_path in [(path_a, path_b), (path_b, path_a)]:
-        if not current_path.exists() or not target_path.exists():
-            continue
+    if loaded_path:
         try:
-            content = current_path.read_text(encoding="utf-8")
-            fm = parse_frontmatter(content)
-            body = extract_body(content)
-            
-            related = fm.get("related", [])
-            target_stem = target_path.stem
-            target_link = f"[[{target_stem}]]"
-            
-            # 1. Update related list
-            if target_stem not in related:
-                related.append(target_stem)
-                fm["related"] = related
-                
-            # 2. Update References in body
-            if target_link not in body:
-                if "## References" in body:
-                    body = body.replace("## References", f"## References\n- {target_link}")
-                else:
-                    body = f"{body.rstrip()}\n\n## References\n- {target_link}\n"
-                    
-            current_path.write_text(build_frontmatter(fm) + body, encoding="utf-8")
-            _logger.info(f"[Merger] Cross-linked [[{target_stem}]] in {current_path.name}")
+            data = np.load(loaded_path, allow_pickle=True)
+            if "embeddings" in data and "texts" in data and "sources" in data:
+                existing_embeddings = data["embeddings"].tolist()
+                existing_texts = data["texts"].tolist()
+                existing_sources = data["sources"].tolist()
         except Exception as e:
-            _logger.warning(f"Failed to cross-link {current_path.name} to {target_path.name}: {e}")
+            _logger.warning(f"Failed to load existing index for hot-insert: {e}")
 
+    # 4. Prepare new item metadata
+    content_hash = f"hash:{hashlib.md5(content.encode('utf-8')).hexdigest()}"
 
-def _log_subsume(
-    new_title: str,
-    existing_stem: str,
-    score: float,
-    image_path: Path | None,
-) -> None:
-    """Append a SUBSUME event to the weekly-reviewable journal.
-
-    The journal file (.subsume_journal.jsonl) lives in the vault root and is
-    read by sleep.py during weekly consolidation to produce a human-readable
-    summary for review.
-
-    Args:
-        new_title: Title of the new concept that was subsumed.
-        existing_stem: Stem of the existing concept that absorbed it.
-        score: Cosine similarity score.
-        image_path: Source image that triggered the concept.
-    """
-    journal_path = cfg.vault_root / ".subsume_journal.jsonl"
-    entry = {
-        "timestamp": datetime.now().isoformat(timespec="seconds"),
-        "new_title": new_title,
-        "existing_concept": f"{existing_stem}.md",
-        "similarity_score": round(score, 4),
-        "source_image": str(image_path.name) if image_path else None,
-    }
+    # 5. Insert or Update
     try:
-        with open(journal_path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
-    except OSError as e:
-        _logger.warning(f"Failed to write subsume journal: {e}")
+        if stem in existing_sources:
+            idx = existing_sources.index(stem)
+            existing_embeddings[idx] = query_emb
+            existing_texts[idx] = content_hash
+            _logger.info(f"Updated existing entry in index for '{stem}'")
+        else:
+            existing_embeddings.append(query_emb)
+            existing_texts.append(content_hash)
+            existing_sources.append(stem)
+            _logger.info(f"Appended new entry to index for '{stem}'")
+
+        # 6. Save back to npz with backup restoration guard
+        np.savez_compressed(
+            index_path,
+            embeddings=np.array(existing_embeddings, dtype=np.float32),
+            texts=np.array(existing_texts, dtype=object),
+            sources=np.array(existing_sources, dtype=object),
+        )
+
+        # Sync backup
+        try:
+            import shutil
+            shutil.copy2(index_path, bak_path)
+        except Exception as bak_err:
+            _logger.warning(f"Failed to sync backup index during hot-insert: {bak_err}")
+
+        _logger.info(f"Hot-insert successful: Index size is now {len(existing_sources)}")
+
+    except Exception as save_err:
+        _logger.error(f"Failed to save hot-inserted embedding index: {save_err}")
+

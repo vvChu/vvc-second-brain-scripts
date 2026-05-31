@@ -192,6 +192,10 @@ def _write_weekly_synthesis(concepts: list[dict] | None = None) -> None:
     except Exception:
         pass
 
+    # Safe count of total concepts and sources to prevent crash if unmounted
+    total_concepts = sum(1 for f in cfg.concepts_dir.iterdir() if f.suffix == '.md') if cfg.concepts_dir.exists() else 0
+    total_sources = sum(1 for f in cfg.sources_dir.rglob("*.md")) if cfg.sources_dir.exists() else 0
+
     # Write report
     report_path = cfg.moc_dir / "Weekly_Synthesis.md"
     lines = [
@@ -202,8 +206,8 @@ def _write_weekly_synthesis(concepts: list[dict] | None = None) -> None:
         f"- **Quality rejections:** {quality_rejects}\n",
         f"- **Subsumed (trùng lặp):** {subsumes}\n",
         f"- **Brain Dumps:** {dumps}\n",
-        f"- **Total concepts:** {sum(1 for f in cfg.concepts_dir.iterdir() if f.suffix == '.md')}\n",
-        f"- **Total sources:** {sum(1 for f in cfg.sources_dir.iterdir() if f.suffix == '.md')}\n\n",
+        f"- **Total concepts:** {total_concepts}\n",
+        f"- **Total sources:** {total_sources}\n\n",
     ]
 
     if recent:

@@ -80,7 +80,8 @@ D:\VvC_Notes\                       ← Vault Root (Obsidian)
 │   └── attachments/                ← 🖼️ Output folder for Excalidraw & Mermaid diagrams
 ├── 04 - Permanent/                 ← 🧠 Compiled knowledge layer
 │   ├── concepts/                   ←    Atomic concept notes (1 idea = 1 file)
-│   └── sources/                    ←    Source summaries (1 book = 1 file)
+│   ├── sources/                    ←    Source summaries (1 book = 1 file)
+│   └── topics/                     ←    📝 AI-generated long-form essays & analyses
 ├── 05 - Fleeting/                  ← 📸 Active ingestion workspace (human drops photos here)
 ├── 99 - Archive/                   ← 🗄️ Processed photos are archived here
 ├── scripts/                        ← ⚙️ Python automation daemons
@@ -196,6 +197,21 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
 - Auto-generated dashboard with statistics, Source MOCs, Domain MOCs, and recently added concepts.
 - Updated every time a new note is compiled.
 
+### 4.6 Topic Articles (`04 - Permanent/topics/`)
+- **AI-generated long-form essays**, architecture reviews, research reports, and thematic analyses.
+- Filename: `snake_case_topic_name.md` (e.g., `ai_friendly_codebase.md`, `vvc_architecture_review.md`).
+- **Auto-save rule**: Whenever the agent produces a substantive article, report, or essay (>500 words) during an interactive session, it **MUST** also save a copy to `04 - Permanent/topics/` in addition to the conversation artifacts directory. This ensures all generated knowledge persists in the vault.
+- Unlike concept notes, topic articles are **free-form** — they do not require the Evidence Hook → Core Idea → Ground Truth body structure. However, YAML frontmatter with `type: topic` is recommended.
+- Topic articles may reference concept notes via wiki-links `[[concept_name]]`.
+
+### 4.7 Triết lý Thiết kế: Human-AI Alignment in Document Aesthetics (v8.9.7)
+Để tối ưu hóa trải nghiệm đọc của con người đồng thời bảo toàn năng lực phân tích tối đa cho AI Agent khi thực hiện các tác vụ RAG và tổng hợp tri thức, toàn bộ các tệp tài liệu trong Vault phải tuân thủ nghiêm ngặt nguyên tắc **Căn chỉnh Thẩm mỹ Song phương**:
+- **Đối với Con người (Thẩm mỹ & Trực quan)**:
+  - Tất cả các siêu dữ liệu trung gian, thẻ đánh dấu kỹ thuật thô của hệ thống (như danh sách các marker hình ảnh `[IMG:...]` hoặc các log phụ trợ) **bắt buộc phải được đóng gói gọn gàng bên trong Callout ẩn của Obsidian** dạng đóng mở (`> [!info]- 🖼️ Tiêu đề\n> - [IMG:...]`).
+  - Hình ảnh minh họa phải được nhúng trực tiếp bằng cú pháp wiki-link tiêu chuẩn `![[filename.webp]]` ngay dưới các đoạn văn bản chứa ngữ cảnh phân tích tương ứng của bài viết (không dồn ảnh thô kệch xuống cuối trang).
+- **Đối với AI (Bảo toàn Ngữ cảnh & RAG)**:
+  - Tuyệt đối không xóa hoặc lược bỏ siêu dữ liệu bối cảnh (như tên tệp ảnh và `alt-text` mô tả chi tiết nội dung thị giác). Khối Callout ẩn mặc định co lại đối với con người nhưng text thô bên trong vẫn được LLM đọc trọn vẹn khi parse tệp markdown, giúp AI Agent dễ dàng nắm bắt "bản đồ tri thức" và tự động phân phối, liên kết hình vẽ vào các Concept Notes mới một cách chính xác trong pha Map-Reduce tiếp theo.
+
 ---
 
 ## 5. Autonomous Ingestion Pipeline (LLM OS v7.0 — Lean Compiler)
@@ -204,7 +220,7 @@ The vault operates via Python background daemons. Entry point: `scripts/daemon.p
 
 ```text
 scripts/
-├── daemon.py                  ← Main watchdog: queue + 5-stage pipeline worker
+├── daemon.py                  ← Main watchdog: queue + temporal batching + worker loop
 ├── book_ingest.py             ← Book watcher: EPUB/PDF → workspace setup
 ├── sleep.py                   ← Weekly consolidation (lint, heal, MOC rebuild)
 ├── wiki_maintain.py           ← Source MOC + Domain MOC + Master Index (w/ Zero-Concept filter)
@@ -215,33 +231,39 @@ scripts/
 ├── core/                      ← Shared infrastructure
 │   ├── config.py              ← VaultConfig dataclass (singleton)
 │   ├── llm/                   ← 3-tier LLM Modular Package (Gateway, Copilot, Gemini, Vision, Audio)
+│   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
+│   ├── layout_router.py       ← Topology auto-detection → engine dispatch
 │   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
 │   └── log.py                 ← Append-only logger → log.md (weekly rotation)
 │
-├── pipeline/                  ← Ingestion stages (5 files)
+├── pipeline/                  ← Ingestion stages (7 files)
+│   ├── image_processor.py     ← 5-stage pipeline orchestrator (single + Map-Reduce batch)
 │   ├── ocr.py                 ← Vision API: auto-orient → OCR → highlight parsing
 │   ├── ground_truth.py        ← BM25 chapter-scoped matching + OCR correction
 │   ├── synthesize.py          ← LLM concept note generation (Format v7.7 Cognitive Flow)
 │   ├── self_correct.py        ← Independent blockquote accuracy verification
-│   └── post_process.py        ← Save concept (unicodedata strict snake_case), archive image, trigger MOC
+│   ├── post_process.py        ← Save concept (unicodedata strict snake_case), archive image
+│   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
-├── services/                  ← Interactive services & Micro-modules (~19 files)
+├── services/                  ← Interactive services & Micro-modules (~20 files)
 │   ├── command.py             ← Command.md Facade (8 writing styles)
 │   ├── brain_dump.py          ← Brain_Dump.md Coordinator Facade
+│   ├── article_images.py      ← Web article image downloader & WebP compressor
 │   ├── worker_dispatcher.py   ← Triggers all generation workers
 │   ├── chat_history.py        ← Command.md Auto-Archive logic
 │   ├── rag_builder.py         ← RAG Context XML formatter
-│   ├── url_fetcher.py         ← Trafilatura & BeautifulSoup web scraping
+│   ├── url_fetcher.py         ← Trafilatura & BeautifulSoup web scraping (no truncation limits)
 │   ├── youtube_transcript.py  ← YT transcript & yt-dlp fallback
-│   ├── text_chunker.py        ← Semantic chunking & AI orthographic correction
+│   ├── text_chunker.py        ← Semantic chunking (25K/chunk) & AI orthographic correction
 │   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment
+│   ├── moc_mermaid.py         ← MOC Mermaid diagram generators (Source + Domain)
 │   ├── diagram_base.py        ← Shared diagram infrastructure
 │   ├── excalidraw_worker.py   ← Excalidraw JSON via Copilot CLI (claude-sonnet) (w/ Text Auto-Sync)
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 44 unit tests (pytest)
+└── tests/                     ← 100 unit tests (pytest)
 ```
 
 ### 1. Setup & Ingestion (`book_ingest.py` & `epub_convert.py`)
@@ -258,16 +280,20 @@ scripts/
 - **Stage 3 — Synthesis** (`pipeline/synthesize.py`): LLM generates atomic Concept Note (Format v7.7 — Evidence Hook → Core Idea → Ground Truth → `---` → References).
 - **Stage 4 — Self-Correction** (`pipeline/self_correct.py`): Independent blockquote verification.
 - **Stage 5 — Post-Process** (`pipeline/post_process.py`): Save to concepts/, archive image (public `archive_image()` for batch archiving of extra pages), trigger MOC.
-- **Stage 6 — Semantic Knowledge Merger** (`pipeline/post_process.py` v8.6): Runs automatically before saving. Calculates Cosine similarity with existing concepts via AI Gateway `/embeddings`. If similarity $\ge 0.88$, passes through a **3-Tier Merge Control** before deciding:
-  - **Tier 1 — Hook Count Gate**: If existing note already has ≥4 Evidence Hooks (blockquotes `> "`), force `SEPARATE` + cross-link. This addresses the root cause of God Notes: unbounded quote stacking during repeated merges.
-  - **Tier 2 — Dynamic Size Limit**: If existing note exceeds P95 × 1.3 (~7,700 bytes), force `SEPARATE` + cross-link. Threshold derived from vault-wide statistical analysis (P95 = 5.9KB across 1,450 concepts).
-  - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (xếp chồng Evidence Hooks và Citation Lines song ngữ v8.3, viết lại `## Core Idea` sâu sắc). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** (existing note already covers 100% of its content) — source image is archived, event is logged to `.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
+- **Stage 6 — Semantic Knowledge Merger** (`pipeline/semantic_merger.py` v8.9.9): Runs automatically before saving. Calculates Cosine similarity with existing concepts via AI Gateway `/embeddings`. If similarity $\ge 0.88$, passes through a **3-Tier Merge Control** before deciding:
+  - **Tier 1 — Hook Count Gate**: If existing note has ≥4 Evidence Hooks (blockquotes `> "`), activate **Consolidated Pruning** (Tỉa cành củng cố) rather than forcing separate. The merger instructs the LLM to selectively prune and consolidate redundant or similar quotes, maintaining a strict maximum limit of 4 (preferably 3) high-value Vietnamese hooks.
+  - **Tier 2 — Dynamic Size Limit**:
+    - For notes under Consolidated Pruning (≥4 hooks): calculates `core_size` by stripping all blockquotes. Merges are allowed if `core_size` ≤ 6,000 bytes (protecting analysis limits) AND overall `file_size` ≤ 10,000 bytes. If either limit is exceeded, forces `SEPARATE` + cross-link.
+    - For normal notes (<4 hooks): forces `SEPARATE` if `file_size` > 7,700 bytes (derived from vault-wide statistics).
+  - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (combining and pruning Evidence Hooks bilingual v8.9.9, and deep rewriting of `## Core Idea`). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** — source image is archived, event is logged to `.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
 
 ### 3. Interactive Services
 - **Command.md** (`services/command.py`): 8 writing styles via `/prefix`, RAG-enhanced responses, forces `|100%` on embedded diagrams.
 - **Brain Dump** (`services/brain_dump.py`): Extracts pending ideas from native `## Inbox` markdown header, appends output to `## Processed`. Upgraded to **Map-Reduce Architecture (v7.4.2)** for processing long inputs and URLs:
+  - **No Truncation Limits (v8.9.1)**: `url_fetcher.py` returns full extracted text without any character truncation. Articles and YouTube transcripts are passed through at their natural length. Long text is handled downstream by `text_chunker.py` (semantic chunking at 25K chars/chunk) and LLM clients (CLI tiers auto-skip at 30K chars, HTTP tiers have no limit). Gateway primary model (1M token context) and Copilot/Gemini fallbacks (128K+ token context) accommodate any realistic web article.
+  - **Image Pipeline (v8.9.10)**: Article images are automatically extracted using `services/article_images.py` via `url_fetcher.py`. Extractor parses both standard `<img>` tags and Next.js/React custom `<ThemeImage>` components (prioritizing the `dark` mode URL) using Regex. Filter excludes noise (logos, icons, navigation, sidebar). Standard images are compressed concurrently to WebP (max 1536px, Q=80), while vector SVG (`.svg`) files are downloaded natively as raw bytes to bypass Pillow and size constraints, preserving crispness inside Obsidian. All are saved to `04 - Permanent/sources/assets/<domain>/` and registered as `[IMG:filename|alt=...]` markers in metadata callouts.
   - **Map Step**: Uses `task="reasoning"` to extract Atomic Concepts into a JSON array via Semantic Arbitrator. Employs a **Proportional Dynamic Limit (v8.5)** calculated dynamically based on raw text volume (from `1-3` concepts for small inputs <5k characters, up to `8-18` concepts for inputs >50k characters) to prevent information loss on large transcripts while strictly filtering out noise.
-  - **Reduce Step**: Uses `task="synthesis"` with 4096 tokens limit to build strictly-formatted Concept Notes (avoids token exhaustion).
+  - **Reduce Step**: Uses `task="synthesis"` with 4096 tokens limit to build strictly-formatted Concept Notes (avoids token exhaustion). Instructed by Rule 6 to embed `![[filename]]` in the `## Core Idea` section (maximum 3 images per concept).
 - **Hybrid RAG** (`services/rag_search.py`): BM25 + Gemini Embeddings + RRF fusion.
 
 ### 4. Wiki Health (`services/wiki_health.py`) — OOP Architecture (v7.4)

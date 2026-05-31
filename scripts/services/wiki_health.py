@@ -187,7 +187,7 @@ class VaultLinter:
 
 
 class LinkHealer:
-    """Auto-creates quality stubs for broken links using LLM Semantic Arbitrator."""
+    """Auto-creates quality stubs for broken wiki-links (Facade pattern)."""
     
     def __init__(self):
         import json
@@ -198,6 +198,21 @@ class LinkHealer:
                 self.rejected_cache = set(json.loads(self.rejected_file.read_text(encoding="utf-8")))
             except Exception:
                 pass
+
+        # Load Whitelist from config.yaml dynamically to keep it KISS!
+        self.whitelisted_stubs = set()
+        try:
+            import yaml
+            config_path = Path(__file__).parent.parent / "config.yaml"
+            if config_path.exists():
+                with open(config_path, "r", encoding="utf-8") as f:
+                    raw_cfg = yaml.safe_load(f)
+                    health_cfg = raw_cfg.get("health", {})
+                    wl = health_cfg.get("whitelist_stubs", [])
+                    if isinstance(wl, list):
+                        self.whitelisted_stubs = {normalize_stem(item) for item in wl if isinstance(item, str)}
+        except Exception as e:
+            _logger.warning(f"Failed to load whitelist_stubs from config.yaml: {e}")
 
     def heal(self, report: LintReport, max_heal_limit: int = 15) -> int:
         import json
@@ -228,19 +243,24 @@ class LinkHealer:
                 self._unlink_in_sources(target, sources)
                 continue
 
-            # Throttle to max 20 Requests Per Minute (RPM)
-            time.sleep(3.0) 
+            # LLM Semantic Arbitrator (bypassed if target is whitelisted)
+            norm_target = normalize_stem(target)
+            if norm_target in getattr(self, "whitelisted_stubs", set()):
+                _logger.info(f"Whitelisted stub approved directly: {target}")
+                is_valid = True
+            else:
+                # Throttle to max 20 Requests Per Minute (RPM)
+                time.sleep(3.0) 
 
-            # LLM Semantic Arbitrator
-            is_valid = self._is_valid_concept(target)
-            if is_valid is None:
-                consecutive_errors += 1
-                _logger.debug(f"LLM API failure for: {target} ({consecutive_errors}/3). Backing off 30s...")
-                time.sleep(30)  # Long backoff to allow rate-limits to reset
-                if consecutive_errors >= 3:
-                    _logger.error("Consecutive API failures reached 3. Aborting LinkHealer to protect API.")
-                    break
-                continue
+                is_valid = self._is_valid_concept(target)
+                if is_valid is None:
+                    consecutive_errors += 1
+                    _logger.debug(f"LLM API failure for: {target} ({consecutive_errors}/3). Backing off 30s...")
+                    time.sleep(30)  # Long backoff to allow rate-limits to reset
+                    if consecutive_errors >= 3:
+                        _logger.error("Consecutive API failures reached 3. Aborting LinkHealer to protect API.")
+                        break
+                    continue
                 
             # Reset error counter on success
             consecutive_errors = 0
@@ -255,6 +275,15 @@ class LinkHealer:
                 self._unlink_in_sources(target, sources)
                 continue
 
+            # Self-healing: if the approved concept was previously in rejected cache, remove it!
+            if target in self.rejected_cache:
+                self.rejected_cache.discard(target)
+                _logger.info(f"Self-healed cache: removed whitelisted stub '{target}' from rejected stubs list.")
+                try:
+                    self.rejected_file.write_text(json.dumps(list(self.rejected_cache)), encoding="utf-8")
+                except OSError:
+                    pass
+
             # Create stub
             if self._create_stub(target, sources):
                 created += 1
@@ -265,6 +294,11 @@ class LinkHealer:
 
     def _heuristic_reject(self, name: str) -> bool:
         """Fast rejection of invalid concepts without calling LLM."""
+        norm_name = normalize_stem(name)
+        if norm_name in getattr(self, "whitelisted_stubs", set()):
+            _logger.info(f"Whitelisted stub (bypassing filters): {name}")
+            return False
+
         if name in getattr(self, "rejected_cache", set()):
             _logger.debug(f"Rejected by cache (Strict Abort): {name}")
             return True

@@ -364,6 +364,19 @@ def main() -> None:
         _logger.warning(f"Failed to register signal handlers (normal in headless/service mode): {sig_err}")
 
     _logger.info("Book Ingestion Daemon v8.0 (Watchdog-driven) started")
+
+    # JIT Google Drive mount / junction directory readiness guard
+    max_retries = 15
+    for attempt in range(max_retries):
+        if cfg.resources_books_dir.exists():
+            break
+        _logger.warning(f"Vault books directory not ready yet (attempt {attempt + 1}/{max_retries}). GDrive may not be mounted. Waiting 10s...")
+        time.sleep(10)
+
+    if not cfg.resources_books_dir.exists():
+        _logger.error("Vault books directory not found after waiting 150s. Exiting to prevent crash.")
+        return
+
     _scan_existing()
     _logger.info(f"Known books: {len(_processed_books)}")
 

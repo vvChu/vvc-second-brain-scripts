@@ -22,7 +22,8 @@ try:
 except ImportError:
     BeautifulSoup = None
 
-from services.youtube_transcript import fetch_youtube_transcript
+from services.youtube_transcript import fetch_youtube_transcript, extract_video_visuals
+from services.article_images import extract_article_images, format_image_metadata
 
 _logger = logging.getLogger("vvc.url_fetcher")
 
@@ -87,28 +88,54 @@ def _extract_with_trafilatura(html: str) -> str:
     return ""
 
 
-def fetch_url(url: str) -> str:
-    """Fetch and extract article text from a URL."""
+def fetch_url(url: str, visual: bool = False) -> str:
+    """Fetch and extract article text from a URL.
+
+    For non-YouTube articles, images are automatically extracted via
+    Smart Filter and appended as structured metadata so the downstream
+    LLM can embed ``![[image.webp]]`` references in concept notes.
+
+    Args:
+        url: Web page URL.
+        visual: For YouTube URLs, enable video frame extraction.
+
+    Returns:
+        Extracted text (with optional image metadata appended).
+    """
     if requests is None:
         return ""
     
-    url = url.rstrip('.,;:"\'')
-    
+    url = url.rstrip('.,;:"\'')    
     if "youtube.com" in url or "youtu.be" in url:
-        yt_text = fetch_youtube_transcript(url)
+        info_dict = None
+        if visual:
+            try:
+                import yt_dlp
+                _logger.info(f"Đang tải JIT metadata cho YouTube URL: {url}")
+                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+                    info_dict = ydl.extract_info(url, download=False)
+            except Exception as e:
+                _logger.warning(f"Lỗi khi tải JIT metadata qua yt_dlp (sẽ tự động fallback): {e}")
+        
+        yt_text = fetch_youtube_transcript(url, info_dict=info_dict)
+        if visual and yt_text:
+            visual_text = extract_video_visuals(url, transcript_text=yt_text, info_dict=info_dict)
+            if visual_text:
+                yt_text = f"{yt_text}\n\n## 🎞️ Nội dung trực quan từ video (Visual Slide Summary)\n\n{visual_text}"
         # Never fallback to HTML scraping for YouTube URLs. 
         # If transcript/audio fails, return empty string so Semantic Arbitrator rejects it.
-        return yt_text[:40000] if yt_text else ""
+        return yt_text or ""
             
     try:
         resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
         resp.raise_for_status()
+        raw_html = resp.text
 
         # Try trafilatura first with a 10s timeout to prevent hanging
         text = ""
         if trafilatura is not None:
             executor = _get_trafilatura_executor()
-            future = executor.submit(_extract_with_trafilatura, resp.text)
+            future = executor.submit(_extract_with_trafilatura, raw_html)
             try:
                 text = future.result(timeout=10)
             except concurrent.futures.TimeoutError:
@@ -116,19 +143,27 @@ def fetch_url(url: str) -> str:
             except Exception:
                 pass
 
-        if text and not _is_garbage_fetch(text):
-            return text[:40000]
-
-        # Fallback: basic HTML text
-        if BeautifulSoup is not None:
-            soup = BeautifulSoup(resp.text, "html.parser")
-            text = soup.get_text(separator="\n", strip=True)
+        if not text or _is_garbage_fetch(text):
+            # Fallback: basic HTML text
+            if BeautifulSoup is not None:
+                soup = BeautifulSoup(raw_html, "html.parser")
+                text = soup.get_text(separator="\n", strip=True)
 
         if _is_garbage_fetch(text):
             _logger.warning(f"Garbage fetch detected: {url}")
             return ""
 
-        return text[:40000]
+        # --- Article Image Extraction (auto, zero-touch) ---
+        try:
+            images = extract_article_images(raw_html, url)
+            if images:
+                image_metadata = format_image_metadata(images)
+                text = f"{text}{image_metadata}"
+                _logger.info(f"Appended {len(images)} image metadata entries for {url}")
+        except Exception as img_exc:
+            _logger.warning(f"Article image extraction failed (non-fatal): {img_exc}")
+
+        return text
     except Exception as e:
         _logger.warning(f"URL fetch failed: {url}: {e}")
         return ""

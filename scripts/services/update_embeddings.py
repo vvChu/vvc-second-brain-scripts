@@ -147,10 +147,8 @@ def sync_embeddings(concepts: list[dict] | None = None) -> None:
                         needs_embedding = True
                         updated_count += 1
             else:
-                # Migrate legacy to hash format by forcing one re-embed
-                if not circuit_breaker_tripped:
-                    needs_embedding = True
-                    updated_count += 1
+                # Migrate legacy to hash format by keeping existing vector
+                pass
         else:
             if not circuit_breaker_tripped:
                 needs_embedding = True

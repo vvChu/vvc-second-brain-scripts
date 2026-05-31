@@ -89,7 +89,7 @@ def is_garbage(text: str, allowed_shorts: tuple[str, ...] = (), *, min_length: i
     return any(re.search(pat, text, re.IGNORECASE) for pat in _GARBAGE_PATTERNS)
 
 # --- Image Encoding ---
-def encode_image(image_path: Path, max_pixels: int = 1024) -> str:
+def encode_image(image_path: Path, max_pixels: int = 1024, quality: int = 85) -> str:
     """Resize and base64-encode an image for vision APIs."""
     try:
         from PIL import Image, ImageOps
@@ -100,7 +100,7 @@ def encode_image(image_path: Path, max_pixels: int = 1024) -> str:
 
         from io import BytesIO
         buf = BytesIO()
-        img.save(buf, format="JPEG", quality=85)
+        img.save(buf, format="JPEG", quality=quality)
         return base64.b64encode(buf.getvalue()).decode("utf-8")
     except Exception as e:
         _logger.error(f"Image encoding failed: {e}")

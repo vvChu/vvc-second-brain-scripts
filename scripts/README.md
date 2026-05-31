@@ -1,4 +1,4 @@
-# VvC Second Brain — Pipeline Scripts (v8.7 WebP Archive Compression)
+# VvC Second Brain — Pipeline Scripts (v8.9.10 SVG & Next.js Extraction)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
 *Rebuilt in v7.4: Separated God Objects into specialized Micro-services and created a Modular LLM Package.*
@@ -11,6 +11,11 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 *Upgraded in v8.5 (Consolidation, Merger & Dynamic Limits): Scan-Once Sleep Architecture, AI Gateway Embeddings (7.5x speed), Semantic Knowledge Merger (Cosine 0.85 + Arbitrator + cross-linking), Proportional Dynamic Limit (Brain Dump Map-Reduce).*
 *Upgraded in v8.6 (3-Tier Merge Control & SUBSUME): Replaced static 10KB hard limit with data-driven 3-tier system — Tier 1: Hook Count Gate (≥4 hooks → SEPARATE), Tier 2: Dynamic Size Limit (P95×1.3 ~7.7KB), Tier 3: LLM Arbitrator with 3-way decision (MERGE/SEPARATE/SUBSUME). SUBSUME drops redundant concepts entirely, logs to `.subsume_journal.jsonl` for weekly review.*
 *Upgraded in v8.7 (WebP Archive Compression): `_archive_image()` now compresses images to WebP (RGB, 1536px max, Q80) instead of raw copy, reducing archive storage by ~92% (2.19GB → ~170MB for 1,074 images). Fallback to raw copy if Pillow fails.*
+*Upgraded in v8.8 (Vault Mount Resilience): JIT Google Drive mount readiness guard added to prevent book_ingest.py crash on boot before GDrive mounts.*
+*Upgraded in v8.9 (URL Deduplication & Re-processing Guard): Local URL Registry (`.processed_urls.json`) JIT prevents duplicate URL processing, automatically generating Auto-Feedback loops directly to Processed. Supports case-insensitive override keywords (xử lý lại, /force) with direct Semantic Knowledge Merger (v8.6) updates. Enforces Single-Write Commit to completely avoid Sync Race Conditions.*
+*Upgraded in v8.9.5 (Video Visual Extraction): Implemented Video Visual Extraction from YouTube via FFmpeg (1 frame/10s, max 30 selected frames) and LiteLLM Gateway Multimodal API, providing comprehensive visual progression analysis (slides, charts) seamlessly merged with audio transcripts in Brain Dump pipeline.*
+*Upgraded in v8.9.9 (Consolidated Pruning & Smart Core Size): Enhanced 3-Tier Merge Control in semantic_merger.py. Replaced hard block when existing note has ≥4 hooks with automatic Consolidated Pruning. Calculates core_size excluding blockquotes to allow merging large quote-bloated notes while protecting atomic note constraints.*
+*Upgraded in v8.9.10 (Next.js Custom Image Extraction & Native SVG Support): Upgraded Smart Filter in article_images.py to extract high-value diagrams from Next.js dynamic React Components (<ThemeImage>) using Regex. Added native vector SVG download support to bypass Pillow and size constraints, preserving 100% graphic sharpness in Obsidian.*
 
 ## Architecture (v7.4)
 

@@ -106,40 +106,41 @@ def apply_smart_layout(elements: list[dict]) -> None:
     if layout_hint:
         # Prioritize explicit hints from the user/LLM
         if layout_hint == "matrix":
-            import matrix_layout
-            matrix_layout.apply_matrix_layout(elements, style=matrix_style)
+            from core.layouts.matrix_layout import apply_matrix_layout
+            apply_matrix_layout(elements, style=matrix_style)
         elif layout_hint == "cycle":
-            import cycle_layout
-            cycle_layout.apply_cycle_layout(elements)
+            from core.layouts.cycle_layout import apply_cycle_layout
+            apply_cycle_layout(elements)
         elif layout_hint == "radial":
-            import radial_layout
-            radial_layout.apply_radial_layout(elements)
+            from core.layouts.radial_layout import apply_radial_layout
+            apply_radial_layout(elements)
         elif layout_hint == "concentric":
-            import concentric_layout
-            concentric_layout.apply_concentric_layout(elements)
+            from core.layouts.concentric_layout import apply_concentric_layout
+            apply_concentric_layout(elements)
         elif layout_hint == "value_chain":
-            import value_chain_layout
-            value_chain_layout.apply_value_chain_layout(elements)
+            from core.layouts.value_chain_layout import apply_value_chain_layout
+            apply_value_chain_layout(elements)
         elif layout_hint == "tree":
-            import tree_layout
-            tree_layout.apply_tree_layout(elements, direction=tree_dir)
+            from core.layouts.tree_layout import apply_tree_layout
+            apply_tree_layout(elements, direction=tree_dir)
         else: # sugiyama
-            import sugiyama_layout
-            sugiyama_layout.apply_sugiyama_layout(elements)
+            from core.layouts.sugiyama_layout import apply_sugiyama_layout
+            apply_sugiyama_layout(elements)
     else:
         # Fallback to automatic topology detection
         if is_cycle:
-            import cycle_layout
-            cycle_layout.apply_cycle_layout(elements)
+            from core.layouts.cycle_layout import apply_cycle_layout
+            apply_cycle_layout(elements)
         elif is_radial:
-            import radial_layout
-            radial_layout.apply_radial_layout(elements)
+            from core.layouts.radial_layout import apply_radial_layout
+            apply_radial_layout(elements)
         elif is_tree:
-            import tree_layout
-            tree_layout.apply_tree_layout(elements, direction=tree_dir)
+            from core.layouts.tree_layout import apply_tree_layout
+            apply_tree_layout(elements, direction=tree_dir)
         elif is_chain:
-            import value_chain_layout
-            value_chain_layout.apply_value_chain_layout(elements)
+            from core.layouts.value_chain_layout import apply_value_chain_layout
+            apply_value_chain_layout(elements)
         else:
-            import sugiyama_layout
-            sugiyama_layout.apply_sugiyama_layout(elements)
+            from core.layouts.sugiyama_layout import apply_sugiyama_layout
+            apply_sugiyama_layout(elements)
+

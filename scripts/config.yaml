@@ -86,3 +86,16 @@ excalidraw_theme:
   background_color: "transparent"
   font_family: 3
   stroke_width: 2
+
+# --- Wiki Health & Filter Guard ---
+health:
+  whitelist_stubs:
+    - in_context_learning
+    - quantization
+    - lora
+    - chain_of_thought_reasoning
+    - mixture_of_experts
+    - zettelkasten
+    - spaced_repetition
+    - deep_work
+    - generalist_vs_specialist
