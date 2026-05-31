@@ -209,19 +209,37 @@
       "path": "D:\\VvC_Notes\\03 - Resources\\books\\Reinventing_the_Organization_H_Arthur_Yeung_MD\\Reinventing_the_Organization_H_Ch05_Figure_01-01.jpg",
       "filename": "Reinventing_the_Organization_H_Ch05_Figure_01-01.jpg",
       "book": "Reinventing_the_Organization_H_Arthur_Yeung",
-      "topology": "hub_spoke"
+      "topology": "hub_spoke",
+      "chapter_file": "05_1_A_New_Organization_How_Can_Your_Company_Deliver_Radically_Greater_Value.md",
+      "chapter_title": "CHAPTER 1",
+      "chapter_num": 5,
+      "surrounding_context": "FIGURE 1-1\nThe Supercell organization: platforms, cells, and strategic partners\n![[Reinventing_the_Organization_H_Ch05_Figure_01-01.jpg]]![[Reinventing_the_Organization_H_Ch05_Figure_01-01.jpg]]\n“Why the super and cell organizational design?” asks Supercell chief operating officer Janne Snellman rhetorically. “Because we saw the failure of games designed by committee elsewhere. The best [gaming] talent wants to work independently: set them on a path, give them direction, and the team will figure out the rest on its own. They cannot have a person come in to tell them what to do. The smaller the team, the faster it is.” The megahit Clash of Clans, for example, began with a core team of only five people and grew over the years to seven or eight people focused on continuously adding to this highly interactive game. The larger team that supports millions of Clash of Clan players is still less than fifteen people. Like the eighty people who saved the swimmers, these individual teams bring people together to create and respond to market opportunities.\n## Talent",
+      "caption": "Hình 1-1: Cơ cấu tổ chức của Supercell: nền tảng, các tế bào và đối tác chiến lược",
+      "alt_text": "Sơ đồ mô tả cấu trúc tổ chức dạng mạng lưới hướng tâm của Supercell. Ở trung tâm là một hình elip đại diện cho 'Super / Shared platform' (Nền tảng chia sẻ). Xung quanh trung tâm là bốn hình elip viền liền đại diện cho các 'Cell / Development team' (Tế bào / Đội ngũ phát triển) ở các hướng trên, dưới, trái, phải, được kết nối bằng các mũi tên một chiều chỉ từ nền tảng trung tâm ra ngoài. Ở bốn góc chéo là bốn hình tròn viền đứt nét đại diện cho các đối tác chiến lược: 'Publishing partners' (Đối tác xuất bản), 'Marketing partners' (Đối tác tiếp thị), 'Customer support partners' (Đối tác hỗ trợ khách hàng) và 'Technology partner' (Đối tác công nghệ). Các đường mũi tên hai chiều nét đứt thể hiện sự tương tác giữa nền tảng trung tâm với các đối tác, trong khi các mũi tên hai chiều nét liền thể hiện sự kết nối trực tiếp giữa các tế bào phát triển với nhau. Sơ đồ thể hiện mô hình vận hành linh hoạt, nơi các nhóm nhỏ tự trị (cells) được giải phóng để sáng tạo nhờ sự hỗ trợ từ nền tảng chung (super) và mạng lưới đối tác bên ngoài."
     },
     {
       "path": "D:\\VvC_Notes\\03 - Resources\\books\\Reinventing_the_Organization_H_Arthur_Yeung_MD\\Reinventing_the_Organization_H_Ch05_Figure_01-02.jpg",
       "filename": "Reinventing_the_Organization_H_Ch05_Figure_01-02.jpg",
       "book": "Reinventing_the_Organization_H_Arthur_Yeung",
-      "topology": "other"
+      "topology": "other",
+      "chapter_file": "05_1_A_New_Organization_How_Can_Your_Company_Deliver_Radically_Greater_Value.md",
+      "chapter_title": "CHAPTER 1",
+      "chapter_num": 5,
+      "surrounding_context": "FIGURE 1-2\nEvolution of organizational forms\n![[Reinventing_the_Organization_H_Ch05_Figure_01-02.jpg]]![[Reinventing_the_Organization_H_Ch05_Figure_01-02.jpg]]\n## Hierarchy Model\nThe dominant organizational logic of your company might be best described as a hierarchy of knowledge, power, and control (the traditional organization chart; model A in [figure 1-2](#fig1-2)). Model A fits your organization if leaders emphasize roles and rules and focus on improving efficiency by delayering levels, clarifying roles, and working to remove boundaries across silos. For all the talk about abolishing hierarchy, most organizations today still fall into this category.",
+      "caption": "Hình 1-2: Sự tiến hóa của các hình thức tổ chức",
+      "alt_text": "Sơ đồ minh họa sự tiến hóa của các hình thức tổ chức qua ba giai đoạn từ trái sang phải bao gồm Model A, Model B và Model C, được kết nối bằng các mũi tên chuyển giao lớn. Model A đại diện cho mô hình Phân cấp (Hierarchy), tập trung vào hiệu suất và cấu trúc, được trực quan hóa bằng một sơ đồ cây phân cấp truyền thống với các nút hình vuông xếp tầng. Model B đại diện cho mô hình Hệ thống (Systems), tập trung vào sự liên kết, gồm hai sơ đồ mạng lưới liên kết đa chiều: mô hình 5 yếu tố (Strategy, Structure, Processes, Rewards, People) và mô hình 7S với 'Shared values' ở trung tâm. Model C đại diện cho mô hình Năng lực (Capabilities), tập trung vào bản sắc tổ chức, được thể hiện bằng một ma trận 2x2 phân loại theo trục dọc Xã hội/Kỹ thuật (Social/Technical) và trục ngang Cá nhân/Tổ chức (Individual/Organizational). Trong đó, ô Năng lực tổ chức (Organizational capability) ở góc trên bên phải được tô xám nổi bật và là điểm hướng đến của các mũi tên chỉ từ ba ô năng lực còn lại, nhấn mạnh sự hội tụ và chuyển dịch trọng tâm vào năng lực của toàn bộ tổ chức."
     },
     {
       "path": "D:\\VvC_Notes\\03 - Resources\\books\\Reinventing_the_Organization_H_Arthur_Yeung_MD\\Reinventing_the_Organization_H_Ch05_Figure_01-03.jpg",
       "filename": "Reinventing_the_Organization_H_Ch05_Figure_01-03.jpg",
       "book": "Reinventing_the_Organization_H_Arthur_Yeung",
-      "topology": "hub_spoke"
+      "topology": "hub_spoke",
+      "chapter_file": "05_1_A_New_Organization_How_Can_Your_Company_Deliver_Radically_Greater_Value.md",
+      "chapter_title": "CHAPTER 1",
+      "chapter_num": 5,
+      "surrounding_context": "FIGURE 1-3\nEmerging models of organizations\n![[Reinventing_the_Organization_H_Ch05_Figure_01-03.jpg]]![[Reinventing_the_Organization_H_Ch05_Figure_01-03.jpg]]\nWhile we owe a great debt to these innovators and early adopters who have conducted these brave organizational experiments, the attempts are piecemeal, not integrated, solutions. They innovate organization practices, but they do not reinvent the organization.\nIn this book, we offer you a holistic and integrated approach on how to reinvent your organization, one based on new principles and enacted through new practices. You don’t just want to run organizational experiments; you want to have real and sustainable impact.",
+      "caption": "Hình 1-3: Các mô hình tổ chức đang trỗi dậy",
+      "alt_text": "Sơ đồ cấu trúc hướng tâm minh họa các mô hình tổ chức mới nổi và sự hội tụ của chúng. Ở trung tâm là một hình chữ nhật bo góc đại diện cho 'Market-oriented ecosystem (MOE)' (Hệ sinh thái hướng đến thị trường). Xung quanh trung tâm là 12 hình bầu dục xếp chồng nối tiếp nhau tạo thành một vòng tròn khép kín, mỗi hình đại diện cho một mô hình tổ chức thử nghiệm bao gồm: Network (Mạng lưới), Boundaryless organization (Tổ chức không ranh giới), Ambidextrous organization (Tổ chức song hành), Lattice organization (Tổ chức dạng lưới), Horizontal organization (Tổ chức theo chiều ngang), Exponential organization (Tổ chức theo cấp số nhân), Agile organization (Tổ chức linh hoạt), Team of teams (Nhóm của các nhóm), Holacracy (Hệ thống tự quản), Amoeba organization (Tổ chức kiểu amoeba), Learning organization (Tổ chức học tập), và Post-hierarchy organization (Tổ chức hậu phân cấp). Tất cả các mô hình này đều tiếp xúc và hướng về tâm MOE, thể hiện ý tưởng rằng dù các mô hình đơn lẻ này là những thử nghiệm tiến bộ nhưng chúng vẫn mang tính rời rạc, và MOE chính là giải pháp tích hợp toàn diện để tái thiết kế tổ chức."
     },
     {
       "path": "D:\\VvC_Notes\\03 - Resources\\books\\Reinventing_the_Organization_H_Arthur_Yeung_MD\\Reinventing_the_Organization_H_Ch05_Figure_01-04.jpg",
