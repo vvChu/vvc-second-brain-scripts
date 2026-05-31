@@ -67,7 +67,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [sleep] %(levelname)s: %(message)s",
     handlers=[
-        logging.FileHandler(_SCRIPT_DIR / "sleep_daemon.log", encoding="utf-8"),
+        logging.FileHandler(cfg.log_dir / "sleep_daemon.log", encoding="utf-8"),
         logging.StreamHandler(_sys.stdout),
     ],
 )
@@ -243,7 +243,7 @@ def _write_weekly_synthesis(concepts: list[dict] | None = None) -> None:
             _logger.error(f"Failed to read or process domain suggestions: {e}")
 
     # Read and append SUBSUME journal for weekly review
-    subsume_journal = cfg.vault_root / ".subsume_journal.jsonl"
+    subsume_journal = cfg.state_dir / ".subsume_journal.jsonl"
     if subsume_journal.exists():
         try:
             entries = []

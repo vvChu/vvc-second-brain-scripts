@@ -19,22 +19,7 @@ from services.diagram_base import spawn_worker
 
 _logger = logging.getLogger("vvc.vision_qc")
 
-_QC_PROMPT = """You are an expert Construction QC Engineer (Kiến trúc, Kết cấu, MEP, PCCC).
-You need to generate a Coordination Matrix (Ma trận phối hợp thẩm tra) based on the user's request.
-
-REQUEST:
-{query}
-
-CONTEXT:
-{context}
-
-CRITICAL RULES:
-1. Output ONLY a valid Markdown Table.
-2. The columns MUST be: STT | Vi_tri_Grid_Level | Bo_mon_1 | Bo_mon_2 | Mo_ta_Loi_Clash | Tieu_chuan_vi_pham | De_xuat.
-3. Generate at least 3-5 realistic issues related to the request.
-4. Wrap your Markdown table inside XML tags `<qc_table>...</qc_table>`. DO NOT output anything outside these tags.
-5. Use Vietnamese language.
-"""
+from core.prompts.services import QC_MATRIX as _QC_PROMPT  # noqa: E402
 
 def trigger_qc_generation(filename: str, source_text: str, query: str) -> None:
     """Trigger background QC matrix generation."""

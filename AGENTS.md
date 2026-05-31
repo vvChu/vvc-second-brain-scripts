@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution
+# 🧠 VvC Second Brain — Agent Constitution (v8.10.0)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -204,7 +204,7 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
 - Unlike concept notes, topic articles are **free-form** — they do not require the Evidence Hook → Core Idea → Ground Truth body structure. However, YAML frontmatter with `type: topic` is recommended.
 - Topic articles may reference concept notes via wiki-links `[[concept_name]]`.
 
-### 4.7 Triết lý Thiết kế: Human-AI Alignment in Document Aesthetics (v8.9.7)
+### 4.7 Triết lý Thiết kế: Human-AI Alignment in Document Aesthetics (v8.10.0)
 Để tối ưu hóa trải nghiệm đọc của con người đồng thời bảo toàn năng lực phân tích tối đa cho AI Agent khi thực hiện các tác vụ RAG và tổng hợp tri thức, toàn bộ các tệp tài liệu trong Vault phải tuân thủ nghiêm ngặt nguyên tắc **Căn chỉnh Thẩm mỹ Song phương**:
 - **Đối với Con người (Thẩm mỹ & Trực quan)**:
   - Tất cả các siêu dữ liệu trung gian, thẻ đánh dấu kỹ thuật thô của hệ thống (như danh sách các marker hình ảnh `[IMG:...]` hoặc các log phụ trợ) **bắt buộc phải được đóng gói gọn gàng bên trong Callout ẩn của Obsidian** dạng đóng mở (`> [!info]- 🖼️ Tiêu đề\n> - [IMG:...]`).
@@ -228,8 +228,14 @@ scripts/
 ├── web_clip.py                ← CLI tool: URL → Fleeting Markdown
 ├── config.yaml                ← Centralized configuration
 │
+├── .state/                    ← Operational state & journal data (Zero Cloud Contamination)
+├── logs/                      ← Operational log files (daemon.log, sleep_daemon.log, etc.)
+│
 ├── core/                      ← Shared infrastructure
 │   ├── config.py              ← VaultConfig dataclass (singleton)
+│   ├── types.py               ← Central type definitions & strict type checking
+│   ├── daemon_utils.py        ← Watchdog helper & file stability guards
+│   ├── prompts/               ← Prompts Registry (modularized text templates)
 │   ├── llm/                   ← 3-tier LLM Modular Package (Gateway, Copilot, Gemini, Vision, Audio)
 │   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
 │   ├── layout_router.py       ← Topology auto-detection → engine dispatch
@@ -247,13 +253,13 @@ scripts/
 │
 ├── services/                  ← Interactive services & Micro-modules (~20 files)
 │   ├── command.py             ← Command.md Facade (8 writing styles)
-│   ├── brain_dump.py          ← Brain_Dump.md Coordinator Facade
+│   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
+│   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
 │   ├── article_images.py      ← Web article image downloader & WebP compressor
 │   ├── worker_dispatcher.py   ← Triggers all generation workers
 │   ├── chat_history.py        ← Command.md Auto-Archive logic
 │   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Trafilatura & BeautifulSoup web scraping (no truncation limits)
-│   ├── youtube_transcript.py  ← YT transcript & yt-dlp fallback
 │   ├── text_chunker.py        ← Semantic chunking (25K/chunk) & AI orthographic correction
 │   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment
@@ -263,7 +269,7 @@ scripts/
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 100 unit tests (pytest)
+└── tests/                     ← 167 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ### 1. Setup & Ingestion (`book_ingest.py` & `epub_convert.py`)
@@ -285,7 +291,7 @@ scripts/
   - **Tier 2 — Dynamic Size Limit**:
     - For notes under Consolidated Pruning (≥4 hooks): calculates `core_size` by stripping all blockquotes. Merges are allowed if `core_size` ≤ 6,000 bytes (protecting analysis limits) AND overall `file_size` ≤ 10,000 bytes. If either limit is exceeded, forces `SEPARATE` + cross-link.
     - For normal notes (<4 hooks): forces `SEPARATE` if `file_size` > 7,700 bytes (derived from vault-wide statistics).
-  - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (combining and pruning Evidence Hooks bilingual v8.9.9, and deep rewriting of `## Core Idea`). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** — source image is archived, event is logged to `.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
+  - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (combining and pruning Evidence Hooks bilingual v8.9.9, and deep rewriting of `## Core Idea`). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** — source image is archived, event is logged to `.state/.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
 
 ### 3. Interactive Services
 - **Command.md** (`services/command.py`): 8 writing styles via `/prefix`, RAG-enhanced responses, forces `|100%` on embedded diagrams.

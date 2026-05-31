@@ -13,6 +13,10 @@ from typing import TypedDict
 
 from core.llm import call_llm
 from core.config import cfg
+from core.prompts.pipeline import (
+    TOPIC_SEGMENTATION as _SEGMENTATION_PROMPT,
+    BOOK_CONTEXT_ENRICHMENT as _ENRICHMENT_PROMPT,
+)
 
 _logger = logging.getLogger("vvc.map_reduce")
 
@@ -24,45 +28,7 @@ class SegmentedConcept(TypedDict):
     rationale: str
 
 
-_SEGMENTATION_PROMPT = """Bạn là chuyên gia phân tích ngữ nghĩa cho hệ thống Zettelkasten cá nhân.
 
-THÔNG TIN NỀN VĨ MÔ CỦA CUỐN SÁCH:
-{book_macro_context}
-
-NHIỆM VỤ:
-Đọc kỹ toàn bộ văn bản OCR được trích xuất từ các trang sách chụp dưới đây (thuộc cuốn sách "{book_name}"). 
-Xác định xem văn bản này chứa những khái niệm/chủ đề nguyên tử (Atomic Concepts) độc lập nào. 
-Mỗi khái niệm chỉ nên chứa một ý tưởng cốt lõi duy nhất. Một khái niệm có thể nằm trên 1 trang hoặc trải dài trên vài trang liên tiếp (ví dụ: trang 12 đến 14).
-
-TUYỆT ĐỐI TUÂN THỦ CÁC QUY TẮC SAU:
-1. Mỗi concept phải là "nguyên tử" (1 ý tưởng duy nhất). Không gộp các ý tưởng khác nhau vào cùng một concept.
-2. Xác định chính xác ranh giới trang (trang bắt đầu `page_start` và trang kết thúc `page_end`) mà concept đó xuất hiện.
-3. Tên concept (`title`) viết bằng tiếng Việt, viết hoa chữ cái đầu các từ quan trọng (Title Case), ngắn gọn nhưng phản ánh rõ bản chất (ví dụ: "Phản Ứng Với Tinh Thể", "Sự Tự Phủ Định Liên Tục").
-4. Sử dụng hệ thống thuật ngữ nhất quán với từ điển định nghĩa trong thẻ <GLOSSARY> của THÔNG TIN NỀN VĨ MÔ ở trên.
-5. Tuân thủ nghiêm ngặt các chỉ dẫn biên soạn (khẩu vị phân rã, văn phong) được định nghĩa trong thẻ <COMPILATION_GUIDELINES> của THÔNG TIN NỀN VĨ MÔ ở trên.
-6. Trả về kết quả DƯỚI DẠNG MỘT JSON ARRAY HỢP LỆ. KHÔNG viết thêm bất kỳ lời giải thích nào ngoài khối JSON.
-
-ĐỊNH DẠNG JSON YÊU CẦU:
-[
-  {{
-    "title": "Tên khái niệm nguyên tử 1 bằng tiếng Việt",
-    "page_start": 12,
-    "page_end": 14,
-    "rationale": "Lý do tách concept này (phân tích ngắn gọn cơ sở lập luận)."
-  }},
-  {{
-    "title": "Tên khái niệm nguyên tử 2 bằng tiếng Việt",
-    "page_start": 15,
-    "page_end": 16,
-    "rationale": "Lý do tách concept này."
-  }}
-]
-
-NỘI DUNG VĂN BẢN OCR CỦA CÁC TRANG:
----
-{formatted_ocr}
----
-"""
 
 _GENERIC_TITLE_PAT = re.compile(r"^(?:chapter|chương|part|phần|section|mục|preface|lời mở đầu|notes|ch|pt)\s*[ivxlc\d]*$", re.IGNORECASE)
 
@@ -94,16 +60,16 @@ def _clean_chapter_title_from_filename(epub_file: str) -> str:
     return cleaned.replace("_", " ").strip()
 
 
-def get_or_create_book_context(workspace_path: Path) -> str:
+def get_or_create_book_context(workspace_dir: Path) -> str:
     """Get the book context from _context.txt, or create it if missing (Lazy-JIT Cache).
 
     Args:
-        workspace_path: Path to the fleeting workspace.
+        workspace_dir: Path to the fleeting workspace.
 
     Returns:
         The XML string representation of the book context.
     """
-    context_file = workspace_path / "_context.txt"
+    context_file = workspace_dir / "_context.txt"
     if not context_file.exists():
         return ""
 
@@ -120,11 +86,11 @@ def get_or_create_book_context(workspace_path: Path) -> str:
             return match.group(1)
 
     # Generate it JIT
-    _logger.info(f"Generating JIT <BOOK_CONTEXT> for workspace: {workspace_path.name}")
+    _logger.info(f"Generating JIT <BOOK_CONTEXT> for workspace: {workspace_dir.name}")
     
     # 1. Parse _toc.json to get book title and structure
-    toc_file = workspace_path / "_toc.json"
-    book_title = workspace_path.name.replace("_", " ")
+    toc_file = workspace_dir / "_toc.json"
+    book_title = workspace_dir.name.replace("_", " ")
     structure_lines: list[str] = []
     
     if toc_file.exists():
@@ -231,7 +197,7 @@ def get_or_create_book_context(workspace_path: Path) -> str:
 
     # 2. Find matching Source Note to get summary
     summary_str = "Tóm tắt cốt lõi chưa được cập nhật."
-    book_name_lower = workspace_path.name.lower()
+    book_name_lower = workspace_dir.name.lower()
     source_notes = list(cfg.sources_dir.glob(f"*_{book_name_lower}.md"))
     
     if source_notes:
@@ -301,9 +267,9 @@ def segment_concepts(pages_data: list[dict], book_name: str) -> list[SegmentedCo
     if pages_data and "image_path" in pages_data[0]:
         img_path = pages_data[0]["image_path"]
         if isinstance(img_path, (str, Path)):
-            workspace_path = Path(img_path).parent
+            workspace_dir = Path(img_path).parent
             try:
-                book_macro_context = get_or_create_book_context(workspace_path)
+                book_macro_context = get_or_create_book_context(workspace_dir)
             except Exception as e:
                 _logger.error(f"Failed to obtain book macro context: {e}")
 
@@ -399,45 +365,22 @@ def segment_concepts(pages_data: list[dict], book_name: str) -> list[SegmentedCo
         return []
 
 
-_ENRICHMENT_PROMPT = """Bạn là chuyên gia thiết kế và phân tích cấu trúc Zettelkasten.
 
-Dưới đây là tệp tin cấu hình ngữ cảnh vĩ mô hiện tại của cuốn sách "{book_name}":
----
-{current_context}
----
 
-Và đây là bảng mục lục tiếng Việt hoàn chỉnh của cuốn sách (`_toc.json`):
----
-{toc_json}
----
-
-NHIỆM VỤ CỦA BẠN:
-Hãy thực hiện "làm giàu" (Enrich) tệp tin ngữ cảnh vĩ mô trên bằng cách thay thế các placeholders trống bằng kiến thức học thuật vĩ mô thực tế của cuốn sách nổi tiếng này.
-
-TUYỆT ĐỐI TUÂN THỦ CÁC QUY TẮC SAU:
-1. Giữ nguyên toàn bộ cấu trúc XML, tên các thẻ, và thông tin metadata ở trên dải phân cách '---'.
-2. Trong thẻ <SUMMARY>: Viết một tóm tắt lý thuyết chiến lược, học thuật sâu sắc (từ 3-5 câu) về cuốn sách.
-3. Trong thẻ <STRUCTURE>: Đối với từng chương được liệt kê trong mục lục, hãy viết tóm tắt ngắn gọn từ 2-3 câu phản ánh chính xác nội dung học thuật thực tế của chương đó (thay thế hoàn toàn cho dòng placeholder "(Thêm tóm tắt chương tại đây để LLM nắm ngữ cảnh phân tích)").
-4. Trong thẻ <GLOSSARY>: Liệt kê từ 8-15 thuật ngữ chuyên ngành học thuật quan trọng nhất của cuốn sách kèm theo bản dịch Việt - Anh chuẩn hóa và định nghĩa ngắn gọn (thay thế cho placeholder "Thuật ngữ 1...").
-5. Trong thẻ <PEOPLE_AND_ORGANIZATIONS>: Trích xuất và điền danh sách các nhân vật nổi bật (các tác giả, chuyên gia được đề cập) và các công ty/tổ chức case-study tiêu biểu xuất hiện xuyên suốt cuốn sách (thay thế cho placeholders).
-6. Hãy trả về TOÀN BỘ nội dung của file _context.txt mới sau khi làm giàu, bao gồm phần metadata ở đầu, dải phân cách '---', và khối <BOOK_CONTEXT> hoàn chỉnh. 
-7. KHÔNG viết lời dẫn đầu, lời giải thích hay lời kết, chỉ trả về đúng định dạng của tệp _context.txt.
-"""
-
-def enrich_book_context(workspace_path: Path) -> bool:
+def enrich_book_context(workspace_dir: Path) -> bool:
     """Auto-enrich placeholders inside _context.txt based on complete _toc.json (JIT Context Enrichment)."""
-    context_file = workspace_path / "_context.txt"
-    toc_file = workspace_path / "_toc.json"
+    context_file = workspace_dir / "_context.txt"
+    toc_file = workspace_dir / "_toc.json"
     
     if not context_file.exists() or not toc_file.exists():
-        _logger.warning(f"enrich_book_context: missing _context.txt or _toc.json in {workspace_path.name}")
+        _logger.warning(f"enrich_book_context: missing _context.txt or _toc.json in {workspace_dir.name}")
         return False
         
     try:
         current_context = context_file.read_text(encoding="utf-8")
         toc_json = toc_file.read_text(encoding="utf-8")
     except Exception as e:
-        _logger.error(f"enrich_book_context: failed to read files in {workspace_path.name}: {e}")
+        _logger.error(f"enrich_book_context: failed to read files in {workspace_dir.name}: {e}")
         return False
         
     # Check if we actually need enrichment
@@ -448,13 +391,13 @@ def enrich_book_context(workspace_path: Path) -> bool:
         "(Các công ty/tổ chức nổi tiếng đề cập trong sách)"
     ]
     if not any(p in current_context for p in placeholders):
-        _logger.info(f"enrich_book_context: _context.txt in {workspace_path.name} is already enriched, skipping")
+        _logger.info(f"enrich_book_context: _context.txt in {workspace_dir.name} is already enriched, skipping")
         return True
         
-    _logger.info(f"enrich_book_context: Starting JIT Enrichment for {workspace_path.name}...")
+    _logger.info(f"enrich_book_context: Starting JIT Enrichment for {workspace_dir.name}...")
     
     prompt = _ENRICHMENT_PROMPT.format(
-        book_name=workspace_path.name.replace("_", " "),
+        book_name=workspace_dir.name.replace("_", " "),
         current_context=current_context,
         toc_json=toc_json
     )
@@ -477,7 +420,7 @@ def enrich_book_context(workspace_path: Path) -> bool:
             
         # Write back to file
         context_file.write_text(enriched_content, encoding="utf-8")
-        _logger.info(f"enrich_book_context: Successfully enriched _context.txt for {workspace_path.name}!")
+        _logger.info(f"enrich_book_context: Successfully enriched _context.txt for {workspace_dir.name}!")
         return True
     except Exception as e:
         _logger.error(f"enrich_book_context: failed during JIT enrichment process: {e}")

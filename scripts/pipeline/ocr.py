@@ -35,61 +35,11 @@ class OcrResult(NamedTuple):
 
 # --- Prompts ---
 
-_OCR_PROMPT = """BƯỚC 1: Tìm số trang trong ảnh. Trả lời: PAGE: [số] hoặc PAGE: NONE
-
-BƯỚC 2: Đọc toàn bộ văn bản trong ảnh. Phân loại thành 2 phần:
-
-[HIGHLIGHTED]
-Phần text được highlight/gạch chân/đánh dấu bằng bút. Đây là nội dung quan trọng nhất.
-
-[CONTEXT]
-Phần text không được đánh dấu nhưng nằm trên cùng trang. Đây là ngữ cảnh bổ sung.
-
-QUY TẮC QUAN TRỌNG:
-- Đọc chính xác từng chữ, KHÔNG dịch, KHÔNG tóm tắt
-- Nối các dòng bị đứt gãy thành đoạn văn mạch lạc
-- Nếu không có highlight, đặt toàn bộ text vào [HIGHLIGHTED]
-- Bỏ qua header/footer trang (số trang, tên chương in hoa)
-"""
-
-_TOC_PROMPT = """Đây là ảnh chụp Mục lục (Table of Contents) của sách.
-Hãy trích xuất thông tin dưới dạng JSON theo đúng cấu trúc sau:
-{
-  "book_title_vi": "Tên sách tiếng Việt",
-  "book_title_original": "Tên sách gốc (nếu nhìn thấy, không thì copy title_vi)",
-  "chapters": [
-    {
-      "chapter_num": 1,
-      "title_vi": "Tên chương tiếng Việt",
-      "title_original": "Tên chương gốc (nếu có, không thì copy title_vi)",
-      "description_vi": null,
-      "epub_file": null,
-      "page_start": 15
-    }
-  ]
-}
-Chỉ trả về JSON, không giải thích.
-"""
-
-_TOC_ALIGNMENT_PROMPT = """Đây là ảnh chụp Mục lục (Table of Contents) bằng tiếng Việt của một cuốn sách.
-Dưới đây là cấu trúc chương sách gốc (tiếng Anh/tiếng bản ngữ) đã được hệ thống trích xuất từ trước:
----
-{original_toc}
----
-
-NHIỆM VỤ CỦA BẠN:
-1. Đọc kỹ mục lục tiếng Việt trong ảnh chụp.
-2. Dịch/So khớp từng chương từ ảnh chụp tiếng Việt với danh sách chương gốc tương ứng.
-3. Bổ sung các trường sau vào từng chương trong JSON có sẵn:
-   - "title_vi": "Tiêu đề tiếng Việt từ ảnh chụp"
-   - "page_start": Số trang bắt đầu của chương này trên sách tiếng Việt ảnh chụp (kiểu integer).
-   - "description_vi": "Mô tả ngắn tiếng Việt (nếu có)"
-4. Tuyệt đối GIỮ NGUYÊN các trường "epub_file" và "title_original" của cấu trúc ban đầu để không làm mất liên kết tệp.
-5. Cập nhật thêm "book_title_vi" ở gốc của JSON.
-6. Nếu có chương mới trên mục lục tiếng Việt không khớp với chương nào trong template, hãy thêm mới chương đó với "epub_file": null.
-
-Chỉ trả về JSON hoàn chỉnh sau khi cập nhật, không giải thích.
-"""
+from core.prompts.pipeline import (
+    OCR_EXTRACT as _OCR_PROMPT,
+    TOC_EXTRACT as _TOC_PROMPT,
+    TOC_ALIGNMENT as _TOC_ALIGNMENT_PROMPT,
+)
 
 
 # --- Page Detection ---

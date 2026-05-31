@@ -1,4 +1,4 @@
-# VvC Second Brain — Pipeline Scripts (v8.9.10 SVG & Next.js Extraction)
+# VvC Second Brain — Pipeline Scripts (v8.10.0 Operational Separation)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
 *Rebuilt in v7.4: Separated God Objects into specialized Micro-services and created a Modular LLM Package.*
@@ -16,14 +16,14 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 *Upgraded in v8.9.5 (Video Visual Extraction): Implemented Video Visual Extraction from YouTube via FFmpeg (1 frame/10s, max 30 selected frames) and LiteLLM Gateway Multimodal API, providing comprehensive visual progression analysis (slides, charts) seamlessly merged with audio transcripts in Brain Dump pipeline.*
 *Upgraded in v8.9.9 (Consolidated Pruning & Smart Core Size): Enhanced 3-Tier Merge Control in semantic_merger.py. Replaced hard block when existing note has ≥4 hooks with automatic Consolidated Pruning. Calculates core_size excluding blockquotes to allow merging large quote-bloated notes while protecting atomic note constraints.*
 *Upgraded in v8.9.10 (Next.js Custom Image Extraction & Native SVG Support): Upgraded Smart Filter in article_images.py to extract high-value diagrams from Next.js dynamic React Components (<ThemeImage>) using Regex. Added native vector SVG download support to bypass Pillow and size constraints, preserving 100% graphic sharpness in Obsidian.*
+*Upgraded in v8.10.0 (Operational Separation & Ubiquitous Language): AI-Friendly Codebase Refactor. Migrated all log outputs to scripts/logs/ and operational states (.dump_state.json, .processed_urls.json, .rejected_stubs.json, .subsume_journal.jsonl, _embedding_index.npz) to scripts/.state/ for cloud and git isolation. Modularized brain_dump and youtube services, centralized templates in core/prompts/, enforced strict type safety, renamed variable abbreviations to match Ubiquitous Language (ground_truth, frontmatter, workspace_dir), and hardened pytest suite to 167/167 passed tests (coverage ≥ 50%).*
 
-## Architecture (v7.4)
+## Architecture (v8.10.0)
 
-```
+```text
 scripts/
 ├── daemon.py                  ← Main watchdog (v7.5): queue + 5-stage pipeline worker
                                    + Temporal Batching Engine + File Stability Guard
-├── vault_sync.py              ← PC ↔ Google Drive bidirectional sync
 ├── book_ingest.py             ← Book watcher: EPUB/PDF → workspace setup
 ├── sleep.py                   ← Weekly consolidation (lint, heal, MOC rebuild)
 ├── wiki_maintain.py           ← Source MOC + Domain MOC + Master Index (w/ Zero-Concept filter)
@@ -31,29 +31,39 @@ scripts/
 ├── web_clip.py                ← CLI tool: URL → Fleeting Markdown
 ├── config.yaml                ← Centralized configuration
 │
+├── .state/                    ← Operational state & journal data (Zero Cloud Contamination)
+├── logs/                      ← Operational log files (daemon.log, sleep_daemon.log, etc.)
+│
 ├── core/                      ← Shared infrastructure
 │   ├── config.py              ← VaultConfig dataclass (singleton)
+│   ├── types.py               ← Central type definitions & strict type checking
+│   ├── daemon_utils.py        ← Watchdog helper & file stability guards
+│   ├── prompts/               ← Prompts Registry (modularized text templates)
 │   ├── llm/                   ← 3-tier LLM Modular Package (Gateway, Copilot, Gemini, Vision, Audio)
-│   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize
-│   ├── log.py                 ← Append-only logger → log.md
-│   └── layout_router.py       ← Topology Router for Diagram Engines
+│   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
+│   ├── layout_router.py       ← Topology auto-detection → engine dispatch
+│   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
+│   └── log.py                 ← Append-only logger → log.md (weekly rotation)
 │
-├── pipeline/                  ← 5-Stage Ingestion Pipeline
+├── pipeline/                  ← Ingestion stages (7 files)
+│   ├── image_processor.py     ← 5-stage pipeline orchestrator (single + Map-Reduce batch)
 │   ├── ocr.py                 ← Vision API: auto-orient → OCR → highlight parsing
-│   │                             + Reverse Metadata Sync (_toc.json → Source Note)
 │   ├── ground_truth.py        ← BM25 chapter-scoped matching + OCR correction
 │   ├── synthesize.py          ← LLM concept note generation (Format v7.7 Cognitive Flow)
 │   ├── self_correct.py        ← Independent blockquote accuracy verification
-│   └── post_process.py        ← Save concept, archive image, trigger MOC (v8.6)
-│                                  + 3-Tier Merge Control + SUBSUME deduplication
+│   ├── post_process.py        ← Save concept (unicodedata strict snake_case), archive image
+│   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
-├── services/                  ← Interactive & Batch Services (~19 files)
+├── services/                  ← Interactive & Batch Services (~20 files)
 │   ├── command.py             ← Command.md Facade handler
-│   ├── brain_dump.py          ← Brain_Dump.md Map-Reduce Coordinator (w/ Dynamic Limits)
+│   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
+│   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
+│   ├── article_images.py      ← Web article image downloader & WebP compressor
 │   ├── worker_dispatcher.py   ← Triggers all generation workers
+│   ├── chat_history.py        ← Command.md Auto-Archive logic
+│   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Web scraping & garbage detection
 │   ├── text_chunker.py        ← Semantic chunking & AI correction
-│   ├── youtube_transcript.py  ← YT transcript fetching
 │   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment + Strict Abort
 │   ├── diagram_base.py        ← Shared diagram infrastructure
@@ -61,14 +71,7 @@ scripts/
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-├── *layout_engines*           ← Root-level deterministic layout algorithms
-│   ├── sugiyama_layout.py     ← Hierarchical Top-Down (Flowcharts, Org Charts)
-│   ├── radial_layout.py       ← Hub-and-Spoke (Ecosystems)
-│   ├── cycle_layout.py        ← Cyclic Loops with curved arrows
-│   ├── matrix_layout.py       ← 2x2 Grids and Scatter plots
-│   ├── concentric_layout.py   ← Concentric circles layout algorithm
-│   ├── value_chain_layout.py  ← Horizontal Michael Porter value chain layout
-│   └── tree_layout.py         ← Tree layout algorithm (Top-Down & Left-to-Right)
+└── tests/                     ← 167 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ## Quick Start
@@ -112,7 +115,7 @@ graph TD
     H -- SUBSUME --> K[Drop + Archive Image]
     I --> G[Permanent Concept Note]
     J --> G
-    K --> L[.subsume_journal.jsonl]
+    K --> L[.state/.subsume_journal.jsonl]
 ```
 
 ## Concept Note Format v8.3 (Canonical Structure)

@@ -161,7 +161,7 @@ Write-Host "   Start-ScheduledTask -TaskName $SleepTask"      -ForegroundColor W
 Write-Host "   Stop-ScheduledTask  -TaskName $SleepTask"      -ForegroundColor White
 Write-Host ""
 Write-Host " Logs:" -ForegroundColor Yellow
-Write-Host "   $(Join-Path $ScriptDir 'daemon.log')"          -ForegroundColor White
-Write-Host "   $(Join-Path $ScriptDir 'book_ingestion.log')"  -ForegroundColor White
-Write-Host "   $(Join-Path $ScriptDir 'sleep_daemon.log')"    -ForegroundColor White
+Write-Host "   $(Join-Path (Join-Path $ScriptDir 'logs') 'daemon.log')"          -ForegroundColor White
+Write-Host "   $(Join-Path (Join-Path $ScriptDir 'logs') 'book_ingestion.log')"  -ForegroundColor White
+Write-Host "   $(Join-Path (Join-Path $ScriptDir 'logs') 'sleep_daemon.log')"    -ForegroundColor White
 Write-Host "================================================" -ForegroundColor Cyan

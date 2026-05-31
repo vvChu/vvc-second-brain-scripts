@@ -23,7 +23,7 @@ from core.vault import scan_all_concepts
 
 _logger = logging.getLogger("vvc.embedding_sync")
 
-EMBEDDING_INDEX_PATH = Path(__file__).parent.parent / "_embedding_index.npz"
+EMBEDDING_INDEX_PATH = cfg.state_dir / "_embedding_index.npz"
 
 
 def _compute_md5(text: str) -> str:

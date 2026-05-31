@@ -79,11 +79,11 @@ def test_get_or_create_book_context():
     from core.config import cfg
     
     with tempfile.TemporaryDirectory() as tmpdir:
-        workspace_path = Path(tmpdir) / "test_book_workspace"
-        workspace_path.mkdir()
+        workspace_dir = Path(tmpdir) / "test_book_workspace"
+        workspace_dir.mkdir()
         
         # 1. Create initial _context.txt
-        context_file = workspace_path / "_context.txt"
+        context_file = workspace_dir / "_context.txt"
         context_file.write_text(
             "book_title: Test Book\n"
             "book_file: test_book.epub\n"
@@ -92,7 +92,7 @@ def test_get_or_create_book_context():
         )
         
         # 2. Create mock _toc.json
-        toc_file = workspace_path / "_toc.json"
+        toc_file = workspace_dir / "_toc.json"
         toc_file.write_text(json.dumps({
             "book_title_vi": "Sách Thử Nghiệm",
             "chapters": [
@@ -143,7 +143,7 @@ def test_get_or_create_book_context():
         
         try:
             # First call: Should generate JIT and cache
-            xml_block = get_or_create_book_context(workspace_path)
+            xml_block = get_or_create_book_context(workspace_dir)
             
             assert "<BOOK_CONTEXT>" in xml_block
             assert "Đây là một cuốn sách test phục vụ unit test." in xml_block
@@ -168,7 +168,7 @@ def test_get_or_create_book_context():
             context_file.write_text(manual_override, encoding="utf-8")
             
             # Second call: Should read from cache and respect manual override
-            xml_block_2 = get_or_create_book_context(workspace_path)
+            xml_block_2 = get_or_create_book_context(workspace_dir)
             assert "USER OVERRIDE SUMMARY!" in xml_block_2
             assert "Đây là một cuốn sách test" not in xml_block_2
             

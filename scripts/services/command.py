@@ -124,27 +124,7 @@ def _find_pending_query(content: str) -> str | None:
 
 # --- Response Generation ---
 
-_RESPONSE_PROMPT = """Bạn là trợ lý tri thức cho hệ thống Zettelkasten cá nhân.
-
-{style_instruction}
-
-NGỮ CẢNH TỪ KNOWLEDGE BASE:
----
-{rag_context}
----
-
-CÂU HỎI CỦA NGƯỜI DÙNG:
-{query}
-
-QUY TẮC:
-1. Trả lời bằng tiếng Việt (giữ nguyên thuật ngữ tiếng Anh khi cần).
-2. Tích cực trích dẫn nguồn từ NGỮ CẢNH bằng cách sử dụng cú pháp inline wikilink của Obsidian ngay trong câu văn: `[[file|[id]]]` (ví dụ: `[[tai_tao_to_chuc|[1]]]`, `[[ly_luan_he_sinh_thai|[2]]]`). TUYỆT ĐỐI KHÔNG chỉ viết ngoặc vuông trống không như `[1]`.
-3. KHÔNG TỰ TẠO MỤC "TÀI LIỆU THAM CHIẾU" Ở CUỐI BÀI. Hệ thống sẽ tự động phân tích các liên kết bạn dùng và tạo danh sách này.
-4. Vẽ sơ đồ: chèn ![[tên_sơ_đồ.excalidraw.md|100%]] hoặc ![[tên_sơ_đồ.mermaid.md|100%]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
-5. Tạo báo cáo/hồ sơ Word: chèn ![[tên_file.docx]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
-6. Trích xuất Excel/CSV: chèn ![[tên_file.csv]] hoặc ![[tên_file.xlsx]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
-7. Cấu trúc bài viết rõ ràng với heading và sections.
-"""
+from core.prompts.services import COMMAND_RESPONSE as _RESPONSE_PROMPT  # noqa: E402
 
 
 def _generate_response(query: str, style_name: str, rag_context: str) -> str:

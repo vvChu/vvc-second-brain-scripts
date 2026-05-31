@@ -38,7 +38,7 @@ In this mode, enforce these rules with maximum strictness:
 - Single-shot response (no follow-ups)
 - Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML frontmatter, etc.)
 
-## Architecture Reference (v8.9.9 — Consolidated Pruning & Smart Core Size)
+## Architecture Reference (v8.10.0 — Operational Separation & Ubiquitous Language)
 
 ### LLM Routing (3-Tier)
 - **Tier 1 (Primary)**: AI Gateway (ccba-ai SDK) — 22 models via LiteLLM on Server Spark
@@ -83,8 +83,10 @@ Phân tích thuần tiếng Việt. KHÔNG lồng quote thứ hai. KHÔNG lặp 
 **YAML fields bắt buộc (v7.7+):** `source_page`, `source_chapter`, `ground_truth_page`, `ground_truth_chapter`, `people: []`, `companies: []`, `status: seed`.
 **Tags rule:** `tags` chỉ chứa `knowledge`, `type/concept`, `domain/<lĩnh_vực>` — KHÔNG đưa tên người/công ty vào tags.
 
-### Key Files
+### Key Files & Directories
 - **Config**: `scripts/config.yaml`
+- **State Directory**: `scripts/.state/` (Dữ liệu trạng thái vận hành, `.processed_urls.json`, `.rejected_stubs.json`, v.v.)
+- **Logs Directory**: `scripts/logs/` (Tất cả file log vận hành tập trung)
 - **LLM Client Package**: `scripts/core/llm/` (Separated into gateway, copilot, gemini, vision, and audio clients)
 - **Entry point**: `scripts/daemon.py`
 - **PowerShell stdout fix**: mọi script có `__main__` block phải dùng `logging.basicConfig(stream=sys.stdout)` để tránh exit code 1 giả từ PowerShell.

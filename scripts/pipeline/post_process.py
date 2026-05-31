@@ -397,7 +397,7 @@ def _hot_insert_embedding(concept_path: Path, content: str) -> None:
         return
 
     # 2. Paths
-    index_path = Path(__file__).parent.parent / "_embedding_index.npz"
+    index_path = cfg.state_dir / "_embedding_index.npz"
     bak_path = index_path.with_suffix(".npz.bak")
 
     # 3. Load existing arrays

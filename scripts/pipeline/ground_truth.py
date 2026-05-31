@@ -13,6 +13,7 @@ from typing import NamedTuple
 
 from core.config import cfg
 from core.llm import call_llm
+from core.prompts.pipeline import OCR_CORRECTION as _CORRECTION_PROMPT
 
 try:
     from rank_bm25 import BM25Okapi as _BM25Okapi
@@ -225,22 +226,6 @@ English translation:"""
         _logger.warning(f"Failed to translate query to English: {e}. Using raw OCR text.")
     
     return ocr_text
-
-
-_CORRECTION_PROMPT = """Bạn là chuyên gia hiệu đính OCR tiếng Việt.
-
-ĐOẠN OCR (có thể lỗi):
----
-{ocr_text}
----
-
-ĐOẠN GỐC TIẾNG ANH (Ground Truth):
----
-{ground_truth}
----
-
-NHIỆM VỤ: Sửa lỗi OCR, nối dòng đứt gãy, giữ nguyên tiếng Việt, KHÔNG dịch, KHÔNG giải thích.
-Trả về TRỰC TIẾP đoạn văn đã sửa."""
 
 
 def correct_ocr(ocr_text: str, ground_truth: str) -> str:

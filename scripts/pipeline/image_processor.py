@@ -18,6 +18,7 @@ from pathlib import Path
 
 from core.config import cfg
 from core.log import log
+from core.types import PageData
 
 _logger = logging.getLogger("vvc.imgproc")
 
@@ -94,13 +95,13 @@ def process_image(image_path: Path) -> bool:
         return False
 
     # Stage 2: Ground Truth
-    gt = find_ground_truth(ocr.highlighted, book_name, page=ocr.page_number)
+    ground_truth = find_ground_truth(ocr.highlighted, book_name, page=ocr.page_number)
     highlighted = ocr.highlighted
-    if gt.paragraph:
-        highlighted = correct_ocr(ocr.highlighted, gt.paragraph)
-        log("gt", f"BM25 matched: score={gt.score:.1f}, chapter={gt.chapter}", source=image_path.name)
+    if ground_truth.paragraph:
+        highlighted = correct_ocr(ocr.highlighted, ground_truth.paragraph)
+        log("gt", f"BM25 matched: score={ground_truth.score:.1f}, chapter={ground_truth.chapter}", source=image_path.name)
     else:
-        log("gt", f"No GT match (score={gt.score:.1f})", source=image_path.name)
+        log("gt", f"No GT match (score={ground_truth.score:.1f})", source=image_path.name)
 
     # Resolve source reference
     source_ref = find_source_ref(book_name)
@@ -114,7 +115,7 @@ def process_image(image_path: Path) -> bool:
         _logger.warning(f"Failed to get book macro context in process_image: {e}")
 
     # Stage 3: Synthesize
-    gt_for_synthesis = "" if _is_vietnamese(gt.paragraph) else gt.paragraph
+    gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
     content = synthesize_concept(
         highlighted=highlighted,
         context=ocr.context,
@@ -123,8 +124,8 @@ def process_image(image_path: Path) -> bool:
         source_ref=source_ref,
         chapter="",  # Sách chụp tiếng Việt (để trống hoặc tự động trích xuất chương sau này)
         page=str(ocr.page_number or ""),
-        gt_page=str(gt.page or "") if gt.page else "",
-        gt_chapter=gt.chapter,  # Bản gốc tiếng Anh
+        gt_page=str(ground_truth.page or "") if ground_truth.page else "",
+        gt_chapter=ground_truth.chapter,  # Bản gốc tiếng Anh
         book_macro_context=book_macro_context,
     )
     if not content:
@@ -133,8 +134,8 @@ def process_image(image_path: Path) -> bool:
     log("synth", f"OK ({len(content)} chars)", source=image_path.name)
 
     # Stage 4: Self-Correction (independent verification)
-    if gt.paragraph:
-        content = verify_and_correct(content, gt.paragraph)
+    if ground_truth.paragraph:
+        content = verify_and_correct(content, ground_truth.paragraph)
 
     # Stage 5: Post-Process (save + archive)
     saved = save_concept(content, image_path=image_path, book_name=book_name)
@@ -181,12 +182,12 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     from pipeline.map_reduce import segment_concepts
 
     book_name = image_paths[0].parent.name
-    workspace_path = image_paths[0].parent
+    workspace_dir = image_paths[0].parent
     # Get book macro context using workspace path
     book_macro_context = ""
     try:
         from pipeline.map_reduce import get_or_create_book_context
-        book_macro_context = get_or_create_book_context(workspace_path)
+        book_macro_context = get_or_create_book_context(workspace_dir)
     except Exception as e:
         _logger.warning(f"Failed to get book macro context in process_batch: {e}")
 
@@ -195,7 +196,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     _logger.info(f"Batch processing {len(image_paths)} sorted images (book: {book_name})")
     log("ingest", f"Batch processing started: {len(image_paths)} images (sorted)", source=book_name)
 
-    pages_data: list[dict] = []
+    pages_data: list[PageData] = []
     toc_images: list[Path] = []
 
     # Stage 1: OCR each image
@@ -205,12 +206,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
             toc_images.append(img)
             continue
         if ocr.highlighted and len(ocr.highlighted) >= 30:
-            pages_data.append({
-                "image_path": img,
-                "highlighted": ocr.highlighted,
-                "context": ocr.context,
-                "page_number": ocr.page_number,
-            })
+            pages_data.append(PageData.from_ocr(img, ocr))
 
     # Archive TOC images early to clear workspace
     for toc_img in toc_images:
@@ -242,7 +238,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     # Trigger Map-Reduce if we have 3 or more usable pages
     if len(pages_data) >= 3:
         _logger.info(f"Triggering Map-Reduce for {len(pages_data)} pages")
-        segmented = segment_concepts(pages_data, book_name)
+        segmented = segment_concepts([p.to_dict() for p in pages_data], book_name)
         
         if segmented:
             for idx, concept in enumerate(segmented):
@@ -253,7 +249,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                 # Filter pages belonging to this concept
                 concept_pages = [
                     p for p in pages_data
-                    if page_start <= p["page_number"] <= page_end
+                    if p.page_number is not None and page_start <= p.page_number <= page_end
                 ]
                 
                 if not concept_pages:
@@ -267,22 +263,22 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                 if not concept_pages:
                     continue
 
-                combined_h = "\n\n".join(p["highlighted"] for p in concept_pages)
-                combined_c = "\n\n".join(p["context"] for p in concept_pages)
-                first_p = str(concept_pages[0]["page_number"])
-                primary_img = concept_pages[0]["image_path"]
+                combined_h = "\n\n".join(p.highlighted for p in concept_pages)
+                combined_c = "\n\n".join(p.context for p in concept_pages)
+                first_p = str(concept_pages[0].page_number or 0)
+                primary_img = concept_pages[0].image_path
 
                 # Reduce Step: BM25 Ground Truth Correction
-                gt = find_ground_truth(combined_h, book_name, page=int(first_p) if first_p and first_p != "0" else None)
-                if gt.paragraph:
-                    combined_h = correct_ocr(combined_h, gt.paragraph)
-                    _logger.info(f"BM25 matched for concept '{title}': score={gt.score:.1f}")
+                ground_truth = find_ground_truth(combined_h, book_name, page=int(first_p) if first_p and first_p != "0" else None)
+                if ground_truth.paragraph:
+                    combined_h = correct_ocr(combined_h, ground_truth.paragraph)
+                    _logger.info(f"BM25 matched for concept '{title}': score={ground_truth.score:.1f}")
 
                 # Reduce Step: Synthesis with structural title guideline
                 source_ref = find_source_ref(book_name)
                 guideline = f"\n\n[GUIDELINE: Bạn BẮT BUỘC phải tạo concept note cho khái niệm mang tên chính xác là '{title}']"
                 
-                gt_for_synthesis = "" if _is_vietnamese(gt.paragraph) else gt.paragraph
+                gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
                 content = synthesize_concept(
                     highlighted=combined_h + guideline,
                     context=combined_c,
@@ -291,15 +287,15 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                     source_ref=source_ref,
                     chapter="",
                     page=first_p if first_p != "0" else "",
-                    gt_page=str(gt.page or "") if gt.page else "",
-                    gt_chapter=gt.chapter,
+                    gt_page=str(ground_truth.page or "") if ground_truth.page else "",
+                    gt_chapter=ground_truth.chapter,
                     book_macro_context=book_macro_context,
                 )
 
                 if content:
                     # Reduce Step: Self-Correction
-                    if gt.paragraph:
-                        content = verify_and_correct(content, gt.paragraph)
+                    if ground_truth.paragraph:
+                        content = verify_and_correct(content, ground_truth.paragraph)
                     
                     # Reduce Step: Save Note & Concept-Centric Image Renaming
                     saved = save_concept(content, image_path=primary_img, book_name=book_name)
@@ -310,17 +306,17 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     # Fallback to Classic Flow (Gộp thành 1 note) if Map-Reduce is bypassed or yielded zero notes
     if created_count == 0:
         _logger.info("Map-Reduce bypassed or yielded zero notes. Falling back to Classic Single-Concept Flow.")
-        combined_highlighted = "\n\n".join(p["highlighted"] for p in pages_data)
-        combined_context = "\n\n".join(p["context"] for p in pages_data)
-        first_page = str(pages_data[0]["page_number"]) if pages_data[0]["page_number"] != 0 else None
+        combined_highlighted = "\n\n".join(p.highlighted for p in pages_data)
+        combined_context = "\n\n".join(p.context for p in pages_data)
+        first_page = str(pages_data[0].page_number) if pages_data[0].page_number else None
 
-        gt = find_ground_truth(combined_highlighted, book_name, page=int(first_page) if first_page else None)
-        if gt.paragraph:
-            combined_highlighted = correct_ocr(combined_highlighted, gt.paragraph)
-            log("gt", f"BM25 matched (classic fallback): score={gt.score:.1f}", source=book_name)
+        ground_truth = find_ground_truth(combined_highlighted, book_name, page=int(first_page) if first_page else None)
+        if ground_truth.paragraph:
+            combined_highlighted = correct_ocr(combined_highlighted, ground_truth.paragraph)
+            log("gt", f"BM25 matched (classic fallback): score={ground_truth.score:.1f}", source=book_name)
 
         source_ref = find_source_ref(book_name)
-        gt_for_synthesis = "" if _is_vietnamese(gt.paragraph) else gt.paragraph
+        gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
         content = synthesize_concept(
             highlighted=combined_highlighted,
             context=combined_context,
@@ -329,19 +325,19 @@ def process_image_batch(image_paths: list[Path]) -> bool:
             source_ref=source_ref,
             chapter="",
             page=first_page or "",
-            gt_page=str(gt.page or "") if gt.page else "",
-            gt_chapter=gt.chapter,
+            gt_page=str(ground_truth.page or "") if ground_truth.page else "",
+            gt_chapter=ground_truth.chapter,
             book_macro_context=book_macro_context,
         )
 
         if content:
-            if gt.paragraph:
-                content = verify_and_correct(content, gt.paragraph)
+            if ground_truth.paragraph:
+                content = verify_and_correct(content, ground_truth.paragraph)
             
-            saved = save_concept(content, image_path=pages_data[0]["image_path"], book_name=book_name)
+            saved = save_concept(content, image_path=pages_data[0].image_path, book_name=book_name)
             if saved:
                 created_count += 1
-                processed_images.add(pages_data[0]["image_path"])
+                processed_images.add(pages_data[0].image_path)
 
     # Clean up and Archive all extra images in the batch, then delete originals
     # Archive remaining images that were not successfully saved as part of a concept note
@@ -369,36 +365,36 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     return False
 
 
-def _interpolate_page_numbers(pages_data: list[dict]) -> None:
+def _interpolate_page_numbers(pages_data: list[PageData]) -> None:
     """Interpolate missing page numbers using forward-fill then backward-fill.
 
     Modifies pages_data in-place.
 
     Args:
-        pages_data: List of page dicts with 'page_number' key (may be None).
+        pages_data: List of PageData with page_number (may be None).
     """
     # Forward fill
     last_known: int | None = None
     for p in pages_data:
-        if p["page_number"] is not None:
-            last_known = p["page_number"]
+        if p.page_number is not None:
+            last_known = p.page_number
         elif last_known is not None:
             last_known += 1
-            p["page_number"] = last_known
+            p.page_number = last_known
 
     # Backward fill for leading None values
     first_known_idx = -1
     for idx, p in enumerate(pages_data):
-        if p["page_number"] is not None:
+        if p.page_number is not None:
             first_known_idx = idx
             break
     if first_known_idx > 0:
-        val = pages_data[first_known_idx]["page_number"]
+        val = pages_data[first_known_idx].page_number
         for idx in range(first_known_idx - 1, -1, -1):
             val = max(1, val - 1)
-            pages_data[idx]["page_number"] = val
+            pages_data[idx].page_number = val
 
     # Enforce default 0 if all pages failed OCR detection
     for p in pages_data:
-        if p["page_number"] is None:
-            p["page_number"] = 0
+        if p.page_number is None:
+            p.page_number = 0

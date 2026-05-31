@@ -191,7 +191,7 @@ class LinkHealer:
     
     def __init__(self):
         import json
-        self.rejected_file = Path(__file__).parent.parent / ".rejected_stubs.json"
+        self.rejected_file = cfg.state_dir / ".rejected_stubs.json"
         self.rejected_cache = set()
         if self.rejected_file.exists():
             try:

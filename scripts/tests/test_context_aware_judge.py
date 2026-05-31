@@ -84,10 +84,10 @@ def test_dense_target_timestamps():
     assert len(ts) <= 30
 
 
-@patch("services.youtube_transcript.http_session.post")
-@patch("services.youtube_transcript._get_storyboard_frames")
-@patch("services.youtube_transcript._find_ffmpeg_bin")
-@patch("services.youtube_transcript._get_high_res_stream_url")
+@patch("services.youtube.visual_extractor.http_session.post")
+@patch("services.youtube.visual_extractor._get_storyboard_frames")
+@patch("services.youtube.visual_extractor._find_ffmpeg_bin")
+@patch("services.youtube.visual_extractor._get_high_res_stream_url")
 def test_extract_video_visuals_graceful_degrade(mock_get_high_res, mock_find_ffmpeg, mock_get_frames, mock_post):
     # Mock external calls to test graceful degradation logic
     mock_find_ffmpeg.return_value = None  # No FFmpeg available
@@ -134,7 +134,7 @@ def test_extract_video_visuals_graceful_degrade(mock_get_high_res, mock_find_ffm
         # Check that it returns description
         assert "Visual description" in res
         # Check that post was called with correct context
-        called_args, called_kwargs = mock_post.call_args
+        called_args, called_kwargs = mock_post.call_args_list[0]
         payload = called_kwargs["json"]
         prompt = payload["messages"][0]["content"][0]["text"]
         assert "spoken words context" in prompt

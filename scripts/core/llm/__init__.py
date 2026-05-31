@@ -4,6 +4,7 @@ Facade module for the LLM package. Provides unified routing.
 """
 
 import logging
+import threading
 
 from core.config import cfg
 from core.llm.utils import strip_think_tags, encode_image, is_garbage, increment_counter
@@ -15,8 +16,9 @@ from core.llm.audio_client import call_audio
 
 _logger = logging.getLogger("vvc.llm")
 
-# Global state for Round-Robin load balancing
+# Global state for Round-Robin load balancing (thread-safe)
 _rr_index = 0
+_rr_lock = threading.Lock()
 
 from typing import Callable
 
@@ -71,10 +73,10 @@ def call_llm(
 
     # Apply Round-Robin Strategy
     if strategy == "round_robin":
-        global _rr_index
-        start_idx = _rr_index % len(tiers)
-        tiers = tiers[start_idx:] + tiers[:start_idx]
-        _rr_index += 1
+        with _rr_lock:
+            start_idx = _rr_index % len(tiers)
+            tiers = tiers[start_idx:] + tiers[:start_idx]
+            _rr_index += 1
         _logger.debug(f"[llm] Round-Robin selected primary tier: {tiers[0][0]}")
 
     for tier_name, tier_fn in tiers:

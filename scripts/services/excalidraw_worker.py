@@ -23,27 +23,7 @@ from services.diagram_base import find_diagram_context, spawn_worker, save_diagr
 
 _logger = logging.getLogger("vvc.excalidraw")
 
-_EXCALIDRAW_PROMPT = """Create an Excalidraw diagram as a valid JSON object for the following concept:
-
-CONTEXT:
-{context}
-
-CRITICAL RULES FOR EXCALIDRAW JSON:
-1. Output ONLY valid Excalidraw JSON (no markdown fences, no explanation).
-2. Shapes (rectangle, ellipse, diamond) CANNOT have a "text" field directly! 
-3. Text MUST be a separate element of type "text" and MUST be bound to a shape using `containerId`.
-4. Shapes MUST include the text element in their `boundElements` array.
-5. Example of a valid containerized text node:
-   [
-     {{ "type": "rectangle", "id": "rect1", "x": 100, "y": 100, "width": 150, "height": 60, "boundElements": [{{"id": "txt1", "type": "text"}}] }},
-     {{ "type": "text", "id": "txt1", "text": "Khái niệm", "containerId": "rect1", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "x": 110, "y": 110, "width": 130, "height": 40 }}
-   ]
-6. Use clean aesthetics: `roughness: 0`, `fontFamily: 3` (Monospace).
-7. Connect shapes with arrows using `startBinding` and `endBinding`.
-8. GRID SYSTEM: Assign coordinates (x, y) using a rigid 200px grid (e.g., x: 100, 300, 500 and y: 100, 300, 500) to ensure shapes are perfectly aligned and do not overlap.
-9. Ensure all text elements have double-newline (\n\n) for line breaks if needed.
-
-Generate a clean, professional diagram that visualizes the key relationships and concepts."""
+from core.prompts.services import EXCALIDRAW_GENERATE as _EXCALIDRAW_PROMPT  # noqa: E402
 
 # Excalidraw MD wrapper template
 _MD_TEMPLATE = """---

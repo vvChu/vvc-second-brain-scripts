@@ -21,23 +21,7 @@ from services.diagram_base import find_diagram_context, spawn_worker, save_diagr
 
 _logger = logging.getLogger("vvc.ea")
 
-_EA_PROMPT = """Write an Excalidraw Automate (Javascript) script for the following concept:
-
-CONTEXT:
-{context}
-
-CRITICAL RULES:
-1. Output ONLY valid Javascript code. Do not use markdown fences like ```javascript.
-2. Assume `ea` is already initialized. Start by configuring defaults if needed.
-3. Use the basic Excalidraw Automate API:
-   - `let id = ea.addText(x, y, "text");`
-   - `let id = ea.addRect(x, y, width, height);`
-   - `let id = ea.addEllipse(x, y, width, height);`
-   - `let id = ea.addDiamond(x, y, width, height);`
-   - `ea.connectObjects(id1, "top", id2, "bottom", {{...options}});`
-4. Space out the x and y coordinates logically.
-5. Generate a script that builds a clear and structured diagram representing the concepts.
-"""
+from core.prompts.services import EA_SCRIPT_GENERATE as _EA_PROMPT  # noqa: E402
 
 # Wrapper template using Templater syntax
 _MD_TEMPLATE = """---

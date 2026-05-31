@@ -21,34 +21,12 @@ import time
 from datetime import date
 from pathlib import Path
 
-# --- Headless stdio hardening (pythonw.exe & hidden python.exe compatibility) ---
-for _stream_name in ("stdout", "stderr"):
-    _stream = getattr(sys, _stream_name)
-    _is_valid = False
-    if _stream is not None and hasattr(_stream, "write"):
-        try:
-            _stream.write("")
-            _stream.flush()
-            _is_valid = True
-        except Exception:
-            pass
-    if not _is_valid:
-        try:
-            setattr(sys, _stream_name, open(os.devnull, "w", encoding="utf-8"))
-        except Exception:
-            setattr(sys, _stream_name, None)
-
-# Set console streams to UTF-8 to prevent cp1252/UnicodeEncodeError on Windows if they are valid
-try:
-    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
-except Exception:
-    pass
-
 _SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_SCRIPT_DIR))
+
+# --- Headless stdio hardening (shared) ---
+from core.daemon_utils import harden_headless_stdio, is_file_stable
+harden_headless_stdio()
 
 from core.config import cfg
 from core.frontmatter import build_frontmatter
@@ -69,7 +47,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [book] %(levelname)s: %(message)s",
     handlers=[
-        logging.FileHandler(_SCRIPT_DIR / "book_ingestion.log", encoding="utf-8"),
+        logging.FileHandler(cfg.log_dir / "book_ingestion.log", encoding="utf-8"),
         logging.StreamHandler(sys.stdout) if sys.stdout and sys.stdout.writable() else logging.NullHandler(),
     ],
 )
@@ -199,24 +177,8 @@ def _convert_epub(book_path: Path, book_name: str) -> bool:
 
 
 def _is_file_stable(path: Path, wait_s: float = 1.5) -> bool:
-    """Check if a file has finished being written by comparing size twice.
-
-    Prevents processing a PDF/EPUB that is still being copied into the folder.
-
-    Args:
-        path: File to check.
-        wait_s: Seconds to wait between size checks.
-
-    Returns:
-        True if file size is stable (copy complete).
-    """
-    try:
-        size1 = path.stat().st_size
-        time.sleep(wait_s)
-        size2 = path.stat().st_size
-        return size1 == size2 and size1 > 0
-    except OSError:
-        return False
+    """Delegate to shared daemon utility."""
+    return is_file_stable(path, wait_s=wait_s, max_retries=1)
 
 
 def _process_book(book_path: Path) -> None:

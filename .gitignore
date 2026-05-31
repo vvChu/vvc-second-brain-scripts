@@ -32,6 +32,8 @@ scripts/.dump_state.json
 scripts/_embedding_index.npz*
 scripts/_query_log.jsonl
 scripts/_sync_manifest.json
+scripts/logs/
+scripts/.state/
 
 # --- Obsidian Core & Syncthing ---
 .obsidian/

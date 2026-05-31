@@ -20,33 +20,7 @@ from services.diagram_base import find_diagram_context, spawn_worker, save_diagr
 
 _logger = logging.getLogger("vvc.mermaid")
 
-_MERMAID_PROMPT = """Tạo sơ đồ Mermaid cho nội dung sau:
-
-NGỮ CẢNH:
-{context}
-
-QUY TẮC:
-1. Chỉ trả về mã Mermaid (KHÔNG có ```mermaid fences, không giải thích gì thêm)
-2. Dùng tiếng Việt cho labels khi phù hợp
-3. Ưu tiên flowchart TD (Top-Down) cho sơ đồ cây/phân cấp hoặc flowchart LR (Left-to-Right) cho các chuỗi tuyến tính/tiến trình
-4. Dùng dấu ngoặc kép cho labels chứa ký tự đặc biệt: id["Label (info)"]
-5. KHÔNG dùng HTML tags trong labels
-6. Giữ sơ đồ gọn gàng, tối đa 15-20 nodes
-7. Cấu trúc rõ ràng, sử dụng các kết nối nét liền (-->), nét đậm (==>) hoặc nét đứt (-.->) để thể hiện mối quan hệ chính phụ.
-8. CHỌN ĐÚNG LOẠI SƠ ĐỒ theo nội dung:
-   - `flowchart TD`: phân cấp, cây tổ chức, phân rã khái niệm
-   - `flowchart LR`: chuỗi tiến trình, pipeline, value chain ngang
-   - `timeline`: diễn biến theo thời gian, giai đoạn phát triển, lịch sử tiến hóa (VD: Strategy evolution qua các thập kỷ)
-   - `pie`: phân bổ tỷ lệ, cơ cấu thành phần, breakdown phần trăm (VD: 6 hợp phần EOS)
-   - `mindmap`: brainstorm, phân nhánh ý tưởng từ 1 chủ đề trung tâm
-   - `graph TD`: quan hệ đa chiều không phân cấp rõ ràng
-9. TEXT WRAPPING — BẮT BUỘC để đảm bảo text hiển thị đầy đủ trong node:
-   - Mỗi dòng trong label TỐI ĐA 20 ký tự (kể cả dấu cách)
-   - Dùng \\n để xuống dòng khi label dài hơn 20 ký tự
-   - Ví dụ ĐÚNG:  A["Nhận diện\\nbối cảnh\\nthị trường"]
-   - Ví dụ SAI:   A["Nhận diện bối cảnh thị trường và môi trường kinh doanh"]
-   - Với `timeline` và `pie`: không cần \\n vì Mermaid tự wrap
-"""
+from core.prompts.services import MERMAID_GENERATE as _MERMAID_PROMPT  # noqa: E402
 
 
 def trigger_mermaid_generation(diagram_name: str, source_text: str) -> None:

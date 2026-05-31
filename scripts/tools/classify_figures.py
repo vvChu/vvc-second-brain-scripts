@@ -49,20 +49,7 @@ TOPOLOGY_TYPES = [
     "other",        # hybrid, complex, not classifiable
 ]
 
-_CLASSIFY_PROMPT = """Classify this diagram image into EXACTLY ONE of these topology types:
-
-TYPES:
-- hierarchy: tree, org chart, decomposition, parent-child structure
-- hub_spoke: central hub connecting to satellites, star/radial layout
-- matrix: 2x2 quadrant, scatter plot, two-axis comparison
-- flow: left-to-right or sequential pipeline, value chain, process stages
-- cycle: circular feedback loop, PDCA wheel, iterative process
-- timeline: progression over time, staircase, evolution, milestones
-- pie: proportional breakdown, wheel with segments, percentage chart
-- table: structured rows/columns, scorecard, comparison grid
-- other: complex hybrid or not classifiable as above
-
-OUTPUT: Reply with ONLY the type name (one word). Nothing else."""
+from core.prompts.services import DIAGRAM_CLASSIFY as _CLASSIFY_PROMPT  # noqa: E402
 
 
 def _scan_figures() -> list[Path]:

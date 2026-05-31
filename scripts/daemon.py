@@ -29,35 +29,13 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
-# --- Headless stdio hardening (pythonw.exe & hidden python.exe compatibility) ---
-for _stream_name in ("stdout", "stderr"):
-    _stream = getattr(sys, _stream_name)
-    _is_valid = False
-    if _stream is not None and hasattr(_stream, "write"):
-        try:
-            _stream.write("")
-            _stream.flush()
-            _is_valid = True
-        except Exception:
-            pass
-    if not _is_valid:
-        try:
-            setattr(sys, _stream_name, open(os.devnull, "w", encoding="utf-8"))
-        except Exception:
-            setattr(sys, _stream_name, None)
-
-# Set console streams to UTF-8 to prevent cp1252/UnicodeEncodeError on Windows if they are valid
-try:
-    if sys.stdout and hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
-    if sys.stderr and hasattr(sys.stderr, "reconfigure"):
-        sys.stderr.reconfigure(encoding="utf-8")
-except Exception:
-    pass
-
 # --- Setup Python path ---
 _SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_SCRIPT_DIR))
+
+# --- Headless stdio hardening (shared) ---
+from core.daemon_utils import harden_headless_stdio, is_file_stable
+harden_headless_stdio()
 
 from core.config import cfg
 from core.log import log
@@ -67,7 +45,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     handlers=[
-        logging.FileHandler(_SCRIPT_DIR / "daemon.log", encoding="utf-8"),
+        logging.FileHandler(cfg.log_dir / "daemon.log", encoding="utf-8"),
         logging.StreamHandler(sys.stdout) if (sys.stdout and hasattr(sys.stdout, "write")) else logging.NullHandler(),
     ],
 )
@@ -110,32 +88,8 @@ from pipeline.image_processor import (
 # ============================================================
 
 def _is_file_stable(path: Path, wait_s: float = _FILE_STABLE_WAIT) -> bool:
-    """Check if a file has finished being written by comparing size twice.
-
-    Prevents processing images still syncing from cloud/junction by retrying
-    up to 5 times if the size is changing or zero.
-
-    Args:
-        path: File to check.
-        wait_s: Seconds to wait between size checks.
-
-    Returns:
-        True if file size is stable and non-zero (write complete).
-    """
-    retries = 5
-    for i in range(retries):
-        try:
-            if not path.exists():
-                return False
-            size1 = path.stat().st_size
-            time.sleep(wait_s)
-            size2 = path.stat().st_size
-            if size1 == size2 and size1 > 0:
-                return True
-            _logger.info(f"File {path.name} is still writing/syncing (size: {size1} -> {size2}), retrying check ({i+1}/{retries})...")
-        except OSError:
-            time.sleep(wait_s)
-    return False
+    """Delegate to shared daemon utility."""
+    return is_file_stable(path, wait_s=wait_s, max_retries=5)
 
 
 

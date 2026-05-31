@@ -505,3 +505,23 @@ def test_download_and_compress_svg(mock_requests, tmp_path):
     assert save_path.exists()
     assert save_path.read_bytes() == b"<svg>Mock Vector Graphic</svg>"
 
+
+@patch("services.url_fetcher.requests.get")
+@patch("services.url_fetcher.trafilatura.extract", return_value="Legitimate Twitter content crawing via Nitter mirror " * 5)
+def test_fetch_url_twitter_nitter_conversion(mock_extract, mock_get):
+    """Should automatically intercept x.com and twitter.com and fetch via Nitter mirror."""
+    from services.url_fetcher import fetch_url
+    
+    mock_resp = MagicMock()
+    mock_resp.text = "<html><body>Fake Nitter Thread HTML</body></html>"
+    mock_resp.raise_for_status = MagicMock()
+    mock_get.return_value = mock_resp
+    
+    result = fetch_url("https://x.com/DamiDefi/status/2059939222333567211")
+    
+    assert "Twitter content" in result
+    # Verify requests.get was called with converted Nitter URL
+    args, kwargs = mock_get.call_args
+    assert "nitter.poast.org" in args[0]
+
+

@@ -148,12 +148,12 @@ def update_field(content: str, field_name: str, value: Any) -> str:
     Returns:
         Updated markdown content.
     """
-    fm = parse_frontmatter(content)
-    if not fm:
+    frontmatter = parse_frontmatter(content)
+    if not frontmatter:
         return content
-    fm[field_name] = value
+    frontmatter[field_name] = value
     body = extract_body(content)
-    return build_frontmatter(fm) + body
+    return build_frontmatter(frontmatter) + body
 
 
 def normalize_stem(name: str) -> str:

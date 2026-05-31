@@ -339,8 +339,8 @@ def test_log_subsume_writes_jsonl():
     from core.config import cfg
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        orig = cfg.vault_root
-        object.__setattr__(cfg, "vault_root", Path(tmpdir))
+        orig = cfg.state_dir
+        object.__setattr__(cfg, "state_dir", Path(tmpdir))
         try:
             mock_img = MagicMock(spec=Path)
             mock_img.name = "test_img.jpg"
@@ -358,7 +358,7 @@ def test_log_subsume_writes_jsonl():
             assert entry["source_image"] == "test_img.jpg"
             assert "timestamp" in entry
         finally:
-            object.__setattr__(cfg, "vault_root", orig)
+            object.__setattr__(cfg, "state_dir", orig)
 
 
 def test_log_subsume_none_image():
@@ -367,8 +367,8 @@ def test_log_subsume_none_image():
     from core.config import cfg
 
     with tempfile.TemporaryDirectory() as tmpdir:
-        orig = cfg.vault_root
-        object.__setattr__(cfg, "vault_root", Path(tmpdir))
+        orig = cfg.state_dir
+        object.__setattr__(cfg, "state_dir", Path(tmpdir))
         try:
             log_subsume("Title", "stem", 0.88, None)
 
@@ -376,7 +376,7 @@ def test_log_subsume_none_image():
             entry = json.loads(journal.read_text(encoding="utf-8").strip())
             assert entry["source_image"] is None
         finally:
-            object.__setattr__(cfg, "vault_root", orig)
+            object.__setattr__(cfg, "state_dir", orig)
 
 
 # --- find_semantic_overlap ---

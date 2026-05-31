@@ -13,25 +13,7 @@ from core.llm import call_llm
 
 _logger = logging.getLogger("vvc.selfcorrect")
 
-_VERIFY_PROMPT = """So sánh đoạn trích dẫn (blockquote) dưới đây với bản gốc tiếng Anh.
-
-BLOCKQUOTE (từ concept note):
----
-{blockquote}
----
-
-GROUND TRUTH (bản gốc tiếng Anh):
----
-{ground_truth}
----
-
-NHIỆM VỤ:
-1. Kiểm tra xem blockquote có phản ánh ĐÚNG nội dung Ground Truth không
-2. Tìm các lỗi OCR còn sót: ký tự sai, thiếu dấu, thừa/thiếu từ
-3. Nếu có lỗi, trả về blockquote ĐÃ SỬA (bắt đầu bằng "> ")
-4. Nếu không có lỗi, trả về CHÍNH XÁC: "OK"
-
-CHỈ trả về "OK" hoặc blockquote đã sửa. KHÔNG giải thích."""
+from core.prompts.pipeline import BLOCKQUOTE_VERIFY as _VERIFY_PROMPT
 
 
 def verify_and_correct(concept_content: str, ground_truth: str) -> str:

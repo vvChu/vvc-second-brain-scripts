@@ -34,11 +34,11 @@ def scan_all_concepts() -> list[dict]:
         try:
             with open(f, encoding="utf-8", errors="ignore") as file:
                 content = file.read(4096)
-            fm = parse_frontmatter(content)
-            if fm:
-                fm["_path"] = f
-                fm["_stem"] = f.stem
-                concepts.append(fm)
+            frontmatter = parse_frontmatter(content)
+            if frontmatter:
+                frontmatter["_path"] = f
+                frontmatter["_stem"] = f.stem
+                concepts.append(frontmatter)
         except OSError as e:
             _logger.warning(f"Failed to read concept file {f.name}: {e}")
             continue
@@ -63,11 +63,11 @@ def scan_all_sources() -> list[dict]:
         try:
             with open(f, encoding="utf-8", errors="ignore") as file:
                 content = file.read(4096)
-            fm = parse_frontmatter(content)
-            if fm:
-                fm["_path"] = f
-                fm["_stem"] = f.stem
-                sources.append(fm)
+            frontmatter = parse_frontmatter(content)
+            if frontmatter:
+                frontmatter["_path"] = f
+                frontmatter["_stem"] = f.stem
+                sources.append(frontmatter)
         except OSError as e:
             _logger.warning(f"Failed to read source file {f.name}: {e}")
             continue

@@ -191,7 +191,7 @@ def find_semantic_overlap(new_text: str) -> tuple[str, float] | None:
         Tuple of (existing_stem, similarity_score) if score >= 0.88, else None.
     """
     import numpy as np
-    index_path = Path(__file__).parent.parent / "_embedding_index.npz"
+    index_path = cfg.state_dir / "_embedding_index.npz"
     bak_path = index_path.with_suffix(".npz.bak")
 
     loaded_path = None
@@ -459,7 +459,7 @@ def log_subsume(
         score: Cosine similarity score.
         image_path: Source image that triggered the concept.
     """
-    journal_path = cfg.vault_root / ".subsume_journal.jsonl"
+    journal_path = cfg.state_dir / ".subsume_journal.jsonl"
     entry = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
         "new_title": new_title,

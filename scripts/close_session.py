@@ -38,7 +38,7 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [close_session] %(levelname)s: %(message)s",
     handlers=[
-        logging.FileHandler(_SCRIPT_DIR / "session_close.log", encoding="utf-8"),
+        logging.FileHandler(cfg.log_dir / "session_close.log", encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
     ],
 )

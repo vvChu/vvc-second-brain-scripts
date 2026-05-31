@@ -54,13 +54,13 @@ except ImportError:
             return url.strip().lower()
 
     def _load_url_registry() -> dict:
-        f = scripts_dir / ".processed_urls.json"
+        f = scripts_dir / ".state" / ".processed_urls.json"
         if f.exists():
             return json.loads(f.read_text(encoding="utf-8"))
         return {}
 
     def _save_url_registry(r: dict) -> None:
-        f = scripts_dir / ".processed_urls.json"
+        f = scripts_dir / ".state" / ".processed_urls.json"
         f.write_text(json.dumps(r, indent=2, ensure_ascii=False), encoding="utf-8")
 
 # Cấu hình encoding stdout để in tiếng Việt có dấu trên Windows cmd/powershell không lỗi

@@ -36,6 +36,8 @@ class VaultConfig:
     dump_file: Path
     log_file: Path
     index_file: Path
+    log_dir: Path
+    state_dir: Path
 
     # --- AI Gateway ---
     gateway_url: str = ""
@@ -124,6 +126,8 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
         dump_file=_resolve(root, vault.get("dump_file", "05 - Fleeting/Brain_Dump.md")),
         log_file=_resolve(root, vault.get("log_file", "log.md")),
         index_file=_resolve(root, vault.get("index_file", "00 - Maps of Content/index.md")),
+        log_dir=_resolve(root, vault.get("log_dir", "scripts/logs")),
+        state_dir=_resolve(root, vault.get("state_dir", "scripts/.state")),
         # AI Gateway
         gateway_url=os.environ.get("VVC_GATEWAY_URL", gw.get("url", "")),
         gateway_api_key=os.environ.get("VVC_GATEWAY_KEY", gw.get("api_key", "")),
@@ -169,3 +173,5 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
 
 # --- Singleton ---
 cfg = load_config()
+cfg.log_dir.mkdir(parents=True, exist_ok=True)
+cfg.state_dir.mkdir(parents=True, exist_ok=True)

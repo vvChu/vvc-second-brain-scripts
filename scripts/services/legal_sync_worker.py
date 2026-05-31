@@ -17,65 +17,7 @@ from services.diagram_base import spawn_worker
 
 _logger = logging.getLogger("vvc.legal_sync")
 
-_LEGAL_PROMPT = """You are a Legal Assistant tracking Vietnamese Construction Law.
-Based on the following `legal_registry.yaml` from CCBA's tracking system, identify the most recently updated, drafted, or pending document (check the "monitoring" or "decrees" section).
-Generate a Concept Note summarizing this update.
-
-REGISTRY DATA:
-{registry_data}
-
-<rules>
-1. Tuân thủ CHÍNH XÁC cấu trúc trong <output_template>. KHÔNG thêm heading khác.
-2. BẮT BUỘC PHẢI CÓ heading `## Core Idea`.
-3. Quy tắc ngôn ngữ:
-   - **Evidence Hook**: BẮT BUỘC bằng tiếng Việt.
-   - **Citation Line**: Ngay dưới Evidence Hook, ghi rõ nguồn pháp lý chính thức.
-   - **`## Core Idea`**: Phân tích thuần tiếng Việt.
-   - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: Ghi `(không có)` vì nguồn pháp lý Việt Nam.
-</rules>
-
-<output_template>
----
-title: "Nghị định/Thông tư mới về [Chủ đề]"
-aliases: ["Update Pháp lý Xây dựng"]
-tags:
-  - knowledge
-  - domain/legal
-  - type/concept
-type: concept
-date_created: {date}
-date_modified: {date}
-source: "Web Crawler"
-source_page: ""
-source_chapter: ""
-ground_truth_page: ""
-ground_truth_chapter: ""
-source_type: text
-summary: "Tóm tắt 2-3 câu về nghị định."
-people: []
-companies: []
-status: seed
-confidence: high
----
-
-> "Tóm tắt 2-3 câu ngắn gọn dịch sát nghĩa từ nội dung pháp lý — Evidence Hook."
-> — **Cơ quan ban hành**, trích dẫn trong *Tên Văn bản Pháp lý* (Số hiệu, Năm)
-
-## Core Idea
-
-[Phân tích chi tiết các điểm mới và tác động tới ngành tư vấn xây dựng. Trình bày rõ ràng theo bullet points.]
-
-## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)
-
-(không có)
-
----
-
-## References
-
-- Nguồn: Web Crawler ({date})
-</output_template>
-"""
+from core.prompts.services import LEGAL_CONCEPT as _LEGAL_PROMPT  # noqa: E402
 
 def trigger_legal_sync() -> None:
     """Trigger background legal sync."""
