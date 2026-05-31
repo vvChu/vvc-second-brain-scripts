@@ -312,3 +312,61 @@ def test_archive_image_webp_compression():
             reopened.close()
         finally:
             object.__setattr__(cfg, "archive_dir", orig_archive)
+
+
+def test_sync_source_note_fuzzy_match():
+    """_sync_source_note should successfully fuzzy match truncated workspace names to correct Source Note."""
+    from pipeline.ocr import _sync_source_note
+    from core.config import cfg
+    import tempfile
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir_path = Path(tmpdir)
+        mock_sources_dir = tmpdir_path / "sources"
+        mock_sources_dir.mkdir()
+        
+        # Create full-name Source Note
+        source_note_file = mock_sources_dir / "2026-05-22_Becoming_Steve_Jobs_The_Evolution_of_a_Reckless_Upstart_Brent_Schlender.md"
+        source_note_file.write_text(
+            "---\n"
+            "title: \"Becoming Steve Jobs\"\n"
+            "aliases:\n"
+            "  - \"Steve Jobs\"\n"
+            "date_modified: 2026-05-20\n"
+            "---\n"
+            "# Becoming Steve Jobs\n",
+            encoding="utf-8"
+        )
+        
+        # Redirect config sources_dir
+        orig_sources_dir = cfg.sources_dir
+        object.__setattr__(cfg, "sources_dir", mock_sources_dir)
+        
+        try:
+            # Workspace name is truncated (simulating GDrive/Syncthing or human naming truncation)
+            truncated_workspace_name = "Becoming_Steve_Jobs_The_Evolut_Brent_Schlender"
+            
+            mock_toc_data = {
+                "book_title_vi": "Trở Thành Steve Jobs (Bản Việt hóa)",
+                "chapters": [
+                    {
+                        "chapter_num": 1,
+                        "title_vi": "Chương 1: Khởi đầu",
+                        "page_start": 20
+                    }
+                ]
+            }
+            
+            # Call sync
+            _sync_source_note(truncated_workspace_name, mock_toc_data)
+            
+            # Verify file was fuzzy matched and successfully updated!
+            updated_content = source_note_file.read_text(encoding="utf-8")
+            assert "title: \"Trở Thành Steve Jobs (Bản Việt hóa)\"" in updated_content
+            assert "aliases:\n  - \"Trở Thành Steve Jobs (Bản Việt hóa)\"" in updated_content
+            assert "## 📚 Mục lục" in updated_content
+            assert "| 1 | Chương 1: Khởi đầu | 20 |" in updated_content
+            
+        finally:
+            object.__setattr__(cfg, "sources_dir", orig_sources_dir)
+

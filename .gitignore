@@ -14,6 +14,9 @@ __pycache__/
 .md/
 .trash/
 .stignore
+.env
+*.env
+
 
 # --- Logs & Dynamic Pipeline Outputs ---
 *.log

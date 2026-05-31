@@ -6,6 +6,8 @@ Semantic Knowledge Merger logic extracted to pipeline/semantic_merger.py.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
 import re
 import shutil
@@ -89,6 +91,224 @@ def _validate_quality(content: str, stem: str) -> list[str]:
     return failures
 
 
+def _is_decorative_image(name: str, path: Path) -> bool:
+    """Check if an image is decorative based on filename keywords or small file size."""
+    name_lower = name.lower()
+    if any(k in name_lower for k in ["cover", "logo", "credit", "title_page"]):
+        return True
+    try:
+        if path.exists() and path.stat().st_size < 5120:  # 5 KB
+            return True
+    except Exception:
+        pass
+    return False
+
+
+def _find_md_dir(book_name: str) -> Path | None:
+    """Find the extracted markdown corpus directory for the given book name."""
+    books_dir = cfg.resources_books_dir
+    if not books_dir.exists():
+        return None
+    try:
+        return next(
+            (d for d in books_dir.iterdir()
+             if d.is_dir() and d.name.endswith("_MD") and book_name.lower() in d.name.lower()),
+            None,
+        )
+    except OSError:
+        return None
+
+
+def _align_jit_images(content: str, book_name: str) -> str:
+    """Scan original book corpus MD files to find and align crisp publisher diagrams."""
+    if not book_name:
+        return content
+
+    # 1. Parse frontmatter
+    fm = parse_frontmatter(content)
+    gt_ch = fm.get("ground_truth_chapter")
+    if not gt_ch:
+        return content
+
+    # Extract clean chapter stem from wiki-link
+    chapter_stem = str(gt_ch).replace("[[", "").replace("]]", "").strip()
+    if not chapter_stem:
+        return content
+
+    # OCR page and ground truth page for metadata resolution
+    page = str(fm.get("source_page", "")).strip()
+    if not page:
+        page = str(fm.get("ground_truth_page", "")).strip()
+
+    # 2. Find book MD corpus folder
+    md_dir = _find_md_dir(book_name)
+
+    if not md_dir or not md_dir.exists():
+        _logger.debug(f"[JIT Image] MD directory not found for book: {book_name}")
+        return content
+
+    # 3. Locate chapter file
+    chapter_file = md_dir / f"{chapter_stem}.md"
+    if not chapter_file.exists():
+        _logger.debug(f"[JIT Image] Chapter file '{chapter_stem}.md' not found in {md_dir}")
+        return content
+
+    try:
+        chapter_text = chapter_file.read_text(encoding="utf-8")
+    except OSError as e:
+        _logger.warning(f"[JIT Image] Failed to read chapter file: {e}")
+        return content
+
+    # 4. Extract Ground Truth paragraphs from note content
+    gt_section_match = re.search(
+        r"## (?:📖|Ground Truth)[^\n]*\n+(.*?)(?:\n\n---|\n\n##|\Z)",
+        content,
+        re.DOTALL
+    )
+    if not gt_section_match:
+        _logger.debug("[JIT Image] No Ground Truth section found in note content")
+        return content
+
+    gt_block = gt_section_match.group(1)
+    paragraphs: list[str] = []
+    current_para: list[str] = []
+    
+    for line in gt_block.splitlines():
+        line = line.strip()
+        if line.startswith(">"):
+            clean_line = line.lstrip(">").strip()
+            if clean_line:
+                current_para.append(clean_line)
+            else:
+                if current_para:
+                    paragraphs.append(" ".join(current_para))
+                    current_para = []
+        else:
+            if current_para:
+                paragraphs.append(" ".join(current_para))
+                current_para = []
+    if current_para:
+        paragraphs.append(" ".join(current_para))
+
+    # 5. Search for paragraphs in the chapter file
+    found_images: list[str] = []
+    image_regex = re.compile(
+        r'!\[\[([^\]]+\.(?:jpg|jpeg|png|webp))\]\]|!\[.*?\]\(([^\)]+\.(?:jpg|jpeg|png|webp))\)',
+        re.IGNORECASE
+    )
+
+    for para in paragraphs:
+        para_clean = re.sub(r"\s+", " ", para).strip()
+        if not para_clean or len(para_clean) < 15:
+            continue
+
+        # Find position of this paragraph in chapter_text
+        pos = chapter_text.find(para)
+        if pos == -1:
+            # Try search by prefix to be robust
+            prefix = para_clean[:80].strip()
+            pos = chapter_text.find(prefix)
+            if pos == -1 and len(para_clean) > 150:
+                middle = para_clean[len(para_clean)//2 : len(para_clean)//2 + 80].strip()
+                pos = chapter_text.find(middle)
+
+        if pos != -1:
+            # Scan ±800 chars around the matched position
+            start_win = max(0, pos - 800)
+            end_win = min(len(chapter_text), pos + len(para) + 800)
+            window = chapter_text[start_win:end_win]
+
+            for m in image_regex.finditer(window):
+                img_name = m.group(1) or m.group(2)
+                if img_name:
+                    img_name = img_name.strip()
+                    if img_name not in found_images:
+                        found_images.append(img_name)
+
+    if not found_images:
+        _logger.debug("[JIT Image] No book images found close to Ground Truth in chapter")
+        return content
+
+    # 6. Process, copy, and compress original images
+    aligned_images: list[str] = []
+    book_slug = normalize_stem(book_name)[:30].rstrip("_")
+    short_ch = _shorten_chapter(chapter_stem)
+
+    for img_name in found_images:
+        original_img_path = md_dir / img_name
+        if not original_img_path.exists():
+            _logger.debug(f"[JIT Image] Original image file {img_name} not found in {md_dir}")
+            continue
+
+        # Filter decorative/tiny images
+        if _is_decorative_image(img_name, original_img_path):
+            _logger.debug(f"[JIT Image] Filtered decorative image: {img_name}")
+            continue
+
+        # Determine target name using Adaptive Naming Strategy
+        orig_stem = normalize_stem(original_img_path.stem)
+        book_words = [w for w in book_slug.split("_") if len(w) > 3]
+        has_book_prefix = any(w in orig_stem for w in book_words)
+
+        if has_book_prefix:
+            dest_name = f"{orig_stem}.webp"
+        else:
+            parts = [book_slug]
+            if short_ch:
+                parts.append(short_ch)
+            if page:
+                parts.append(f"p{page}")
+            parts.append(orig_stem)
+            dest_name = f"{'_'.join(parts)}.webp"
+
+        assets_dir = cfg.assets_dir / book_slug
+        dest_path = assets_dir / dest_name
+
+        # Compress to WebP or copy
+        if not dest_path.exists():
+            try:
+                from PIL import Image as PILImage
+                img = PILImage.open(original_img_path)
+                if img.mode not in ("RGB", "RGBA"):
+                    img = img.convert("RGB")
+                img.thumbnail((1536, 1536), PILImage.Resampling.LANCZOS)
+                assets_dir.mkdir(parents=True, exist_ok=True)
+                img.save(dest_path, "WEBP", quality=80)
+                _logger.info(f"[JIT Image] Compressed and saved original image: {original_img_path.name} -> {dest_path.name}")
+            except Exception as e:
+                _logger.warning(f"[JIT Image] WebP compression failed for {original_img_path.name}: {e}. Falling back to copy.")
+                dest_path_raw = dest_path.with_suffix(original_img_path.suffix)
+                try:
+                    assets_dir.mkdir(parents=True, exist_ok=True)
+                    shutil.copy(str(original_img_path), str(dest_path_raw))
+                    _logger.info(f"[JIT Image] Copied original image (fallback): {original_img_path.name} -> {dest_path_raw.name}")
+                    dest_name = dest_path_raw.name
+                except Exception as copy_err:
+                    _logger.warning(f"[JIT Image] Copy failed completely: {copy_err}")
+                    continue
+
+        aligned_images.append(dest_name)
+
+    if not aligned_images:
+        return content
+
+    # 7. Embed aligned images right before ## 📖 Ground Truth section
+    gt_heading_match = re.search(r"## (?:📖|Ground Truth)", content)
+    if gt_heading_match:
+        idx = gt_heading_match.start()
+        embed_lines = []
+        for dest_name in aligned_images:
+            embed_syntax = f"![[{dest_name}]]"
+            if embed_syntax not in content:
+                embed_lines.append(f"\n{embed_syntax}\n")
+        if embed_lines:
+            embed_block = "".join(embed_lines)
+            content = content[:idx].rstrip() + "\n" + embed_block + "\n" + content[idx:]
+            _logger.info(f"[JIT Image] Successfully aligned {len(aligned_images)} original image(s) to concept note")
+
+    return content
+
+
 def save_concept(
     content: str,
     *,
@@ -108,6 +328,10 @@ def save_concept(
     if not content or len(content) < 100:
         _logger.error("Content too short to save")
         return None
+
+    # JIT Image Alignment
+    if book_name:
+        content = _align_jit_images(content, book_name)
 
     # Extract title for filename
     title = _extract_title(content)
@@ -281,6 +505,36 @@ def _shorten_chapter(chapter_ref: str) -> str:
     return norm[:15]
 
 
+def _get_source_hash(image_path: Path) -> str | None:
+    """Compute MD5 hash of source image bytes for dedup."""
+    try:
+        return hashlib.md5(image_path.read_bytes()).hexdigest()
+    except Exception:
+        return None
+
+
+def _load_manifest(archive_dir: Path) -> dict:
+    """Load per-book archive manifest mapping source_hash -> archived filename."""
+    manifest_path = archive_dir / ".archive_manifest.json"
+    if manifest_path.exists():
+        try:
+            return json.loads(manifest_path.read_text(encoding="utf-8"))
+        except Exception:
+            return {}
+    return {}
+
+
+def _save_manifest(archive_dir: Path, manifest: dict) -> None:
+    """Persist archive manifest to disk."""
+    manifest_path = archive_dir / ".archive_manifest.json"
+    try:
+        manifest_path.write_text(
+            json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+    except Exception as e:
+        _logger.warning(f"Failed to save archive manifest: {e}")
+
+
 def _archive_image(
     image_path: Path,
     book_name: str = "",
@@ -299,10 +553,19 @@ def _archive_image(
     """
     archive_dir = cfg.archive_dir
     safe_book_name = re.sub(r"[^\w\s-]", "", book_name).strip().replace(" ", "_")
-    
+
     if safe_book_name:
         archive_dir = archive_dir / safe_book_name
     archive_dir.mkdir(parents=True, exist_ok=True)
+
+    # Dedup check: if identical content already archived, return existing filename
+    source_hash = _get_source_hash(image_path)
+    if source_hash:
+        manifest = _load_manifest(archive_dir)
+        if source_hash in manifest:
+            existing_name = manifest[source_hash]
+            _logger.info(f"Dedup: {image_path.name} identical to existing '{existing_name}'. Skipping archive.")
+            return existing_name
 
     today = date.today().strftime("%Y%m%d")
 
@@ -357,7 +620,13 @@ def _archive_image(
             _logger.info(f"Archived (raw copy fallback): {image_path.name} → {dest.name}")
         except OSError as copy_err:
             _logger.warning(f"Archive failed completely: {copy_err}")
-        
+
+    # Update manifest so future identical images are deduped
+    if source_hash:
+        manifest = _load_manifest(archive_dir)
+        manifest[source_hash] = archive_name
+        _save_manifest(archive_dir, manifest)
+
     return archive_name
 
 

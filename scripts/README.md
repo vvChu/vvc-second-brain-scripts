@@ -1,6 +1,7 @@
-# VvC Second Brain — Pipeline Scripts (v8.10.0 Operational Separation)
+# VvC Second Brain — Pipeline Scripts (v8.11.0 JIT Env & Metadata Protection)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
+*Upgraded in v8.11.0: Implemented JIT Environment Loading (.env helper), secured enrich_book_context against YAML metadata erasure, fixed fuzzy-matching [L10] for truncated workspace names, and resolved 171/171 passed tests.*
 *Rebuilt in v7.4: Separated God Objects into specialized Micro-services and created a Modular LLM Package.*
 *Upgraded in v7.4.2: Implemented 2-step Map-Reduce architecture for long Brain Dump inputs.*
 *Upgraded in v7.4.3: Implemented Excalidraw Text Auto-Sync & Zero-Concept MOC Filtering for cleaner vault organization.*
@@ -141,6 +142,10 @@ Phân tích thuần tiếng Việt. KHÔNG lồng quote. KHÔNG lặp Evidence H
 **Quy tắc ngôn ngữ (v8.3):** Evidence Hook = tiếng Việt, Citation Line = tên tác giả + wiki-link, Ground Truth = tiếng Anh.
 YAML fields bắt buộc: `source_page`, `source_chapter`, `ground_truth_page`, `ground_truth_chapter`, `people`, `companies`, `status`.
 Tags rule: chỉ `knowledge`, `type/concept`, `domain/*` — KHÔNG thêm tên người/công ty vào tags.
+
+### 📝 Pipeline Design Notes (Hạ tầng & RAG)
+- **[M6] Làm giàu Mục lục JIT (TOC Page Ranges)**: Tệp `_toc_original.json` ban đầu được sinh ra từ `epub_convert.py` sẽ không có trường `page_start`/`page_end`. Hệ thống hoạt động theo nguyên lý JIT: các thông tin trang tiếng Việt này sẽ tự động được làm giàu và đồng bộ khi người dùng chụp ảnh mục lục VN (`_toc.jpg`) và thả vào Fleeting. Khi chưa có thông tin trang VN, hàm `resolve_chapter()` sẽ thực hiện tìm kiếm BM25 trên toàn bộ corpus (RAG không giới hạn phạm vi).
+- **[L9] Trường `source_chapter` của Concept Note**: Đối với các Concept Note được biên soạn từ nguồn ảnh chụp camera, trường `source_chapter` luôn mặc định để trống (`""`) vì pipeline không tự động trích xuất được chương tiếng Việt từ ảnh chụp OCR thô. Ghi nhận hành vi này để tránh nhầm lẫn khi kiểm toán schema.
 
 ## Maintenance Commands
 

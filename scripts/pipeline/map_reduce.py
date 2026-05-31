@@ -383,6 +383,12 @@ def enrich_book_context(workspace_dir: Path) -> bool:
         _logger.error(f"enrich_book_context: failed to read files in {workspace_dir.name}: {e}")
         return False
         
+    # Extract metadata header (before '---') to prevent erasure by LLM
+    header = ""
+    if "---" in current_context:
+        parts = current_context.split("---", 1)
+        header = parts[0].strip()
+
     # Check if we actually need enrichment
     placeholders = [
         "(Thêm tóm tắt chương tại đây để LLM nắm ngữ cảnh phân tích)",
@@ -418,8 +424,24 @@ def enrich_book_context(workspace_dir: Path) -> bool:
             _logger.error("enrich_book_context: LLM output did not contain valid <BOOK_CONTEXT> tags")
             return False
             
+        # Extract <BOOK_CONTEXT> block from LLM response safely
+        body_content = enriched_content
+        if "---" in enriched_content:
+            body_parts = enriched_content.split("---", 1)
+            body_content = body_parts[1].strip()
+        else:
+            match = re.search(r"(<BOOK_CONTEXT>.*</BOOK_CONTEXT>)", enriched_content, re.DOTALL)
+            if match:
+                body_content = match.group(1).strip()
+
+        # Reconstruct final content protecting the original header
+        if header:
+            final_content = f"{header}\n\n---\n{body_content}\n"
+        else:
+            final_content = f"{body_content}\n"
+
         # Write back to file
-        context_file.write_text(enriched_content, encoding="utf-8")
+        context_file.write_text(final_content, encoding="utf-8")
         _logger.info(f"enrich_book_context: Successfully enriched _context.txt for {workspace_dir.name}!")
         return True
     except Exception as e:

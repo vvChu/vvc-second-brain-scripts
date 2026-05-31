@@ -19,6 +19,29 @@ def _resolve(root: Path, rel: str) -> Path:
     return (root / rel).resolve()
 
 
+def _load_env_file(env_path: Path) -> None:
+    """Load variables from a .env file into os.environ if it exists."""
+    if not env_path.exists():
+        return
+    try:
+        with open(env_path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "=" in line:
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip("'\"")
+                    os.environ.setdefault(key, val)
+    except Exception as e:
+        import sys
+        print(f"Warning: Failed to load .env file at {env_path}: {e}", file=sys.stderr)
+
+
+
+
+
 @dataclass(frozen=True)
 class VaultConfig:
     """Immutable configuration for the entire pipeline."""
@@ -86,6 +109,12 @@ class VaultConfig:
     excalidraw_font_family: int = 3
     excalidraw_stroke_width: int = 2
 
+    @property
+    def assets_dir(self) -> Path:
+        """Central asset folder located in 04-Permanent/sources/assets/"""
+        return self.sources_dir / "assets"
+
+
 
 def load_config(config_path: Path | None = None) -> VaultConfig:
     """Load configuration from YAML file with env var overrides.
@@ -96,14 +125,21 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
     Returns:
         Frozen VaultConfig instance.
     """
+    # 1. Load env from scripts folder first
+    scripts_dir = Path(__file__).parent.parent
+    _load_env_file(scripts_dir / ".env")
+
     if config_path is None:
-        config_path = Path(__file__).parent.parent / "config.yaml"
+        config_path = scripts_dir / "config.yaml"
 
     with open(config_path, "r", encoding="utf-8") as f:
         raw: dict[str, Any] = yaml.safe_load(f)
 
     vault = raw.get("vault", {})
     root = Path(os.environ.get("VVC_VAULT_ROOT", vault.get("root", "D:\\VvC_Notes")))
+
+    # 2. Load env from vault root if it exists
+    _load_env_file(root / ".env")
 
     gw = raw.get("ai_gateway", {})
     gcli = raw.get("gemini_cli", {})

@@ -328,7 +328,7 @@ def extract_article_images(
     domain_raw = (parsed.hostname or "unknown").replace("www.", "")
     domain_slug = re.sub(r"[^a-z0-9]", "_", domain_raw.split(".")[0].lower())
 
-    assets_dir = cfg.sources_dir / "assets" / domain_slug
+    assets_dir = cfg.assets_dir / domain_slug
 
     # Collect candidate images -------------------------------------------------
     candidates: list[dict] = []

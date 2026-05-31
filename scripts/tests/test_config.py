@@ -32,3 +32,37 @@ def test_config_gateway():
 
     assert isinstance(cfg.gateway_url, str)
     assert isinstance(cfg.gateway_proxy_model, str)
+
+
+def test_load_env_file(tmp_path):
+    """_load_env_file should parse .env file and load into os.environ."""
+    import os
+    from core.config import _load_env_file
+
+    env_file = tmp_path / "test.env"
+    env_file.write_text(
+        "# This is a comment\n"
+        "TEST_KEY_1=test_val_1\n"
+        "TEST_KEY_2 = 'test_val_2'\n"
+        "TEST_KEY_3 = \"test_val_3\"\n"
+        "  TEST_KEY_4  =  test_val_4  \n",
+        encoding="utf-8"
+    )
+
+    # Ensure keys do not exist beforehand
+    for k in [f"TEST_KEY_{i}" for i in range(1, 5)]:
+        if k in os.environ:
+            del os.environ[k]
+
+    _load_env_file(env_file)
+
+    assert os.environ.get("TEST_KEY_1") == "test_val_1"
+    assert os.environ.get("TEST_KEY_2") == "test_val_2"
+    assert os.environ.get("TEST_KEY_3") == "test_val_3"
+    assert os.environ.get("TEST_KEY_4") == "test_val_4"
+
+    # Cleanup
+    for k in [f"TEST_KEY_{i}" for i in range(1, 5)]:
+        if k in os.environ:
+            del os.environ[k]
+

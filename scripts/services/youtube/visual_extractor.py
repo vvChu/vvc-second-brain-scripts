@@ -705,7 +705,7 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         # 7. Stage 2 — High-Resolution Targeted FFmpeg Extraction
         saved_frames = []
         if key_frame_indices and PILImage is not None:
-            assets_dir = cfg.sources_dir / "assets" / "video_frames"
+            assets_dir = cfg.assets_dir / "video_frames"
             assets_dir.mkdir(parents=True, exist_ok=True)
             
             ffmpeg_bin = _find_ffmpeg_bin()

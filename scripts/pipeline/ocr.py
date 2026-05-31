@@ -215,11 +215,30 @@ def _sync_source_note(book_name: str, toc_data: dict) -> None:
 
     # Find matching source note
     source_note: Path | None = None
-    book_key = book_name.lower().replace("_", " ")
+    book_name_clean = book_name.lower().replace("_", " ")
+    
+    # 1. Try exact substring match first
     for f in cfg.sources_dir.iterdir():
-        if f.suffix == ".md" and book_key in f.stem.lower().replace("_", " "):
+        if f.suffix == ".md" and book_name_clean in f.stem.lower().replace("_", " "):
             source_note = f
             break
+            
+    # 2. If not found, try token-based fuzzy matching to handle truncated names
+    if source_note is None:
+        book_tokens = [t for t in book_name.lower().split("_") if len(t) > 2 and t not in ("the", "and", "for", "with", "from", "pdf", "epub")]
+        if book_tokens:
+            best_match = None
+            max_matches = 0
+            for f in cfg.sources_dir.iterdir():
+                if f.suffix == ".md":
+                    stem_clean = f.stem.lower().replace("_", " ")
+                    matches = sum(1 for token in book_tokens if token in stem_clean or token[:-1] in stem_clean)
+                    if matches > max_matches and matches >= len(book_tokens) * 0.6:
+                        max_matches = matches
+                        best_match = f
+            if best_match:
+                source_note = best_match
+                _logger.info(f"_sync_source_note: Fuzzy matched '{book_name}' to Source Note '{source_note.name}' (matches: {max_matches}/{len(book_tokens)})")
 
     if source_note is None:
         _logger.warning(f"_sync_source_note: no Source Note found for '{book_name}'")

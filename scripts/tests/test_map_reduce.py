@@ -175,3 +175,69 @@ def test_get_or_create_book_context():
         finally:
             # Restore original state
             object.__setattr__(cfg, "sources_dir", orig_sources_dir)
+
+
+@patch("pipeline.map_reduce.call_llm")
+def test_enrich_book_context_metadata_protection(mock_call):
+    """enrich_book_context should safely enrich context and protect original metadata header."""
+    from pipeline.map_reduce import enrich_book_context
+    
+    with tempfile.TemporaryDirectory() as tmpdir:
+        workspace_dir = Path(tmpdir) / "test_enrich_workspace"
+        workspace_dir.mkdir()
+        
+        # 1. Create _context.txt with distinct metadata header
+        context_file = workspace_dir / "_context.txt"
+        context_file.write_text(
+            "book_title: Important Organization Book\n"
+            "corpus_rel_path: path/to/corpus_MD\n"
+            "archive_rel_path: path/to/archive\n"
+            "\n"
+            "---\n"
+            "<BOOK_CONTEXT>\n"
+            "  <SUMMARY>\n"
+            "    Placeholders exist here.\n"
+            "  </SUMMARY>\n"
+            "  <STRUCTURE>\n"
+            "    - Mục 1: Chương 1\n"
+            "      * Tóm tắt: (Thêm tóm tắt chương tại đây để LLM nắm ngữ cảnh phân tích)\n"
+            "  </STRUCTURE>\n"
+            "</BOOK_CONTEXT>",
+            encoding="utf-8"
+        )
+        
+        # 2. Create mock _toc.json
+        toc_file = workspace_dir / "_toc.json"
+        toc_file.write_text(json.dumps({
+            "book_title_vi": "Sách Quan Trọng",
+            "chapters": []
+        }), encoding="utf-8")
+        
+        # Mock LLM return value WITHOUT metadata header (simulating failure/uncooperative LLM)
+        mock_call.return_value = (
+            "<BOOK_CONTEXT>\n"
+            "  <SUMMARY>\n"
+            "    Enriched Strategy Summary!\n"
+            "  </SUMMARY>\n"
+            "  <STRUCTURE>\n"
+            "    - Mục 1: Chương 1\n"
+            "      * Tóm tắt: Tóm tắt cực kỳ chi tiết của Chương 1.\n"
+            "  </STRUCTURE>\n"
+            "</BOOK_CONTEXT>"
+        )
+        
+        # 3. Call enrich function
+        success = enrich_book_context(workspace_dir)
+        
+        assert success is True
+        
+        # 4. Verify file content - Metadata should be preserved!
+        updated_content = context_file.read_text(encoding="utf-8")
+        
+        assert "book_title: Important Organization Book" in updated_content
+        assert "corpus_rel_path: path/to/corpus_MD" in updated_content
+        assert "archive_rel_path: path/to/archive" in updated_content
+        assert "---" in updated_content
+        assert "Enriched Strategy Summary!" in updated_content
+        assert "Tóm tắt cực kỳ chi tiết của Chương 1." in updated_content
+

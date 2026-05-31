@@ -4,6 +4,20 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.12.0 — JIT Image Alignment & Adaptive Naming
+Nâng cấp và cải tiến toàn diện quy trình căn chỉnh ảnh và bối cảnh hóa:
+- **JIT Image Alignment (Bước 1)**: Tự động phát hiện và trích xuất ảnh sơ đồ/hình vẽ gốc sắc nét từ Nhà xuất bản trong thư mục `_MD/` dựa trên vị trí khớp của dải Ground Truth (trong phạm vi ±800 ký tự). Nhúng liên kết ảnh `![[image.webp]]` trực tiếp vào cuối `## Core Idea` (trước phần Ground Truth) để tối ưu hóa trải nghiệm đọc thẩm mỹ song phương.
+- **Cơ chế Adaptive Naming (Đặt tên Thích ứng Thông minh)**: Tự động phân tích tên ảnh thô để đặt tên file đính kèm một cách khoa học: giữ nguyên tên gốc chuyên nghiệp của NXB nếu đã chứa từ khóa sách; bổ sung đầy đủ ngữ cảnh `[book]_[chapter]_[page]_[original_name]` đối với các ảnh có tên thô sơ (như `00003.png`), đảm bảo định danh duy nhất trên toàn vault và tự thuyết minh bối cảnh rõ ràng.
+- **Tối ưu hóa & Quản lý Tài nguyên**: Tự động nén WebP (kích thước tối đa 1536px, chất lượng 80) đối với tất cả ảnh gốc trích xuất từ sách, lưu trữ ngăn nắp trong thư mục assets riêng của từng cuốn sách (`04 - Permanent/sources/assets/[book_name]/`), loại bỏ trùng lặp nội dung JIT.
+- **Test Hardening**: Bổ sung bộ kiểm thử chuyên biệt `tests/test_jit_images.py` phủ 100% các kịch bản định danh thích ứng, bỏ qua ảnh decorative, và chèn vị trí nhúng chuẩn.
+
+## v8.11.0 — Gateway JIT Environment Loading & Context Metadata Protection
+Nâng cấp kiến trúc bảo mật cấu hình và phòng ngự dữ liệu hệ thống:
+- **JIT Environment Loading (H4)**: Loại bỏ hoàn toàn API key hardcode trong `config.yaml`. Triển khai cơ chế nạp biến môi trường JIT cục bộ thủ công bằng Python thuần (KISS) từ file `.env` tại thư mục `scripts/` và thư mục gốc của Vault, bảo mật tuyệt đối qua `.gitignore`.
+- **Context Metadata Protection (H5)**: Nâng cấp hàm `enrich_book_context()` trong `pipeline/map_reduce.py` để tách và ghép nối phòng ngự dải YAML metadata header gốc của file `_context.txt`, loại bỏ hoàn toàn rủi ro bị LLM ghi đè hoặc làm hỏng các đường dẫn hệ thống vĩ mô.
+- **Obsidian Graph Healing & Clean (C1, C3, L7, L10)**: Sửa lỗi lệch pha `epub_file` cho 7 chương của Reinventing the Organization (C1); Xóa bỏ hoàn toàn workspace ma `BigBIM_Source` (C3); Giải phóng 22.6MB đĩa từ tệp backup rác `.npz.bak` (L7); Tích hợp giải thuật **Token-based Fuzzy Matching [L10]** trong `_sync_source_note()` để xử lý hoàn hảo các tên workspace bị cắt ngắn đuôi khi đồng bộ mục lục.
+- **Test Hardening**: Bổ sung 3 test cases mới nâng tổng số test suite lên 171 tests. 171/171 tests passed 100% hoàn hảo và an toàn.
+
 ## v8.10.0 — Operational Separation & Ubiquitous Language (AI-Friendly Codebase)
 Nâng cấp và cải tiến toàn diện codebase dự án đạt chuẩn AI-Friendly/Agent-Ready:
 - **Operational Separation (Tách biệt vận hành)**: Chuyển toàn bộ các tệp log vận hành (`*.log`) về thư mục tập trung `scripts/logs/` và toàn bộ các tệp trạng thái vận hành (`.dump_state.json`, `.processed_urls.json`, `.rejected_stubs.json`, `.subsume_journal.jsonl`, `_embedding_index.npz`) về thư mục bảo mật `scripts/.state/`. Cấu hình tự động khởi tạo thư mục qua VaultConfig và cập nhật `.gitignore` loại bỏ tuyệt đối ô nhiễm dữ liệu lên cloud/git.
