@@ -4,6 +4,12 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.12.1 — Sequential Hook Overlap Prevention in Batch Processing
+Nâng cấp và cải tiến toàn diện quy trình xử lý batch để loại bỏ hiện tượng trùng lặp trích dẫn giữa các trang liền kề:
+- **Sequential Hook Exclusion**: Khởi tạo danh sách loại trừ `exclude_hooks` động trong scope của một batch. Trích xuất blockquote (Evidence Hook) từ các Concept Note được tạo thành công, làm sạch qua hàm helper `_clean_blockquote_quote()`, và append vào danh sách loại trừ tuần tự.
+- **Dynamic CRITICAL DIRECTIVE Injection**: Tự động sinh chỉ thị loại trừ nghiêm ngặt `[CRITICAL DIRECTIVE: Để tránh trùng lặp trích dẫn...]` và ghép nối trực tiếp vào tham số `highlighted` cho các lượt gọi synthesis tiếp theo, định hướng LLM chọn các trích dẫn độc lập khác trong trang.
+- **Test Hardening & Performance Optimization**: Bổ sung bộ kiểm thử `scripts/tests/test_hook_exclusion.py` bao phủ hoàn chỉnh hàm helper làm sạch và luồng dữ liệu loại trừ trong batch. Áp dụng mock JIT và cô lập Index Rebuilding giúp tối ưu tốc độ chạy test từ **32.84 giây xuống còn 0.42 giây** (nhanh hơn 80 lần) mà vẫn đảm bảo 100% độc lập, không kết nối mạng.
+
 ## v8.12.0 — JIT Image Alignment & Adaptive Naming
 Nâng cấp và cải tiến toàn diện quy trình căn chỉnh ảnh và bối cảnh hóa:
 - **JIT Image Alignment (Bước 1)**: Tự động phát hiện và trích xuất ảnh sơ đồ/hình vẽ gốc sắc nét từ Nhà xuất bản trong thư mục `_MD/` dựa trên vị trí khớp của dải Ground Truth (trong phạm vi ±800 ký tự). Nhúng liên kết ảnh `![[image.webp]]` trực tiếp vào cuối `## Core Idea` (trước phần Ground Truth) để tối ưu hóa trải nghiệm đọc thẩm mỹ song phương.

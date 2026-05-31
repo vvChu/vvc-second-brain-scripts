@@ -823,51 +823,13 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
                                         is_high_res = True
                                         _logger.info(f"Stage 2 trích xuất thành công frame cục bộ {idx} (720p).")
                                 except Exception as local_exc:
-                                    _logger.warning(f"Lớp 1 Local seek thất bại: {local_exc}. Fallback sang Lớp 2.")
+                                    _logger.warning(f"Lớp 1 Local seek thất bại: {local_exc}. Fallback sang Lớp 3 (Storyboard).")
                                     
-                            # Lớp 2: Trích xuất từ remote stream URL (Online Seek)
-                            if not is_high_res and high_res_url:
-                                cmd_remote = [
-                                    ffmpeg_bin, "-y",
-                                    "-user_agent", user_agent,
-                                    "-reconnect", "1",
-                                    "-reconnect_streamed", "1",
-                                    "-reconnect_delay_max", "5",
-                                    "-timeout", "10000000",
-                                    "-ss", str(round(ts, 2)),
-                                    "-i", high_res_url,
-                                    "-vframes", "1",
-                                    "-q:v", "2",
-                                    str(high_res_jpg)
-                                ]
-                                _logger.info(f"Stage 2 (Lớp 2 - Remote Seek): Trích xuất từ stream từ xa tại {round(ts,1)}s...")
-                                import time
-                                for _attempt in range(2):
-                                    try:
-                                        res = subprocess.run(
-                                            cmd_remote, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                            startupinfo=startupinfo, text=True, timeout=20
-                                        )
-                                        if res.returncode == 0 and high_res_jpg.exists():
-                                            src_frame_path = high_res_jpg
-                                            is_high_res = True
-                                            _logger.info(f"Stage 2 trích xuất thành công frame từ xa {idx} (720p).")
-                                            break
-                                        else:
-                                            if _attempt == 0:
-                                                _logger.info(f"Stage 2 High-Res từ xa thất bại (code {res.returncode}), thử lại...")
-                                                time.sleep(2)
-                                            else:
-                                                _logger.warning(f"Stage 2 High-Res từ xa thất bại sau 2 lần thử (code {res.returncode}).")
-                                    except Exception as ffmpeg_exc:
-                                        if _attempt == 0:
-                                            _logger.info(f"Stage 2 từ xa gặp lỗi lần 1: {ffmpeg_exc}. Thử lại...")
-                                            time.sleep(2)
-                                        else:
-                                            _logger.warning(f"Stage 2 từ xa gặp lỗi sau 2 lần thử: {ffmpeg_exc}.")
+                            # Lớp 2: Remote Seek đã bị loại bỏ vĩnh viễn theo thiết kế Giải pháp C để tối ưu hóa Latency và tránh nghẽn mạng.
+                            # Hệ thống sẽ chuyển tiếp trực tiếp từ Lớp 1 (Local Seek) sang Lớp 3 (Storyboard Fallback).
                                             
                             if not is_high_res:
-                                _logger.warning(f"Stage 2 trích xuất chất lượng cao thất bại cho frame {idx}. Lớp 3: Degrade về storyboard frame.")
+                                _logger.warning(f"Stage 2 trích xuất chất lượng cao cục bộ thất bại cho frame {idx}. Lớp 3: Degrade về storyboard frame.")
                         
                         # Tiến hành nén WebP từ src_frame_path (hoặc high-res hoặc storyboard)
                         img = PILImage.open(src_frame_path)

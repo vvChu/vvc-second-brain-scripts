@@ -1,6 +1,7 @@
-"""VvC Second Brain — Ground Truth Matching & OCR Correction (v7.0).
+"""VvC Second Brain — Ground Truth Matching & OCR Correction (v8.0).
 
-BM25 chapter-scoped search against book corpus + LLM-based OCR correction.
+BM25 chapter-scoped search + Semantic Re-ranking (AI Gateway Embeddings)
+against book corpus + LLM-based OCR correction.
 """
 
 from __future__ import annotations
@@ -183,7 +184,7 @@ def _load_corpus(book_name: str, chapter_filter: list[str] | None = None) -> lis
     _logger.info(f"Corpus: {len(corpus)} paragraphs from {book_name} (filter: {chapter_filter or 'ALL'})")
     return corpus
 
-def _bm25_search(query: str, corpus: list[tuple[str, str]], top_k: int = 3) -> list[tuple[str, str, float]]:
+def _bm25_search(query: str, corpus: list[tuple[str, str]], top_k: int = 5) -> list[tuple[str, str, float]]:
     """Run BM25 search over corpus paragraphs."""
     if not corpus or not _HAS_BM25:
         return []
@@ -193,6 +194,48 @@ def _bm25_search(query: str, corpus: list[tuple[str, str]], top_k: int = 3) -> l
     scores = bm25.get_scores(query.lower().split())
     indexed = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)[:top_k]
     return [(corpus[i][0], corpus[i][1], float(s)) for i, s in indexed]
+
+
+def _get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
+    """Fetch batch of L2-normalized embedding vectors from AI Gateway.
+
+    Args:
+        texts: List of text strings to embed (query + candidates).
+
+    Returns:
+        List of normalized embedding vectors, or None on failure.
+    """
+    if not cfg.gateway_url or not cfg.gateway_api_key or not texts:
+        return None
+
+    import requests
+    import numpy as np
+
+    url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
+    headers = {
+        "Authorization": f"Bearer {cfg.gateway_api_key}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "model": "gemini-embed",
+        "input": [t[:2000] for t in texts],
+    }
+
+    try:
+        resp = requests.post(url, json=payload, headers=headers, timeout=12)
+        resp.raise_for_status()
+        data = resp.json()["data"]
+
+        vectors = []
+        for item in data:
+            emb = np.array(item["embedding"], dtype=np.float32)
+            norm = np.linalg.norm(emb)
+            normalized = emb / norm if norm > 0 else emb
+            vectors.append(normalized.tolist())
+        return vectors
+    except Exception as e:
+        _logger.warning(f"Batch embedding request failed: {e}. Falling back to BM25.")
+        return None
 
 
 def _translate_query_to_english(ocr_text: str) -> str:
@@ -285,13 +328,36 @@ def find_ground_truth(ocr_text: str, book_name: str, *, page: int | None = None)
         query = _translate_query_to_english(ocr_text)
         _logger.info(f"Corpus detected as English. Using English query for BM25: '{query[:100]}...'")
 
-    results = _bm25_search(query, corpus)
+    results = _bm25_search(query, corpus, top_k=5)
     if not results:
         return GroundTruthResult("", 0.0, "", page)
 
-    ch, para, score = results[0]
+    # BM25 fallback: always use top-1 as the safe default
+    fallback_ch, fallback_para, fallback_score = results[0]
+
+    # --- Semantic Re-ranking ---
+    ch, para, score = fallback_ch, fallback_para, fallback_score
+    embeddings = _get_embeddings_batch([query] + [r[1] for r in results])
+    if embeddings and len(embeddings) == len(results) + 1:
+        import numpy as np
+        query_vector = np.array(embeddings[0], dtype=np.float32)
+        candidate_vectors = np.array(embeddings[1:], dtype=np.float32)
+
+        similarities = np.dot(candidate_vectors, query_vector)
+        best_idx = int(np.argmax(similarities))
+        best_similarity = float(similarities[best_idx])
+
+        ch, para, score = results[best_idx][0], results[best_idx][1], results[best_idx][2]
+        _logger.info(
+            f"Semantic re-ranking: best_idx={best_idx}, "
+            f"cosine={best_similarity:.4f}, chapter='{ch}' "
+            f"(BM25 rank was #{best_idx + 1}, score={score:.1f})"
+        )
+    else:
+        _logger.info("Semantic re-ranking skipped — using BM25 top-1 as fallback.")
+
     _logger.info(f"GT match: score={score:.1f}, chapter={ch}")
-    if score < 15.0:  # Adjusted threshold for queries
+    if score < 15.0:
         _logger.warning(f"GT score too low ({score:.1f})")
         return GroundTruthResult("", score, ch, page)
 

@@ -27,10 +27,38 @@ from core.prompts.services import BRAIN_DUMP_REDUCE as _REDUCE_PROMPT  # noqa: E
 
 
 
+def _determine_callout_style(alt_text: str) -> tuple[str, str, str]:
+    """Determines premium callout type, emoji, and display title based on alt-text.
+
+    Returns:
+        (callout_type, emoji, title_suffix)
+    """
+    alt = alt_text.lower()
+
+    # 1. Code / Setup / CLI / Installation
+    if any(kw in alt for kw in ["code", "python", "hàm", "function", "class", "lập trình", "viết mã", "setup", "cấu hình", "config", "command", "install"]):
+        return "example", "💻", "Mã nguồn / Thiết lập"
+
+    # 2. Tables / Comparison / Matrices
+    if any(kw in alt for kw in ["bảng", "table", "so sánh", "matrix", "dữ liệu", "data"]):
+        return "info", "📋", "Bảng biểu / Đối chiếu"
+
+    # 3. Diagrams / Architecture / Charts / Workflows
+    if any(kw in alt for kw in ["sơ đồ", "diagram", "kiến trúc", "architecture", "biểu đồ", "chart", "map", "workflow", "luồng", "mô hình", "model"]):
+        return "abstract", "📊", "Sơ đồ / Kiến trúc"
+
+    # 4. Quotes / Key Highlights / Quotes
+    if any(kw in alt for kw in ["quote", "trích dẫn", "phát biểu", "định nghĩa", "definition"]):
+        return "quote", "💬", "Trích dẫn / Định nghĩa"
+
+    # 5. Fallback - Generic slide/frame
+    return "abstract", "🖼️", "Slide trực quan"
+
+
 def _weave_images_into_transcript(transcript_text: str, img_markers_text: str) -> str:
     """Weaves high-res frames into their exact chronological transcript positions.
     
-    Inserts Obsidian image tags and block anchors right above the matching transcript segment.
+    Inserts premium context-aware Obsidian callout blocks and anchors.
     """
     if not img_markers_text:
         return transcript_text
@@ -80,7 +108,8 @@ def _weave_images_into_transcript(transcript_text: str, img_markers_text: str) -
         # Fallback: Nếu không có mốc thời gian, tạo catalog ở cuối
         gallery = "\n\n## 🖼️ Danh sách Slide HD\n"
         for img in images:
-            gallery += f"\n### Slide tại {img['seconds']}s ^ts{img['seconds']}\n![[{img['filename']}]]\n"
+            c_type, emoji, title_suffix = _determine_callout_style(img["alt"])
+            gallery += f"\n### {emoji} {title_suffix} tại {img['seconds']}s ^ts{img['seconds']}\n![[{img['filename']}]]\n"
         return transcript_text + gallery
         
     # 3. Dệt ảnh vào transcript
@@ -103,8 +132,12 @@ def _weave_images_into_transcript(transcript_text: str, img_markers_text: str) -
             
         m = int(target_sec // 60)
         s = int(target_sec % 60)
+        
+        # Determine premium styling based on context
+        c_type, emoji, title_suffix = _determine_callout_style(img["alt"])
+        
         insert_text = (
-            f"\n\n> [!abstract]- 🖼️ Slide tại {m:02d}:{s:02d} ^ts{target_sec}\n"
+            f"\n\n> [!{c_type}]- {emoji} {title_suffix} tại {m:02d}:{s:02d} ^ts{target_sec}\n"
             f"> ![[{img['filename']}]]\n\n"
         )
         
@@ -291,6 +324,88 @@ def _enrich_concept_references(concept_text: str, source_ref: str) -> str:
     return concept_text
 
 
+def _backlink_source_to_concepts(
+    source_ref: str, saved_stems: list[tuple[str, str]]
+) -> None:
+    """Inserts backlinks from Source Note ^ts callouts to referencing Concept Notes.
+
+    Creates the reverse direction of the Dual-Layer cross-link:
+    Source Note → Concept Note (complements _enrich_concept_references).
+    Idempotent: skips backlinks that already exist in the Source Note.
+    """
+    if not source_ref or source_ref == "brain_dump" or not saved_stems:
+        return
+
+    # Locate Source Note in transcripts/
+    source_file = cfg.sources_dir / "transcripts" / f"{source_ref}.md"
+    if not source_file.exists():
+        return
+
+    # Build timestamp → concepts mapping by reading saved concept files
+    ts_to_concepts: dict[int, list[tuple[str, str]]] = {}
+
+    for stem, title in saved_stems:
+        concept_file = cfg.concepts_dir / f"{stem}.md"
+        if not concept_file.exists():
+            continue
+        try:
+            text = concept_file.read_text(encoding="utf-8")
+        except OSError:
+            continue
+
+        for m in re.finditer(r"yt_[^\]]+_ts(\d+)\.webp", text):
+            ts = int(m.group(1))
+            if (stem, title) not in ts_to_concepts.get(ts, []):
+                ts_to_concepts.setdefault(ts, []).append((stem, title))
+
+    if not ts_to_concepts:
+        return
+
+    try:
+        source_text = source_file.read_text(encoding="utf-8")
+    except OSError:
+        return
+
+    # Process line-by-line, inserting backlinks after ^ts callout blocks
+    lines = source_text.split("\n")
+    new_lines: list[str] = []
+    i = 0
+    modified = False
+
+    while i < len(lines):
+        new_lines.append(lines[i])
+
+        # Check if line contains a ^ts anchor
+        ts_anchor = re.search(r"\^ts(\d+)", lines[i])
+        if ts_anchor:
+            ts = int(ts_anchor.group(1))
+            concepts = ts_to_concepts.get(ts)
+            if concepts:
+                # Consume remaining callout lines (starting with >)
+                while i + 1 < len(lines) and lines[i + 1].startswith(">"):
+                    i += 1
+                    new_lines.append(lines[i])
+
+                # Insert backlinks inside the callout block
+                for stem, title in concepts:
+                    backlink = f"> 📎 [[{stem}|{title}]]"
+                    # Idempotency: skip if already present in original text
+                    if backlink not in source_text:
+                        new_lines.append(backlink)
+                        modified = True
+        i += 1
+
+    if modified:
+        try:
+            source_file.write_text("\n".join(new_lines), encoding="utf-8")
+            _logger.info(
+                f"Two-way cross-linked {len(ts_to_concepts)} anchors "
+                f"in Source Note: {source_ref}"
+            )
+        except OSError as e:
+            _logger.warning(f"Failed to backlink Source Note: {e}")
+
+
 def _synthesize_and_save_concepts(dump_text: str, url_content: str, source_ref: str) -> list[tuple[str, str]]:
     today = date.today().isoformat()
     
@@ -398,5 +513,9 @@ def _synthesize_and_save_concepts(dump_text: str, url_content: str, source_ref: 
         saved_path = save_concept(concept_clean)
         if saved_path:
             saved_stems.append((saved_path.stem, c_title))
-            
+
+    # Two-way cross-link: Source Note → Concept Note
+    if saved_stems:
+        _backlink_source_to_concepts(source_ref, saved_stems)
+
     return saved_stems

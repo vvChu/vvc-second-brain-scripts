@@ -404,6 +404,31 @@ def process_image(image_path: Path) -> bool:
     return False
 
 
+def _clean_blockquote_quote(bq: str) -> str:
+    """Extract only the raw text of the main quote from a blockquote block,
+    removing markdown syntax, citations, and outer quotes.
+    """
+    if not bq:
+        return ""
+    lines = bq.split("\n")
+    quote_lines = []
+    for line in lines:
+        line_strip = line.strip()
+        # Skip empty lines and citation lines starting with dash
+        if not line_strip or any(line_strip.startswith(prefix) for prefix in ["> —", "> -", ">—", ">-"]):
+            continue
+        if line_strip.startswith(">"):
+            content = line_strip[1:].strip()
+            # Strip outer double quotes if present
+            if content.startswith('"') and content.endswith('"'):
+                content = content[1:-1].strip()
+            elif content.startswith('“') and content.endswith('”'):
+                content = content[1:-1].strip()
+            if content:
+                quote_lines.append(content)
+    return " ".join(quote_lines).strip()
+
+
 def process_image_batch(image_paths: list[Path]) -> bool:
     """Process multiple images from the same workspace using a Map-Reduce architecture.
 
@@ -478,6 +503,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
 
     created_count = 0
     processed_images: set[Path] = set()
+    exclude_hooks: list[str] = []
 
     # Trigger Map-Reduce if we have 3 or more usable pages
     if len(pages_data) >= 3:
@@ -522,6 +548,16 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                 source_ref = find_source_ref(book_name)
                 guideline = f"\n\n[GUIDELINE: Bạn BẮT BUỘC phải tạo concept note cho khái niệm mang tên chính xác là '{title}']"
                 
+                # Add Hook Overlap Prevention Directive
+                exclude_directive = ""
+                if exclude_hooks:
+                    exclude_directive = (
+                        "\n\n[CRITICAL DIRECTIVE: Để tránh trùng lặp trích dẫn giữa các ghi chú trong cùng một cụm trang (Hook Overlap), bạn TUYỆT ĐỐI KHÔNG ĐƯỢC phép chọn hoặc sử dụng các đoạn trích dẫn sau đây làm Evidence Hook (blockquote đầu ghi chú):\n"
+                    )
+                    for h in exclude_hooks:
+                        exclude_directive += f'- "{h}"\n'
+                    exclude_directive += "Hãy chọn một câu trích dẫn/highlight khác trong văn bản nguồn để làm Evidence Hook.]"
+
                 gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
                 
                 # Get JIT chapter diagrams XML catalog for batch
@@ -535,7 +571,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                     )
 
                 content = synthesize_concept(
-                    highlighted=combined_h + guideline,
+                    highlighted=combined_h + guideline + exclude_directive,
                     context=combined_c,
                     ground_truth=gt_for_synthesis,
                     source_name=book_name,
@@ -553,6 +589,15 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                     if ground_truth.paragraph:
                         content = verify_and_correct(content, ground_truth.paragraph)
                     
+                    # Track hook for subsequent synthesis calls in the same batch
+                    from pipeline.self_correct import _extract_core_idea_blockquote
+                    bq = _extract_core_idea_blockquote(content)
+                    if bq:
+                        clean_bq = _clean_blockquote_quote(bq)
+                        if clean_bq:
+                            exclude_hooks.append(clean_bq)
+                            _logger.info(f"Registered processed hook to exclusion list: '{clean_bq[:40]}...'")
+
                     # Reduce Step: Save Note & Concept-Centric Image Renaming
                     saved = save_concept(content, image_path=primary_img, book_name=book_name)
                     if saved:

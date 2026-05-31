@@ -56,7 +56,7 @@ def process_markdown_file(file_path: Path) -> bool:
 
     # Debug: Save raw LLM output
     try:
-        (Path(cfg.vault_root) / "scratch" / "raw_markdown_synth.md").write_text(result, encoding="utf-8")
+        (Path(__file__).parent.parent / "scratch" / "raw_markdown_synth.md").write_text(result, encoding="utf-8")
     except Exception:
         pass
 
