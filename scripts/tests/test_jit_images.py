@@ -169,3 +169,73 @@ status: seed
     twice_aligned = _align_jit_images(aligned_content, book_name)
     assert twice_aligned.count(f"![[{expected_img1}]]") == 1
     assert twice_aligned.count(f"![[{expected_img2}]]") == 1
+
+
+def test_get_chapter_diagrams(mock_vault_dirs):
+    """Test building the JIT Diagram Catalog XML."""
+    books_dir, _, _, _ = mock_vault_dirs
+    from pipeline.image_processor import _get_chapter_diagrams
+
+    book_name = "Test_Book_Volume_1"
+    book_md_dir = books_dir / f"{book_name}_MD"
+    book_md_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create real valid noise image (> 5KB)
+    img_name = "Test_Book_Volume_1_Ch14_Figure_07-01.jpg"
+    img_file = book_md_dir / img_name
+    _create_noise_image(img_file, "JPEG")
+
+    # Mock chapter file
+    chapter_content = """# Chapter 14
+This is a beautiful introduction.
+![[Test_Book_Volume_1_Ch14_Figure_07-01.jpg]]
+Dave Ulrich and Arthur Yeung explain outcomes and behaviors.
+"""
+    chapter_file = book_md_dir / "14_7_Performance_Accountability.md"
+    chapter_file.write_text(chapter_content, encoding="utf-8")
+
+    # Backup and mock figure_inventory.json
+    inventory_path = Path(__file__).parent.parent / "resources" / "figure_inventory.json"
+    backup_path = inventory_path.with_suffix(".json.bak")
+    
+    has_backup = False
+    if inventory_path.exists():
+        shutil.copy(inventory_path, backup_path)
+        has_backup = True
+
+    try:
+        import json
+        mock_inv = {
+            "figures": [
+                {
+                    "filename": img_name,
+                    "caption": "Sơ đồ Ma trận Kết quả",
+                    "alt_text": "Matrix of outcomes and behaviors showing 4 quadrants"
+                }
+            ]
+        }
+        inventory_path.parent.mkdir(parents=True, exist_ok=True)
+        inventory_path.write_text(json.dumps(mock_inv, ensure_ascii=False), encoding="utf-8")
+
+        # Run test
+        xml = _get_chapter_diagrams(
+            book_name=book_name,
+            chapter_stem="14_7_Performance_Accountability",
+            ground_truth_text="Dave Ulrich and Arthur Yeung explain outcomes and behaviors.",
+            page="198"
+        )
+
+        assert "<CHAPTER_DIAGRAMS>" in xml
+        assert "<FILENAME>Test_Book_Volume_1_Ch14_Figure_07-01.jpg</FILENAME>" in xml
+        assert "<ADAPTIVE_NAME>test_book_volume_1_ch14_figure_07_01.webp</ADAPTIVE_NAME>" in xml
+        assert "<CAPTION>Sơ đồ Ma trận Kết quả</CAPTION>" in xml
+        assert "<ALT_TEXT>Matrix of outcomes and behaviors showing 4 quadrants</ALT_TEXT>" in xml
+
+    finally:
+        if has_backup:
+            if backup_path.exists():
+                if inventory_path.exists():
+                    inventory_path.unlink()
+                shutil.move(backup_path, inventory_path)
+        elif inventory_path.exists():
+            inventory_path.unlink()

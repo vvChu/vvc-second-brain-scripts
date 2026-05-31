@@ -139,6 +139,8 @@ GROUND TRUTH (bản gốc tiếng Anh):
 ---
 {ground_truth}
 ---
+
+{chapter_diagrams}
 </source_material>
 
 NGUỒN: {source_name}
@@ -168,6 +170,7 @@ TRANG: {page}
 8. Sử dụng hệ thống thuật ngữ nhất quán với từ điển định nghĩa trong thẻ <GLOSSARY> của THÔNG TIN NỀN VĨ MÔ (nếu có).
 9. Tuân thủ nghiêm ngặt các chỉ dẫn biên soạn (khẩu vị phân rã, văn phong) được định nghĩa trong thẻ <COMPILATION_GUIDELINES> của THÔNG TIN NỀN VĨ MÔ (nếu có).
 10. Sử dụng thông tin nhân vật và tổ chức định nghĩa sẵn trong thẻ <PEOPLE_AND_ORGANIZATIONS> (nếu có) để chuẩn hóa và hỗ trợ điền chính xác trường `people` và `companies` trong frontmatter.
+11. Nếu trong khối `<CHAPTER_DIAGRAMS>` có sơ đồ phù hợp giúp làm rõ nội dung phân tích của bạn, hãy chủ động nhúng sơ đồ đó vào vị trí thích hợp nhất trong `## Core Idea` bằng cú pháp `![[tên_thích_ứng.webp]]`. Đồng thời, viết từ 2-3 câu phân tích sâu liên kết cấu trúc sơ đồ với lý thuyết của khái niệm.
 </rules>
 
 <output_template>

@@ -13,7 +13,9 @@ Functions:
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from pathlib import Path
 
 from core.config import cfg
@@ -45,6 +47,168 @@ def trigger_moc_rebuild() -> None:
         rebuild_all()
     except Exception as e:
         _logger.warning(f"MOC rebuild failed: {e}")
+
+
+def _find_md_dir(book_name: str) -> Path | None:
+    """Find the extracted markdown corpus directory for the given book name."""
+    books_dir = cfg.resources_books_dir
+    if not books_dir.exists():
+        return None
+    try:
+        return next(
+            (d for d in books_dir.iterdir()
+             if d.is_dir() and d.name.endswith("_MD") and book_name.lower() in d.name.lower()),
+            None,
+        )
+    except OSError:
+        return None
+
+
+def _is_decorative_image(filename: str, file_path: Path) -> bool:
+    filename_lower = filename.lower()
+    decorative_keywords = {"cover", "logo", "credit", "title_page", "icon", "decorative"}
+    if any(kw in filename_lower for kw in decorative_keywords):
+        return True
+    if file_path.exists():
+        try:
+            if file_path.stat().st_size < 5120:
+                return True
+        except OSError:
+            pass
+    return False
+
+
+def _get_chapter_diagrams(book_name: str, chapter_stem: str, ground_truth_text: str, page: str) -> str:
+    """Find publisher diagrams close to the Ground Truth in the chapter and build an XML catalog."""
+    if not book_name or not chapter_stem or not ground_truth_text:
+        return ""
+
+    md_dir = _find_md_dir(book_name)
+    if not md_dir or not md_dir.exists():
+        return ""
+
+    chapter_file = md_dir / f"{chapter_stem}.md"
+    if not chapter_file.exists():
+        return ""
+
+    try:
+        chapter_text = chapter_file.read_text(encoding="utf-8")
+    except OSError:
+        return ""
+
+    # Parse paragraphs from ground truth to find position in chapter text
+    paragraphs = [p.strip() for p in ground_truth_text.split("\n\n") if p.strip()]
+    if not paragraphs:
+        paragraphs = [ground_truth_text.strip()]
+
+    pos = -1
+    for para in paragraphs:
+        para_clean = re.sub(r"\s+", " ", para).strip()
+        if not para_clean or len(para_clean) < 15:
+            continue
+        pos = chapter_text.find(para)
+        if pos == -1:
+            prefix = para_clean[:80].strip()
+            pos = chapter_text.find(prefix)
+            if pos == -1 and len(para_clean) > 150:
+                middle = para_clean[len(para_clean)//2 : len(para_clean)//2 + 80].strip()
+                pos = chapter_text.find(middle)
+        if pos != -1:
+            break
+
+    if pos == -1:
+        return ""
+
+    # Scan ±800 chars around the matched position
+    start_win = max(0, pos - 800)
+    end_win = min(len(chapter_text), pos + len(ground_truth_text) + 800)
+    window = chapter_text[start_win:end_win]
+
+    image_regex = re.compile(
+        r'!\[\[([^\]]+\.(?:jpg|jpeg|png|webp))\]\]|!\[.*?\]\(([^\)]+\.(?:jpg|jpeg|png|webp))\)',
+        re.IGNORECASE
+    )
+    found_images: list[str] = []
+    for m in image_regex.finditer(window):
+        img_name = m.group(1) or m.group(2)
+        if img_name:
+            img_name = img_name.strip()
+            if img_name not in found_images:
+                found_images.append(img_name)
+
+    if not found_images:
+        return ""
+
+    # Load figure inventory if exists to fetch caption & alt-text
+    inventory_path = Path(__file__).parent.parent / "resources" / "figure_inventory.json"
+    inventory = {}
+    if inventory_path.exists():
+        try:
+            with open(inventory_path, "r", encoding="utf-8") as f:
+                inv_data = json.load(f)
+                for fig in inv_data.get("figures", []):
+                    inventory[fig["filename"].lower()] = fig
+        except Exception:
+            pass
+
+    # Build XML catalog
+    from core.frontmatter import normalize_stem
+    book_slug = normalize_stem(book_name)[:30].rstrip("_")
+    
+    def _shorten_chapter(ch_stem: str) -> str:
+        ch_match = re.search(r"(?:ch(?:apter)?|chuong)[\s_]*(\d+)", ch_stem, re.IGNORECASE)
+        if ch_match:
+            return f"ch{ch_match.group(1)}"
+        digits = "".join(filter(str.isdigit, ch_stem))
+        if digits:
+            return f"ch{digits[:3]}"
+        return ""
+
+    short_ch = _shorten_chapter(chapter_stem)
+    xml_lines = ["\n<CHAPTER_DIAGRAMS>"]
+
+    for img_name in found_images:
+        original_img_path = md_dir / img_name
+        if not original_img_path.exists():
+            continue
+        if _is_decorative_image(img_name, original_img_path):
+            continue
+
+        # Calculate Adaptive Name exactly matching post_process.py
+        orig_stem = normalize_stem(original_img_path.stem)
+        book_words = [w for w in book_slug.split("_") if len(w) > 3]
+        has_book_prefix = any(w in orig_stem for w in book_words)
+
+        if has_book_prefix:
+            dest_name = f"{orig_stem}.webp"
+        else:
+            parts = [book_slug]
+            if short_ch:
+                parts.append(short_ch)
+            if page:
+                parts.append(f"p{page}")
+            parts.append(orig_stem)
+            dest_name = f"{'_'.join(parts)}.webp"
+
+        fig_info = inventory.get(img_name.lower())
+        caption = fig_info.get("caption") if fig_info else ""
+        alt_text = fig_info.get("alt_text") if fig_info else ""
+
+        xml_lines.append("  <DIAGRAM>")
+        xml_lines.append(f"    <FILENAME>{img_name}</FILENAME>")
+        xml_lines.append(f"    <ADAPTIVE_NAME>{dest_name}</ADAPTIVE_NAME>")
+        if caption:
+            xml_lines.append(f"    <CAPTION>{caption}</CAPTION>")
+        if alt_text:
+            xml_lines.append(f"    <ALT_TEXT>{alt_text}</ALT_TEXT>")
+        xml_lines.append("  </DIAGRAM>")
+
+    xml_lines.append("</CHAPTER_DIAGRAMS>\n")
+    
+    if len(xml_lines) <= 2:
+        return ""
+
+    return "\n".join(xml_lines)
 
 
 def process_image(image_path: Path) -> bool:
@@ -116,6 +280,17 @@ def process_image(image_path: Path) -> bool:
 
     # Stage 3: Synthesize
     gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
+    
+    # Get JIT chapter diagrams XML catalog
+    chapter_diagrams = ""
+    if ground_truth.paragraph and ground_truth.chapter:
+        chapter_diagrams = _get_chapter_diagrams(
+            book_name=book_name,
+            chapter_stem=ground_truth.chapter,
+            ground_truth_text=ground_truth.paragraph,
+            page=str(ocr.page_number or ""),
+        )
+
     content = synthesize_concept(
         highlighted=highlighted,
         context=ocr.context,
@@ -127,6 +302,7 @@ def process_image(image_path: Path) -> bool:
         gt_page=str(ground_truth.page or "") if ground_truth.page else "",
         gt_chapter=ground_truth.chapter,  # Bản gốc tiếng Anh
         book_macro_context=book_macro_context,
+        chapter_diagrams=chapter_diagrams,
     )
     if not content:
         log("error", "Synthesis failed", source=image_path.name)
@@ -279,6 +455,17 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                 guideline = f"\n\n[GUIDELINE: Bạn BẮT BUỘC phải tạo concept note cho khái niệm mang tên chính xác là '{title}']"
                 
                 gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
+                
+                # Get JIT chapter diagrams XML catalog for batch
+                chapter_diagrams = ""
+                if ground_truth.paragraph and ground_truth.chapter:
+                    chapter_diagrams = _get_chapter_diagrams(
+                        book_name=book_name,
+                        chapter_stem=ground_truth.chapter,
+                        ground_truth_text=ground_truth.paragraph,
+                        page=first_p if first_p != "0" else "",
+                    )
+
                 content = synthesize_concept(
                     highlighted=combined_h + guideline,
                     context=combined_c,
@@ -290,6 +477,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                     gt_page=str(ground_truth.page or "") if ground_truth.page else "",
                     gt_chapter=ground_truth.chapter,
                     book_macro_context=book_macro_context,
+                    chapter_diagrams=chapter_diagrams,
                 )
 
                 if content:
@@ -317,6 +505,17 @@ def process_image_batch(image_paths: list[Path]) -> bool:
 
         source_ref = find_source_ref(book_name)
         gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
+        
+        # Get JIT chapter diagrams XML catalog for classic fallback
+        chapter_diagrams = ""
+        if ground_truth.paragraph and ground_truth.chapter:
+            chapter_diagrams = _get_chapter_diagrams(
+                book_name=book_name,
+                chapter_stem=ground_truth.chapter,
+                ground_truth_text=ground_truth.paragraph,
+                page=first_page or "",
+            )
+
         content = synthesize_concept(
             highlighted=combined_highlighted,
             context=combined_context,
@@ -328,6 +527,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
             gt_page=str(ground_truth.page or "") if ground_truth.page else "",
             gt_chapter=ground_truth.chapter,
             book_macro_context=book_macro_context,
+            chapter_diagrams=chapter_diagrams,
         )
 
         if content:

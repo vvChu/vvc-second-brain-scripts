@@ -31,6 +31,7 @@ def synthesize_concept(
     gt_chapter: str = "",
     today: str = "",
     book_macro_context: str = "",
+    chapter_diagrams: str = "",
 ) -> str:
     """Generate an atomic concept note from OCR-extracted content.
 
@@ -78,6 +79,7 @@ def synthesize_concept(
         gt_chapter_ref=gt_chapter_ref,
         today=today,
         ground_truth_excerpt=ground_truth[:300] if ground_truth else "(không có)",
+        chapter_diagrams=chapter_diagrams,
     )
 
     result = call_llm(prompt, task="synthesis")
