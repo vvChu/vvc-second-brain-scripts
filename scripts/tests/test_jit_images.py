@@ -239,3 +239,81 @@ Dave Ulrich and Arthur Yeung explain outcomes and behaviors.
                 shutil.move(backup_path, inventory_path)
         elif inventory_path.exists():
             inventory_path.unlink()
+
+
+def test_jit_self_enrichment(mock_vault_dirs, monkeypatch):
+    """Test v8.15.0 JIT Self-Enriching Diagram Inventory."""
+    books_dir, _, _, _ = mock_vault_dirs
+    from pipeline.image_processor import _get_chapter_diagrams
+
+    book_name = "Test_Book_Volume_1"
+    book_md_dir = books_dir / f"{book_name}_MD"
+    book_md_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create real valid noise image (> 5KB)
+    img_name = "Test_Book_Volume_1_Ch14_Figure_07-02.jpg"
+    img_file = book_md_dir / img_name
+    _create_noise_image(img_file, "JPEG")
+
+    # Mock chapter file
+    chapter_content = """# Chapter 14
+This is a beautiful introduction.
+![[Test_Book_Volume_1_Ch14_Figure_07-02.jpg]]
+Dave Ulrich and Arthur Yeung explain outcomes and behaviors.
+"""
+    chapter_file = book_md_dir / "14_7_Performance_Accountability.md"
+    chapter_file.write_text(chapter_content, encoding="utf-8")
+
+    # Mock Vision API to return valid JSON
+    mock_response = '{"caption": "Sơ đồ Ma trận Kết quả JIT", "alt_text": "Detailed visual layout analysis"}'
+    monkeypatch.setattr(
+        "pipeline.image_processor.call_gateway_vision",
+        lambda img_b64, prompt, timeout=None: mock_response
+    )
+
+    # Mock empty/existing figure_inventory.json path
+    inventory_path = Path(__file__).parent.parent / "resources" / "figure_inventory.json"
+    backup_path = inventory_path.with_suffix(".json.bak")
+    
+    has_backup = False
+    if inventory_path.exists():
+        shutil.copy(inventory_path, backup_path)
+        has_backup = True
+
+    try:
+        # Write empty inventory structure
+        import json
+        empty_inv = {"figures": []}
+        inventory_path.parent.mkdir(parents=True, exist_ok=True)
+        inventory_path.write_text(json.dumps(empty_inv, ensure_ascii=False), encoding="utf-8")
+
+        # Run test
+        xml = _get_chapter_diagrams(
+            book_name=book_name,
+            chapter_stem="14_7_Performance_Accountability",
+            ground_truth_text="Dave Ulrich and Arthur Yeung explain outcomes and behaviors.",
+            page="198"
+        )
+
+        # 1. Assert XML has the vision LLM values
+        assert "<CHAPTER_DIAGRAMS>" in xml
+        assert "<FILENAME>Test_Book_Volume_1_Ch14_Figure_07-02.jpg</FILENAME>" in xml
+        assert "<CAPTION>Sơ đồ Ma trận Kết quả JIT</CAPTION>" in xml
+        assert "<ALT_TEXT>Detailed visual layout analysis</ALT_TEXT>" in xml
+
+        # 2. Assert figure_inventory.json was dynamically enriched and updated
+        updated_inv = json.loads(inventory_path.read_text(encoding="utf-8"))
+        figures = updated_inv.get("figures", [])
+        assert len(figures) == 1
+        assert figures[0]["filename"] == img_name
+        assert figures[0]["caption"] == "Sơ đồ Ma trận Kết quả JIT"
+        assert figures[0]["alt_text"] == "Detailed visual layout analysis"
+
+    finally:
+        if has_backup:
+            if backup_path.exists():
+                if inventory_path.exists():
+                    inventory_path.unlink()
+                shutil.move(backup_path, inventory_path)
+        elif inventory_path.exists():
+            inventory_path.unlink()

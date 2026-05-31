@@ -21,8 +21,28 @@ from pathlib import Path
 from core.config import cfg
 from core.log import log
 from core.types import PageData
+from core.llm.gateway_client import call_gateway_vision
+from core.llm.utils import encode_image
 
 _logger = logging.getLogger("vvc.imgproc")
+
+FIGURE_ENRICH_PROMPT = """Bạn là chuyên gia phân tích tài liệu và tri thức hệ thống.
+Dưới đây là một sơ đồ/hình ảnh từ sách chuyên môn, cùng với đoạn văn bản ngữ cảnh xung quanh hình ảnh này trong sách.
+
+NGỮ CẢNH TRONG SÁCH:
+---
+{context_text}
+---
+
+Nhiệm vụ của bạn là phân tích hình ảnh và ngữ cảnh để trích xuất các thông tin sau bằng TIẾNG VIỆT:
+1. "caption": Tiêu đề chính thức của sơ đồ/hình ảnh (ví dụ: "Sơ đồ 1-4: Khung năng lực sáu phần..."). Nếu sách không ghi rõ caption, hãy tự tạo một tiêu đề ngắn gọn phản ánh đúng bản chất của sơ đồ. Dịch sang tiếng Việt nếu nguyên bản tiếng Anh.
+2. "alt_text": Mô tả chi tiết cấu trúc thị giác (topology), các thành phần chính (các nút, luồng chuyển động, các trục ma trận), và ý nghĩa cốt lõi của sơ đồ này. Mô tả này phải cực kỳ chi tiết (100-200 từ) để phục vụ cho công cụ tìm kiếm ngữ nghĩa (RAG) sau này.
+
+Hãy trả về một chuỗi JSON hợp lệ với cấu trúc sau (KHÔNG dùng markdown code fences, không giải thích gì thêm):
+{{
+  "caption": "tiêu đề hình vẽ bằng tiếng Việt",
+  "alt_text": "mô tả chi tiết cấu trúc sơ đồ phục vụ RAG"
+}}"""
 
 
 def find_source_ref(book_name: str) -> str:
@@ -193,6 +213,54 @@ def _get_chapter_diagrams(book_name: str, chapter_stem: str, ground_truth_text: 
         fig_info = inventory.get(img_name.lower())
         caption = fig_info.get("caption") if fig_info else ""
         alt_text = fig_info.get("alt_text") if fig_info else ""
+
+        if not caption or not alt_text:
+            _logger.info(f"JIT Diagram Enrichment triggered for: {img_name}")
+            try:
+                image_b64 = encode_image(original_img_path, max_pixels=1024)
+                formatted_prompt = FIGURE_ENRICH_PROMPT.format(context_text=window)
+                llm_result = call_gateway_vision(
+                    image_b64, 
+                    formatted_prompt, 
+                    timeout=cfg.gemini_vision_timeout
+                )
+                if llm_result:
+                    clean_result = llm_result.strip()
+                    if clean_result.startswith("```"):
+                        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean_result, re.DOTALL)
+                        if json_match:
+                            clean_result = json_match.group(1)
+                    
+                    parsed_res = json.loads(clean_result)
+                    new_caption = parsed_res.get("caption", "").strip()
+                    new_alt = parsed_res.get("alt_text", "").strip()
+                    
+                    if new_caption and new_alt:
+                        caption = new_caption
+                        alt_text = new_alt
+                        # Update inventory JIT
+                        inventory[img_name.lower()] = {
+                            "path": str(original_img_path),
+                            "filename": img_name,
+                            "book": book_name,
+                            "topology": fig_info.get("topology", "other") if fig_info else "other",
+                            "chapter_file": f"{chapter_stem}.md",
+                            "chapter_title": chapter_stem.replace("_", " "),
+                            "chapter_num": None,
+                            "surrounding_context": window[:1000],
+                            "caption": caption,
+                            "alt_text": alt_text
+                        }
+                        # Save back to figure_inventory.json
+                        try:
+                            inventory_data = {"figures": list(inventory.values())}
+                            with open(inventory_path, "w", encoding="utf-8") as f_out:
+                                json.dump(inventory_data, f_out, ensure_ascii=False, indent=2)
+                            _logger.info(f"Successfully saved enriched diagram JIT: {img_name}")
+                        except Exception as save_err:
+                            _logger.warning(f"Failed to save figure_inventory.json during JIT: {save_err}")
+            except Exception as enrich_err:
+                _logger.warning(f"Failed to enrich diagram {img_name} JIT: {enrich_err}")
 
         xml_lines.append("  <DIAGRAM>")
         xml_lines.append(f"    <FILENAME>{img_name}</FILENAME>")
