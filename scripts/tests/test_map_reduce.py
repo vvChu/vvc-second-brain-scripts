@@ -70,7 +70,7 @@ def test_segment_concepts_malformed_json(mock_call):
     pages_data = [{"page_number": 12, "highlighted": "Text 12", "context": ""}]
 
     result = segment_concepts(pages_data, "Becoming_Steve_Jobs")
-    assert result == []
+    assert result is None
 
 
 def test_get_or_create_book_context():

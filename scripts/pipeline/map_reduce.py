@@ -308,7 +308,7 @@ def segment_concepts(pages_data: list[dict], book_name: str) -> list[SegmentedCo
 
     if not raw_response:
         _logger.error("Segment concepts: empty response from LLM")
-        return []
+        return None
 
     # Unconditional think-tag stripping
     from core.llm.utils import strip_think_tags
@@ -324,7 +324,7 @@ def segment_concepts(pages_data: list[dict], book_name: str) -> list[SegmentedCo
         if not json_match:
             _logger.error("Segment concepts: could not find JSON array block in LLM response")
             _logger.debug(f"Raw Response: {raw_response[:500]}")
-            return []
+            return None
 
         parsed = json.loads(json_match.group())
         
@@ -362,7 +362,7 @@ def segment_concepts(pages_data: list[dict], book_name: str) -> list[SegmentedCo
     except Exception as e:
         _logger.error(f"Segment concepts: failed to parse JSON array: {e}")
         _logger.debug(f"Raw Response: {raw_response[:500]}")
-        return []
+        return None
 
 
 
