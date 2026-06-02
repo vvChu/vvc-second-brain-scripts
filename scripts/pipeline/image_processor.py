@@ -502,6 +502,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     _interpolate_page_numbers(pages_data)
 
     created_count = 0
+    segmented = None
     processed_images: set[Path] = set()
     exclude_hooks: list[str] = []
 
@@ -618,7 +619,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                             processed_images.add(primary_img)
 
     # Fallback to Classic Flow (Gộp thành 1 note) if Map-Reduce is bypassed or yielded zero notes
-    if created_count == 0:
+    if created_count == 0 and segmented is None:
         _logger.info("Map-Reduce bypassed or yielded zero notes. Falling back to Classic Single-Concept Flow.")
         combined_highlighted = "\n\n".join(p.highlighted for p in pages_data)
         combined_context = "\n\n".join(p.context for p in pages_data)
