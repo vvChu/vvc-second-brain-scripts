@@ -273,6 +273,34 @@ def _write_weekly_synthesis(concepts: list[dict] | None = None) -> None:
         except Exception as e:
             _logger.error(f"Failed to read subsume journal: {e}")
 
+    # Read and append stale stubs warning if any
+    stale_file = cfg.state_dir / ".stale_stubs.json"
+    if stale_file.exists():
+        try:
+            stale_entries = json.loads(stale_file.read_text(encoding="utf-8"))
+            if stale_entries:
+                lines.append("## ⚠️ Cảnh Báo Ghi Chú Stub Quá Hạn (Stale Stubs Warning)\n\n")
+                lines.append(
+                    "> Các ghi chú stub dưới đây đã tồn tại quá 30 ngày nhưng chưa được bồi đắp thành khái niệm hoàn chỉnh. "
+                    "Hãy xem xét bổ sung nội dung hoặc tích hợp chúng vào các bài viết chủ đề:\n\n"
+                )
+                lines.append("| Tên Stub | Ngày tạo | Tuổi (ngày) | Liên kết từ |\n")
+                lines.append("|---|---|---|---|\n")
+                for s in stale_entries:
+                    stem = s.get("stem")
+                    title = s.get("title", stem)
+                    age = s.get("age_days", 30)
+                    created = s.get("date_created", "")
+                    linked = ", ".join([f"[[{link}]]" for link in s.get("linked_from", [])])
+                    lines.append(f"| [[{stem}|{title}]] | {created} | {age} | {linked} |\n")
+                lines.append("\n")
+                
+                # Delete stale file so it starts fresh next week
+                stale_file.unlink(missing_ok=True)
+                _logger.info(f"Appended {len(stale_entries)} stale stubs warning to Weekly Synthesis and cleared cache.")
+        except Exception as e:
+            _logger.error(f"Failed to read or process stale stubs warning: {e}")
+
     try:
         report_path.write_text("".join(lines), encoding="utf-8")
         _logger.info(f"Weekly synthesis: {len(recent)} new concepts")

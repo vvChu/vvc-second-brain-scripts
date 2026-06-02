@@ -88,6 +88,25 @@ def _validate_quality(content: str, stem: str) -> list[str]:
     if last_seg in _TRUNCATED_SUFFIXES:
         failures.append(f"filename stem ends with truncation artifact: '_{last_seg}'")
 
+    # 6. YAML summary duplicates or overlaps with the Evidence Hook blockquote
+    summary_m = re.search(r"^summary:\s*['\"]?(.+?)['\"]?\s*$", content, re.MULTILINE)
+    hook_m = re.search(r"^>\s*\"([^\"]+)\"", content, re.MULTILINE)
+    if summary_m and hook_m:
+        clean = lambda s: re.sub(r"[^\w ]", "", s.lower()).strip()
+        sum_clean = clean(summary_m.group(1))
+        hook_clean = clean(hook_m.group(1))
+        if sum_clean and hook_clean:
+            if sum_clean in hook_clean or hook_clean in sum_clean:
+                failures.append("YAML summary duplicates or overlaps with the Evidence Hook blockquote")
+            else:
+                sum_words = set(sum_clean.split())
+                hook_words = set(hook_clean.split())
+                if sum_words and hook_words:
+                    intersection = sum_words & hook_words
+                    overlap_ratio = len(intersection) / max(1, len(sum_words))
+                    if overlap_ratio > 0.85:
+                        failures.append("YAML summary duplicates or overlaps with the Evidence Hook blockquote")
+
     return failures
 
 
@@ -645,84 +664,219 @@ def archive_image(image_path: Path, book_name: str = "") -> str:
     return _archive_image(image_path, book_name=book_name)
 
 
-def _hot_insert_embedding(concept_path: Path, content: str) -> None:
-    """Hot-insert/update a concept's embedding vector in _embedding_index.npz.
-
-    Args:
-        concept_path: Path to the saved concept note.
-        content: Full text of the concept note.
+class CrossProcessFileLock:
+    """Khóa tệp đa tiến trình và đa luồng sử dụng 100% thư viện chuẩn Python.
+    Hỗ trợ Windows (msvcrt) và Unix (fcntl).
     """
-    import numpy as np
+    def __init__(self, lock_path: Path, timeout: float = 15.0, delay: float = 0.05):
+        self.lock_path = Path(lock_path)
+        self.timeout = timeout
+        self.delay = delay
+        self.fd = None
+        self._thread_acquired = False
+
+    def acquire(self) -> bool:
+        import os
+        import sys
+        import time
+        import threading
+        
+        # 1. Khóa mức luồng trước để tránh xung đột nội bộ tiến trình
+        # Định nghĩa lock tĩnh để tránh đa luồng gọi đồng thời trên cùng tiến trình
+        if not hasattr(CrossProcessFileLock, "_global_lock"):
+            CrossProcessFileLock._global_lock = threading.Lock()
+            
+        if not CrossProcessFileLock._global_lock.acquire(timeout=self.timeout):
+            _logger.error(f"Thread lock acquisition timed out for {self.lock_path}")
+            return False
+        
+        self._thread_acquired = True
+        start_time = time.time()
+        
+        # 2. Khóa mức tiến trình (File lock hệ điều hành)
+        while True:
+            try:
+                # Mở tệp khóa (tạo mới nếu chưa có)
+                self.fd = os.open(str(self.lock_path), os.O_RDWR | os.O_CREAT)
+                
+                if sys.platform == "win32":
+                    import msvcrt
+                    os.lseek(self.fd, 0, os.SEEK_SET)
+                    # Thử khóa 1 byte đầu tiên (LK_NBLCK: chế độ không chặn)
+                    msvcrt.locking(self.fd, msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+                    # Khóa độc quyền không chặn trên Unix
+                    fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                
+                # Khóa thành công!
+                return True
+                
+            except (OSError, IOError):
+                # Nếu khóa thất bại, đóng file descriptor ngay lập tức và thử lại
+                if self.fd is not None:
+                    try:
+                        os.close(self.fd)
+                    except OSError:
+                        pass
+                    self.fd = None
+                
+                # Kiểm tra quá thời gian chờ (Timeout)
+                if time.time() - start_time > self.timeout:
+                    if self._thread_acquired:
+                        CrossProcessFileLock._global_lock.release()
+                        self._thread_acquired = False
+                    _logger.error(f"File lock acquisition timed out for {self.lock_path}")
+                    return False
+                
+                time.sleep(self.delay)
+
+    def release(self):
+        import os
+        import sys
+        import threading
+        try:
+            if self.fd is not None:
+                try:
+                    if sys.platform == "win32":
+                        import msvcrt
+                        os.lseek(self.fd, 0, os.SEEK_SET)
+                        msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+                        fcntl.flock(self.fd, fcntl.LOCK_UN)
+                except OSError as e:
+                    _logger.warning(f"Failed to unlock file {self.lock_path}: {e}")
+                finally:
+                    try:
+                        os.close(self.fd)
+                    except OSError:
+                        pass
+                    self.fd = None
+        finally:
+            if self._thread_acquired:
+                if hasattr(CrossProcessFileLock, "_global_lock"):
+                    CrossProcessFileLock._global_lock.release()
+                self._thread_acquired = False
+
+    def __enter__(self):
+        if not self.acquire():
+            raise TimeoutError(f"Could not acquire lock on {self.lock_path} within {self.timeout}s")
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.release()
+
+
+def _hot_insert_embedding(concept_path: Path, content: str) -> None:
+    """Hot-insert/update vector embedding của một ghi chú vào _embedding_index.npz.
+
+    Đảm bảo:
+        - Đồng bộ hóa đa luồng & đa tiến trình an toàn bằng CrossProcessFileLock.
+        - Ghi đĩa nguyên tử (Atomic Write) tránh hỏng hóc chỉ mục khi tắt nguồn đột ngột.
+        - Đóng gói tài nguyên thông qua context manager `with np.load(...)` tránh PermissionError trên Windows.
+    """
+    import os
+    import sys
+    import shutil
     import hashlib
+    import numpy as np
     from pipeline.semantic_merger import get_embedding_via_gateway
 
     stem = concept_path.stem
     _logger.info(f"Hot-inserting embedding for concept: {stem}")
 
-    # 1. Fetch query embedding
+    # 1. Fetch query embedding trước khi lấy khóa (Tránh nghẽn khóa do HTTP Network latency)
     query_emb = get_embedding_via_gateway(content)
     if query_emb is None:
         _logger.warning(f"Could not fetch embedding for hot-insert of '{stem}'")
         return
 
-    # 2. Paths
+    # 2. Định nghĩa các đường dẫn tệp
     index_path = cfg.state_dir / "_embedding_index.npz"
     bak_path = index_path.with_suffix(".npz.bak")
+    lock_path = index_path.with_suffix(".npz.lock")
 
-    # 3. Load existing arrays
-    existing_embeddings = []
-    existing_texts = []
-    existing_sources = []
-
-    loaded_path = None
-    if index_path.exists():
-        loaded_path = index_path
-    elif bak_path.exists():
-        loaded_path = bak_path
-
-    if loaded_path:
-        try:
-            data = np.load(loaded_path, allow_pickle=True)
-            if "embeddings" in data and "texts" in data and "sources" in data:
-                existing_embeddings = data["embeddings"].tolist()
-                existing_texts = data["texts"].tolist()
-                existing_sources = data["sources"].tolist()
-        except Exception as e:
-            _logger.warning(f"Failed to load existing index for hot-insert: {e}")
-
-    # 4. Prepare new item metadata
-    content_hash = f"hash:{hashlib.md5(content.encode('utf-8')).hexdigest()}"
-
-    # 5. Insert or Update
+    # 3. Thực hiện đọc/ghi bảo vệ bởi Khóa
     try:
-        if stem in existing_sources:
-            idx = existing_sources.index(stem)
-            existing_embeddings[idx] = query_emb
-            existing_texts[idx] = content_hash
-            _logger.info(f"Updated existing entry in index for '{stem}'")
-        else:
-            existing_embeddings.append(query_emb)
-            existing_texts.append(content_hash)
-            existing_sources.append(stem)
-            _logger.info(f"Appended new entry to index for '{stem}'")
+        with CrossProcessFileLock(lock_path) as lock:
+            existing_embeddings = []
+            existing_texts = []
+            existing_sources = []
 
-        # 6. Save back to npz with backup restoration guard
-        np.savez_compressed(
-            index_path,
-            embeddings=np.array(existing_embeddings, dtype=np.float32),
-            texts=np.array(existing_texts, dtype=object),
-            sources=np.array(existing_sources, dtype=object),
-        )
+            loaded_path = None
+            if index_path.exists():
+                loaded_path = index_path
+            elif bak_path.exists():
+                loaded_path = bak_path
 
-        # Sync backup
-        try:
-            import shutil
-            shutil.copy2(index_path, bak_path)
-        except Exception as bak_err:
-            _logger.warning(f"Failed to sync backup index during hot-insert: {bak_err}")
+            # Sử dụng context manager `with` để tự động đóng tệp ngay sau khi đọc xong!
+            if loaded_path:
+                try:
+                    with np.load(loaded_path, allow_pickle=True) as data:
+                        if "embeddings" in data and "texts" in data and "sources" in data:
+                            existing_embeddings = data["embeddings"].tolist()
+                            existing_texts = data["texts"].tolist()
+                            existing_sources = data["sources"].tolist()
+                except Exception as e:
+                    _logger.warning(f"Failed to load existing index for hot-insert: {e}")
 
-        _logger.info(f"Hot-insert successful: Index size is now {len(existing_sources)}")
+            # 4. Chuẩn bị mã băm dữ liệu để kiểm tra thay đổi
+            content_hash = f"hash:{hashlib.md5(content.encode('utf-8')).hexdigest()}"
 
-    except Exception as save_err:
-        _logger.error(f"Failed to save hot-inserted embedding index: {save_err}")
+            # 5. Insert hoặc Update bản ghi
+            if stem in existing_sources:
+                idx = existing_sources.index(stem)
+                existing_embeddings[idx] = query_emb
+                existing_texts[idx] = content_hash
+                _logger.info(f"Updated existing entry in index for '{stem}'")
+            else:
+                existing_embeddings.append(query_emb)
+                existing_texts.append(content_hash)
+                existing_sources.append(stem)
+                _logger.info(f"Appended new entry to index for '{stem}'")
+
+            # 6. Ghi đĩa NGUYÊN TỬ (Atomic Write) qua tệp tạm kết thúc bằng .npz để tránh NumPy tự động append
+            tmp_path = index_path.parent / f"{index_path.stem}_tmp.npz"
+            try:
+                np.savez_compressed(
+                    tmp_path,
+                    embeddings=np.array(existing_embeddings, dtype=np.float32),
+                    texts=np.array(existing_texts, dtype=object),
+                    sources=np.array(existing_sources, dtype=object),
+                )
+                # Hoán đổi tệp tạm thời sang tệp chính thức một cách nguyên tử
+                os.replace(tmp_path, index_path)
+                _logger.info(f"Hot-insert successful: Index size is now {len(existing_sources)}")
+            except Exception as save_err:
+                _logger.error(f"Failed to save hot-inserted embedding index atomically: {save_err}")
+                return
+            finally:
+                # Cleanup tệp tạm nếu có lỗi xảy ra giữa chừng
+                if tmp_path.exists():
+                    try:
+                        tmp_path.unlink()
+                    except OSError:
+                        pass
+
+            # 7. Đồng bộ hóa tệp backup (.npz.bak) một cách nguyên tử
+            bak_tmp_path = bak_path.with_suffix(".npz.bak.tmp")
+            try:
+                shutil.copy2(index_path, bak_tmp_path)
+                os.replace(bak_tmp_path, bak_path)
+                _logger.info("Atomic backup index sync successful.")
+            except Exception as bak_err:
+                _logger.warning(f"Failed to sync backup index atomically during hot-insert: {bak_err}")
+            finally:
+                if bak_tmp_path.exists():
+                    try:
+                        bak_tmp_path.unlink()
+                    except OSError:
+                        pass
+
+    except TimeoutError as te:
+        _logger.error(f"Could not perform hot-insert for '{stem}' due to lock timeout: {te}")
+    except Exception as e:
+        _logger.error(f"Unexpected error in _hot_insert_embedding for '{stem}': {e}")
+
 

@@ -20,16 +20,25 @@ from pathlib import Path
 from core.frontmatter import normalize_stem
 
 
-def wrap_label(text: str, max_chars: int = 15) -> str:
+def wrap_label(text: str, max_chars: int | None = None) -> str:
     """Wrap label text at word boundaries using <br> for neat visual layout in Mermaid nodes.
+    Supports a dynamic wrapping threshold between 20 and 25 characters based on actual text length
+    to prevent extreme vertical stretching or extreme horizontal width.
 
     Args:
         text: Label text to wrap.
-        max_chars: Maximum characters per line.
+        max_chars: Maximum characters per line. If None, dynamically calculated.
 
     Returns:
         Text with <br> separators at word boundaries.
     """
+    if max_chars is None:
+        L = len(text)
+        if L <= 20:
+            max_chars = 20
+        else:
+            max_chars = min(25, 20 + (L - 20) // 5)
+
     words = text.split()
     lines: list[str] = []
     current_line: list[str] = []
@@ -66,6 +75,63 @@ def sanitize_mermaid(text: str) -> str:
             .replace("&", "+").replace("#", "Nr"))
 
 
+def _get_node_label_and_indicator(concept_dict: dict, max_title_len: int = 45) -> str:
+    """Helper to retrieve trimmed and decorated concept title with status & confidence icons,
+    then word-wrap using <br>.
+    """
+    stem = concept_dict.get("_stem", "")
+    title = str(concept_dict.get("title") or stem)
+    
+    # 1. Trim title
+    trimmed_title = title[:max_title_len] + "..." if len(title) > (max_title_len + 3) else title
+    
+    # 2. Get status icon
+    status = str(concept_dict.get("status", "seed")).lower()
+    status_icon = "🌱" if status == "seed" else ("🌿" if status == "growing" else "🌳")
+    
+    # 3. Get confidence warning
+    confidence = str(concept_dict.get("confidence", "high")).lower()
+    conf_flag = " 🔍" if confidence in ("low", "medium") else ""
+    
+    # 4. Combine and sanitize
+    decorated = f"{status_icon} {trimmed_title}{conf_flag}"
+    sanitized = sanitize_mermaid(decorated)
+    
+    # 5. Wrap label
+    return wrap_label(sanitized)
+
+
+def _calculate_dynamic_caps(raw_edges: list[tuple[str, str]], all_stems: set[str]) -> tuple[int, int]:
+    """Helper to calculate connectivity density ratio R and return dynamic limits for nodes and edges.
+    
+    Density R = num_edges / num_connected_nodes if num_connected_nodes > 0 else 0
+    
+    Thresholds calibrated on empirical vault data:
+      R >= 1.5 (Dense): max_nodes = 12, max_edges = 18
+      1.0 <= R < 1.5 (Moderate): max_nodes = 18, max_edges = 25
+      R < 1.0 (Sparse): max_nodes = 25, max_edges = 35
+    """
+    # 1. Identify connected stems from edges
+    connected_stems = set()
+    for u, v in raw_edges:
+        connected_stems.add(u)
+        connected_stems.add(v)
+        
+    num_conn_nodes = len(connected_stems)
+    num_edges = len(raw_edges)
+    
+    # 2. Calculate R
+    R = num_edges / num_conn_nodes if num_conn_nodes > 0 else 0.0
+    
+    # 3. Determine caps
+    if R >= 1.5:
+        return 12, 18
+    elif R >= 1.0:
+        return 18, 25
+    else:
+        return 25, 35
+
+
 def generate_mermaid_flowchart(concepts_in_group: list[dict]) -> str:
     """Generate a clean, professional Mermaid flowchart TD representing connections between concepts.
 
@@ -80,7 +146,7 @@ def generate_mermaid_flowchart(concepts_in_group: list[dict]) -> str:
     # Find active stems in this group
     stems = {c["_stem"] for c in concepts_in_group}
     
-    edges: list[tuple[str, str]] = []
+    raw_edges: list[tuple[str, str]] = []
     seen_edges: set[tuple[str, str]] = set()
     
     for c in concepts_in_group:
@@ -101,7 +167,7 @@ def generate_mermaid_flowchart(concepts_in_group: list[dict]) -> str:
                     edge = (stem, rel_norm)
                     if edge not in seen_edges:
                         seen_edges.add(edge)
-                        edges.append(edge)
+                        raw_edges.append(edge)
                         
         # 2. Parse links inside the body if they point to concepts in the same group
         links = c.get("_links")
@@ -127,16 +193,38 @@ def generate_mermaid_flowchart(concepts_in_group: list[dict]) -> str:
                     edge = (stem, normalized_link)
                     if edge not in seen_edges:
                         seen_edges.add(edge)
-                        edges.append(edge)
+                        raw_edges.append(edge)
 
     # If there are no connections, don't generate the diagram
-    if not edges:
+    if not raw_edges:
         return ""
+
+    # Compute unique undirected edges for density check
+    unique_undirected_edges = {tuple(sorted(e)) for e in raw_edges}
+    
+    # Calculate dynamic caps based on density ratio
+    max_nodes, max_edges = _calculate_dynamic_caps(list(unique_undirected_edges), stems)
+
+    # Rank nodes by degree (number of connections in raw_edges)
+    edge_count: defaultdict[str, int] = defaultdict(int)
+    for u, v in raw_edges:
+        edge_count[u] += 1
+        edge_count[v] += 1
         
-    # Limit edges to 20 to prevent visual chaos
-    if len(edges) > 20:
-        edges = edges[:20]
-        
+    top_stems = sorted(edge_count, key=lambda s: edge_count[s], reverse=True)[:max_nodes]
+    top_set = set(top_stems)
+
+    # Filter edges to only keep those connecting top nodes
+    filtered_edges = [e for e in raw_edges if e[0] in top_set and e[1] in top_set]
+    
+    # Limit edges to max_edges
+    final_edges = filtered_edges[:max_edges]
+    if not final_edges:
+        return ""
+
+    # Find final active nodes to prevent orphans (orphan nodes are excluded)
+    active_nodes = {u for u, v in final_edges} | {v for u, v in final_edges}
+
     # Build diagram lines
     lines = [
         "\n> [!visual]- 🗺️ Sơ đồ Kết Nối Ý Niệm (Concept Map)\n",
@@ -146,29 +234,22 @@ def generate_mermaid_flowchart(concepts_in_group: list[dict]) -> str:
         ">     classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;\n"
     ]
     
-    # Render nodes and edges
-    unique_stems: set[str] = set()
-    for src, tgt in edges:
-        unique_stems.add(src)
-        unique_stems.add(tgt)
-        
+    # Map from stem to concept dict for quick lookup of status/confidence
+    stem_to_concept = {c["_stem"]: c for c in concepts_in_group}
+
     # Render node label maps
-    for stem in sorted(unique_stems):
-        # Find display title in group
-        matching = [c for c in concepts_in_group if c["_stem"] == stem]
-        title = matching[0].get("title", stem) if matching else stem
-        # Trim title to 45 chars first if extremely long, then wrap it nicely
-        trimmed_title = title[:45] + "..." if len(title) > 48 else title
-        trimmed_title = trimmed_title.replace('"', "'").replace("(", "[").replace(")", "]")
-        display_title = wrap_label(trimmed_title)
+    for stem in sorted(active_nodes):
+        concept_dict = stem_to_concept.get(stem, {"_stem": stem})
+        display_title = _get_node_label_and_indicator(concept_dict, max_title_len=45)
         lines.append(f'>     {stem}["{display_title}"]\n')
         
     # Render edges
-    for src, tgt in sorted(edges):
+    for src, tgt in sorted(final_edges):
         lines.append(f">     {src} --> {tgt}\n")
         
     lines.append("> ```\n\n")
     return "".join(lines)
+
 
 
 def build_mermaid_overview(
@@ -272,7 +353,7 @@ def _mermaid_flat_overview(all_concepts: list[dict]) -> str:
         Mermaid diagram string, or empty string if no edges.
     """
     stems = {c["_stem"] for c in all_concepts}
-    edges: list[tuple[str, str]] = []
+    raw_edges: list[tuple[str, str]] = []
     edge_count: defaultdict[str, int] = defaultdict(int)
     seen: set[tuple[str, str]] = set()
 
@@ -289,30 +370,32 @@ def _mermaid_flat_overview(all_concepts: list[dict]) -> str:
                         edge = tuple(sorted([stem, rel_stem]))
                         if edge not in seen:
                             seen.add(edge)
-                            edges.append((stem, rel_stem))
+                            raw_edges.append((stem, rel_stem))
                             edge_count[stem] += 1
                             edge_count[rel_stem] += 1
 
-    if not edges:
+    if not raw_edges:
         return ""
 
-    # Keep top 12 most-connected
-    max_nodes = 12
+    # Calculate dynamic caps based on density ratio
+    max_nodes, max_edges = _calculate_dynamic_caps(raw_edges, stems)
+
+    # Keep top max_nodes most-connected
     top_stems = sorted(edge_count, key=lambda s: edge_count[s], reverse=True)[:max_nodes]
     top_set = set(top_stems)
-    edges = [(s, t) for s, t in edges if s in top_set and t in top_set][:20]
+    filtered_edges = [(s, t) for s, t in raw_edges if s in top_set and t in top_set]
+    
+    # Limit edges
+    final_edges = filtered_edges[:max_edges]
+    if not final_edges:
+        return ""
 
-    stem_to_title: dict[str, str] = {}
-    for c in all_concepts:
-        if c["_stem"] in top_set:
-            title = c.get("title", c["_stem"])
-            if len(title) > 30:
-                title = title[:27] + "..."
-            stem_to_title[c["_stem"]] = title
+    # Map from stem to concept dict for quick lookup of status/confidence
+    stem_to_concept = {c["_stem"]: c for c in all_concepts}
 
-    # Collect active stems from edges
+    # Collect active stems from edges (prevents orphan nodes)
     active: set[str] = set()
-    for s, t in edges:
+    for s, t in final_edges:
         active.add(s)
         active.add(t)
 
@@ -321,11 +404,12 @@ def _mermaid_flat_overview(all_concepts: list[dict]) -> str:
     for idx, stem in enumerate(sorted(active)):
         nid = f"N{idx}"
         id_map[stem] = nid
-        label = sanitize_mermaid(stem_to_title.get(stem, stem))
+        concept_dict = stem_to_concept.get(stem, {"_stem": stem})
+        label = _get_node_label_and_indicator(concept_dict, max_title_len=30)
         lines.append(f'    {nid}["{label}"]')
         lines.append(f"    style {nid} fill:#f5f5f5,stroke:#334155,stroke-width:1px,color:#000")
 
-    for s, t in edges:
+    for s, t in final_edges:
         if s in id_map and t in id_map:
             lines.append(f"    {id_map[s]} --- {id_map[t]}")
 

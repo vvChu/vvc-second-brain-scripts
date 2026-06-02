@@ -98,55 +98,192 @@ def get_embedding_via_gateway(text: str) -> list[float] | None:
     return None
 
 
+def load_and_sync_bm25_cache(concept_files: list[Path]) -> dict:
+    """Tải, kiểm chứng và cập nhật tăng dần bộ cache tokens của BM25.
+    
+    Sử dụng cơ chế kiểm chứng 2 cấp độ:
+      - Cấp độ 1 (Level 1): Kiểm tra OS Metadata (mtime & size) - Cực nhanh, không đọc file.
+      - Cấp độ 2 (Level 2): Đọc nhanh 2KB đầu file để kiểm tra frontmatter 'date_modified'.
+    Tự động dọn dẹp các ghi chú đã bị xóa và đăng ký ghi chú mới/sửa đổi.
+    
+    Args:
+        concept_files: Danh sách các Path đối tượng của các file Concept hiện tại.
+        
+    Returns:
+        Dict mapping từ stem của ghi chú tới thông tin cache của nó.
+    """
+    import os
+    import json
+    import re
+    
+    cache_path = cfg.state_dir / "_bm25_cache.json"
+    cache = {"version": "1.0", "concepts": {}}
+    
+    # 1. Tải cache hiện tại từ đĩa
+    if cache_path.exists():
+        try:
+            with open(cache_path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+                if loaded.get("version") == "1.0" and isinstance(loaded.get("concepts"), dict):
+                    cache = loaded
+        except Exception as e:
+            _logger.warning(f"[BM25 Cache] Không thể tải tệp cache, khởi tạo lại: {e}")
+
+    cached_concepts = cache["concepts"]
+    active_stems = {p.stem for p in concept_files}
+    cache_dirty = False
+
+    # 2. Dọn dẹp các ghi chú đã bị xóa khỏi thư mục concepts
+    stems_to_remove = [stem for stem in cached_concepts if stem not in active_stems]
+    if stems_to_remove:
+        for stem in stems_to_remove:
+            del cached_concepts[stem]
+        cache_dirty = True
+
+    # Helper tách từ đồng bộ tuyệt đối với logic của semantic_merger
+    def tokenize(text: str) -> list[str]:
+        return [w for w in re.findall(r'\w+', text.lower()) if len(w) > 2]
+
+    # 3. Đồng bộ hóa và cập nhật tăng dần bộ cache
+    for p in concept_files:
+        stem = p.stem
+        try:
+            stat = p.stat()
+            current_mtime = stat.st_mtime
+            current_size = stat.st_size
+        except Exception:
+            continue
+
+        cached_entry = cached_concepts.get(stem)
+        
+        # --- LEVEL 1 CACHE HIT ---
+        # Siêu dữ liệu OS (mtime & size) khớp tuyệt đối. Tệp tin không bị thay đổi.
+        # Bỏ qua hoàn toàn việc mở và đọc file!
+        if (
+            cached_entry
+            and cached_entry.get("mtime") == current_mtime
+            and cached_entry.get("size") == current_size
+        ):
+            continue
+
+        # --- LEVEL 2 CACHE HIT ---
+        # OS Metadata thay đổi (ví dụ: bị touch), nhưng date_modified trong frontmatter không đổi.
+        # Đọc nhanh tối đa 2KB đầu file để kiểm tra date_modified.
+        current_date_modified = None
+        try:
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                head = f.read(2048)
+            match = re.search(r"^date_modified:\s*['\"]?([\d-]+)['\"]?", head, re.MULTILINE)
+            if match:
+                current_date_modified = match.group(1).strip()
+        except Exception:
+            pass
+
+        if cached_entry and cached_entry.get("date_modified") == current_date_modified:
+            # Cập nhật lại siêu dữ liệu OS mới vào cache để lần sau ăn trọn Level 1 hit
+            cached_entry["mtime"] = current_mtime
+            cached_entry["size"] = current_size
+            cache_dirty = True
+            continue
+
+        # --- CACHE MISS (Tệp mới hoặc thực sự bị chỉnh sửa nội dung) ---
+        # Đọc toàn bộ nội dung file và phân tích lại từ đầu.
+        try:
+            content = p.read_text(encoding="utf-8")
+            # Loại bỏ stubs và low confidence ngay trong pha lập chỉ mục
+            is_valid = not ("confidence: low" in content or "source_type: stub" in content)
+            
+            tokens = tokenize(content) if is_valid else []
+            
+            cached_concepts[stem] = {
+                "date_modified": current_date_modified,
+                "tokens": tokens,
+                "is_valid": is_valid,
+                "mtime": current_mtime,
+                "size": current_size
+            }
+            cache_dirty = True
+        except Exception as e:
+            _logger.warning(f"[BM25 Cache] Không thể phân tích tệp tin '{p.name}': {e}")
+            continue
+
+    # 4. Lưu cache xuống đĩa một cách an toàn (Atomic Write)
+    if cache_dirty:
+        try:
+            temp_path = cache_path.with_suffix(".tmp")
+            with open(temp_path, "w", encoding="utf-8") as f:
+                json.dump(cache, f, ensure_ascii=False, indent=2)
+            temp_path.replace(cache_path)
+            _logger.info(f"[BM25 Cache] Đã cập nhật và lưu cache tăng dần xuống đĩa ({len(cached_concepts)} tệp tin).")
+        except Exception as e:
+            _logger.error(f"[BM25 Cache] Thất bại khi ghi file cache tĩnh: {e}")
+
+    return cached_concepts
+
+
 def find_semantic_overlap_fallback(new_text: str) -> tuple[str, float] | None:
-    """Fallback mechanism using BM25 to find candidates, then consulting LLM for semantic overlap validation."""
+    """Cơ chế Fallback sử dụng BM25 tìm ứng viên trùng lặp, sau đó tham vấn LLM kiểm chứng ngữ nghĩa.
+    
+    Giải pháp đã được tối ưu hóa toàn diện bằng bộ cache tăng dần 2 cấp độ và nạp JIT Top 3 candidates,
+    giúp giải quyết dứt điểm nút thắt cổ chai I/O đồng bộ kéo dài 19 giây đối với >2.000 files.
+    """
     try:
         from rank_bm25 import BM25Okapi
         import re
+        import numpy as np
         
-        # 1. Collect existing concepts
+        # 1. Quét danh sách các file Concept hiện hữu
         concept_files = list(cfg.concepts_dir.glob("*.md"))
         if not concept_files:
             return None
             
-        # 2. Tokenize corpus and new text
+        # Helper để phân tách văn bản truy vấn
         def tokenize(text: str) -> list[str]:
             return [w for w in re.findall(r'\w+', text.lower()) if len(w) > 2]
             
-        corpus_texts = []
+        # 2. Tải và đồng bộ hóa cache tăng dần (Incremental Tokenized Cache)
+        cached_concepts = load_and_sync_bm25_cache(concept_files)
+        
+        # 3. Xây dựng corpus đã token hóa từ bộ cache (chỉ lấy các tệp hợp lệ)
         sources = []
-        for p in concept_files:
-            try:
-                content = p.read_text(encoding="utf-8")
-                # Skip stubs and low confidence
-                if "confidence: low" in content or "source_type: stub" in content:
-                    continue
-                corpus_texts.append(content)
-                sources.append(p.stem)
-            except Exception:
-                continue
+        tokenized_corpus = []
+        
+        # Sắp xếp các khóa để đảm bảo thứ tự corpus luôn nhất quán (deterministic) khi test
+        for stem in sorted(cached_concepts.keys()):
+            entry = cached_concepts[stem]
+            if entry.get("is_valid", False):
+                sources.append(stem)
+                tokenized_corpus.append(entry["tokens"])
                 
-        if not corpus_texts:
+        if not tokenized_corpus:
+            _logger.warning("[Merger Fallback] Không tìm thấy Concept hợp lệ nào để lập chỉ mục BM25.")
             return None
             
-        tokenized_corpus = [tokenize(txt) for txt in corpus_texts]
+        # 4. Khởi tạo mô hình BM25Okapi và tính điểm cho ghi chú mới
         bm25 = BM25Okapi(tokenized_corpus)
-        
         tokenized_query = tokenize(new_text)
         scores = bm25.get_scores(tokenized_query)
         
-        # 3. Get top 3 BM25 candidates
-        import numpy as np
+        # 5. Lọc ra tối đa Top 3 ứng viên xuất sắc nhất có điểm số > 0
         top_indices = np.argsort(scores)[::-1][:3]
         candidates = []
         for idx in top_indices:
             if scores[idx] > 0:
-                candidates.append((sources[idx], corpus_texts[idx]))
-                
+                stem = sources[idx]
+                concept_path = cfg.concepts_dir / f"{stem}.md"
+                if concept_path.exists():
+                    try:
+                        # Nạp nội dung đầy đủ một cách JIT (Just-In-Time) tại đây
+                        content = concept_path.read_text(encoding="utf-8")
+                        candidates.append((stem, content))
+                    except Exception as e:
+                        _logger.warning(f"[Merger Fallback] Thất bại khi nạp JIT nội dung ứng viên '{stem}': {e}")
+                        continue
+                        
         if not candidates:
             return None
             
-        # 4. Consult LLM for semantic validation
+        # 6. Soạn thảo prompt và tham vấn LLM Trọng tài tối cao để kiểm chứng ngữ nghĩa học thuật
         candidates_str = "\n\n".join([f"Candidate [{stem}]:\n```markdown\n{content[:1500]}...\n```" for stem, content in candidates])
         
         validate_prompt = (
@@ -170,10 +307,10 @@ def find_semantic_overlap_fallback(new_text: str) -> tuple[str, float] | None:
                 matched_stem = match.group(1).strip()
                 if matched_stem in sources:
                     _logger.info(f"[Merger Fallback] BM25+LLM matched concept overlap with '{matched_stem}'")
-                    return matched_stem, 0.90  # Simulated score > 0.88 to trigger merge flow
+                    return matched_stem, 0.90  # Điểm giả lập > 0.88 để kích hoạt luồng hợp nhất (merge flow)
                     
     except Exception as e:
-        _logger.error(f"[Merger Fallback] Error in BM25 fallback: {e}")
+        _logger.error(f"[Merger Fallback] Gặp lỗi nghiêm trọng trong BM25 fallback: {e}")
         
     return None
 

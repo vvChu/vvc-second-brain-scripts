@@ -32,12 +32,12 @@ def mock_vision():
 def tmp_vault(tmp_path):
     """Create a temporary vault structure for testing."""
     # Create directory structure
-    (tmp_path / "04 - Permanent" / "concepts").mkdir(parents=True)
-    (tmp_path / "04 - Permanent" / "sources").mkdir(parents=True)
-    (tmp_path / "05 - Fleeting" / "Test_Book").mkdir(parents=True)
-    (tmp_path / "03 - Resources" / "books" / "Test_Book_MD").mkdir(parents=True)
-    (tmp_path / "00 - Maps of Content").mkdir(parents=True)
-    (tmp_path / "99 - Archive").mkdir(parents=True)
+    (tmp_path / "04 - Permanent" / "concepts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "04 - Permanent" / "sources").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "05 - Fleeting" / "Test_Book").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "03 - Resources" / "books" / "Test_Book_MD").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "00 - Maps of Content").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "99 - Archive").mkdir(parents=True, exist_ok=True)
 
     # Create a sample book corpus
     corpus_dir = tmp_path / "03 - Resources" / "books" / "Test_Book_MD"
@@ -113,3 +113,42 @@ def tmp_vault(tmp_path):
     )
 
     return tmp_path
+
+
+@pytest.fixture(autouse=True)
+def mock_cfg_paths(tmp_path):
+    """Globally mock cfg paths to use a temporary directory during all tests to avoid G:\\ dependencies."""
+    from core.config import cfg
+    
+    # Create required subdirectories
+    (tmp_path / "04 - Permanent" / "concepts").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "04 - Permanent" / "sources").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "05 - Fleeting").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "00 - Maps of Content").mkdir(parents=True, exist_ok=True)
+    (tmp_path / "99 - Archive").mkdir(parents=True, exist_ok=True)
+    
+    # Save original values
+    orig_vault_root = cfg.vault_root
+    orig_concepts_dir = cfg.concepts_dir
+    orig_sources_dir = cfg.sources_dir
+    orig_fleeting_dir = cfg.fleeting_dir
+    orig_moc_dir = cfg.moc_dir
+    orig_archive_dir = cfg.archive_dir
+    
+    # Since cfg is a frozen dataclass, we must use object.__setattr__
+    object.__setattr__(cfg, "vault_root", tmp_path)
+    object.__setattr__(cfg, "concepts_dir", tmp_path / "04 - Permanent" / "concepts")
+    object.__setattr__(cfg, "sources_dir", tmp_path / "04 - Permanent" / "sources")
+    object.__setattr__(cfg, "fleeting_dir", tmp_path / "05 - Fleeting")
+    object.__setattr__(cfg, "moc_dir", tmp_path / "00 - Maps of Content")
+    object.__setattr__(cfg, "archive_dir", tmp_path / "99 - Archive")
+    
+    yield
+    
+    # Restore original values
+    object.__setattr__(cfg, "vault_root", orig_vault_root)
+    object.__setattr__(cfg, "concepts_dir", orig_concepts_dir)
+    object.__setattr__(cfg, "sources_dir", orig_sources_dir)
+    object.__setattr__(cfg, "fleeting_dir", orig_fleeting_dir)
+    object.__setattr__(cfg, "moc_dir", orig_moc_dir)
+    object.__setattr__(cfg, "archive_dir", orig_archive_dir)

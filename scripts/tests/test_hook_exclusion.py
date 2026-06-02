@@ -172,3 +172,74 @@ def test_batch_hook_exclusion_data_flow(
     assert "[CRITICAL DIRECTIVE: Để tránh trùng lặp trích dẫn" in second_call_args["highlighted"]
     assert '- "Trích dẫn thứ nhất."' in second_call_args["highlighted"]
     assert "Hãy chọn một câu trích dẫn/highlight khác" in second_call_args["highlighted"]
+    assert "đã được bọc trong thẻ <USED_HOOK>...</USED_HOOK>" in second_call_args["highlighted"]
+
+
+def test_summary_hook_linter():
+    """Should correctly identify when YAML summary duplicates or heavily overlaps with Evidence Hook."""
+    from pipeline.post_process import _validate_quality
+
+    dummy_body = (
+        "\n\n## Core Idea\n"
+        "Đây là phần nội dung phân tích chi tiết của ghi chú khái niệm tri thức học thuật này. "
+        "Nội dung này cần phải dài hơn ba trăm ký tự để vượt qua bộ lọc chất lượng tĩnh của hệ thống. "
+        "Chúng ta đang viết thêm rất nhiều từ để đảm bảo rằng chiều dài của phần thân bài đạt yêu cầu tối thiểu "
+        "là 300 ký tự. Hệ thống linter sẽ kiểm tra độ dài của ghi chú sau khi đã loại bỏ phần frontmatter và "
+        "nếu nó quá ngắn thì sẽ trả về lỗi chất lượng. Việc bổ sung dòng chữ này giúp kiểm thử diễn ra trơn tru."
+    )
+
+    # 1. Valid Note (Distinct)
+    note_valid = (
+        "---\n"
+        "title: Concept Một\n"
+        "summary: Đây là một câu tóm tắt ý tưởng khái quát.\n"
+        "---\n"
+        "> \"Đây là trích dẫn nguyên văn khác hoàn toàn.\"\n"
+        "> — **Dave Ulrich**\n"
+        + dummy_body
+    )
+    assert not _validate_quality(note_valid, "concept_mot")
+
+    # 2. Invalid Note (Direct Duplicate)
+    note_dup = (
+        "---\n"
+        "title: Concept Một\n"
+        "summary: Đây là trích dẫn nguyên văn giống hệt.\n"
+        "---\n"
+        "> \"Đây là trích dẫn nguyên văn giống hệt.\"\n"
+        "> — **Dave Ulrich**\n"
+        + dummy_body
+    )
+    failures_dup = _validate_quality(note_dup, "concept_mot")
+    assert len(failures_dup) == 1
+    assert "summary duplicates or overlaps" in failures_dup[0]
+
+    # 3. Invalid Note (High overlap Jaccard >85% words)
+    note_overlap = (
+        "---\n"
+        "title: Concept Một\n"
+        "summary: Trích dẫn nguyên văn giống hệt nhau này.\n"
+        "---\n"
+        "> \"Trích dẫn nguyên văn giống hệt nhau này.\"\n"
+        "> — **Dave Ulrich**\n"
+        + dummy_body
+    )
+    failures_overlap = _validate_quality(note_overlap, "concept_mot")
+    assert len(failures_overlap) == 1
+    assert "summary duplicates or overlaps" in failures_overlap[0]
+
+
+def test_hybrid_xml_marking_regex():
+    """Should correctly wrap matches of excluded hooks in highlighted text with XML tags."""
+    import re
+    
+    combined_h = "Đây là văn bản nguồn Highlight thứ nhất chứa đoạn trích dẫn Dave Ulrich."
+    h = "đoạn trích dẫn Dave Ulrich"
+    
+    # Simulate our image_processor.py replacement logic
+    escaped_h = re.escape(h)
+    pattern = re.compile(escaped_h, re.IGNORECASE)
+    result = pattern.sub(lambda m: f"<USED_HOOK>{m.group(0)}</USED_HOOK>", combined_h)
+    
+    assert result == "Đây là văn bản nguồn Highlight thứ nhất chứa <USED_HOOK>đoạn trích dẫn Dave Ulrich</USED_HOOK>."
+

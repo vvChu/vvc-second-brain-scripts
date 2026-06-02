@@ -78,7 +78,7 @@ def synthesize_concept(
         gt_page=gt_page or "",
         gt_chapter_ref=gt_chapter_ref,
         today=today,
-        ground_truth_excerpt=ground_truth[:300] if ground_truth else "(không có)",
+        ground_truth_excerpt=ground_truth if ground_truth else "(không có)",
         chapter_diagrams=chapter_diagrams,
     )
 

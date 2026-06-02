@@ -204,7 +204,7 @@ def _download_grid_with_retry(url: str, dest_path: Path, max_retries: int = 3, t
     return False
 
 
-def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[float]) -> list[Path]:
+def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[float], duration_sec: float = 600.0) -> list[Path]:
     """Download storyboard grids and crop target timestamps into static frame files.
     
     Bypasses decoding the raw video by extracting small frame tiles directly from
@@ -223,10 +223,18 @@ def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[flo
     fragment_duration = sb0.get("fragment_duration")
     if not fragment_duration:
         total_dur = sum(f.get("duration", 0) for f in fragments)
-        fragment_duration = total_dur / len(fragments) if fragments else 88.62
+        if total_dur > 0:
+            fragment_duration = total_dur / len(fragments)
+        elif duration_sec and len(fragments) > 0:
+            fragment_duration = duration_sec / len(fragments)
+        else:
+            fragment_duration = 88.62
 
     if fragment_duration <= 0:
-        fragment_duration = 88.62
+        if duration_sec and len(fragments) > 0:
+            fragment_duration = duration_sec / len(fragments)
+        else:
+            fragment_duration = 88.62
 
     tile_duration = fragment_duration / num_tiles
     if tile_duration <= 0:
@@ -445,11 +453,14 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         chapters = info_dict.get("chapters") or []
         heatmap = info_dict.get("heatmap") or []
         
-        # Tìm cấu hình Storyboard sb0 (hoặc sb1/sb2 làm fallback)
+        # Tìm cấu hình Storyboard sb2, sb1, sb0 (ưu tiên chất lượng cao nhất)
         sb0 = None
-        for fmt in info_dict.get("formats", []):
-            if fmt.get("format_id") == "sb0":
-                sb0 = fmt
+        for target_sb in ["sb2", "sb1", "sb0"]:
+            for fmt in info_dict.get("formats", []):
+                if fmt.get("format_id") == target_sb:
+                    sb0 = fmt
+                    break
+            if sb0:
                 break
         if not sb0:
             for fmt in info_dict.get("formats", []):
@@ -463,7 +474,7 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         frame_metadata = {}
         if sb0:
             _logger.info("Step 3: Two-Stage Hybrid Ingestion (Stage 1 Storyboard coarse sampling)...")
-            extracted_frames = _get_storyboard_frames(sb0, tmp_dir, target_timestamps)
+            extracted_frames = _get_storyboard_frames(sb0, tmp_dir, target_timestamps, duration_sec)
             extraction_method = "storyboard_slice"
             _logger.info(f"Đã trích xuất {len(extracted_frames)} coarse frames từ storyboards CDN.")
             for i, p in enumerate(extracted_frames):

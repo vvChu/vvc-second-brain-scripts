@@ -74,11 +74,11 @@ def test_download_audio_via_ytdlp(mock_ytdl_class, tmp_path):
     # Mock config concepts_dir parents
     from core.config import cfg
     mock_concepts_dir = tmp_path / "04 - Permanent" / "concepts"
-    mock_concepts_dir.mkdir(parents=True)
+    mock_concepts_dir.mkdir(parents=True, exist_ok=True)
     
     # Create mock downloaded file
     fleeting_dir = tmp_path / "05 - Fleeting"
-    fleeting_dir.mkdir(parents=True)
+    fleeting_dir.mkdir(parents=True, exist_ok=True)
     downloaded_file = fleeting_dir / "ABC123xyz.webm"
     downloaded_file.write_text("audio data")
     

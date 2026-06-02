@@ -548,7 +548,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                 source_ref = find_source_ref(book_name)
                 guideline = f"\n\n[GUIDELINE: Bạn BẮT BUỘC phải tạo concept note cho khái niệm mang tên chính xác là '{title}']"
                 
-                # Add Hook Overlap Prevention Directive
+                # Add Hook Overlap Prevention Directive and Hybrid XML Marking
                 exclude_directive = ""
                 if exclude_hooks:
                     exclude_directive = (
@@ -556,7 +556,15 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                     )
                     for h in exclude_hooks:
                         exclude_directive += f'- "{h}"\n'
-                    exclude_directive += "Hãy chọn một câu trích dẫn/highlight khác trong văn bản nguồn để làm Evidence Hook.]"
+                        # Hybrid XML Marking: wrap matches in highlighted text
+                        if len(h) > 10:
+                            try:
+                                escaped_h = re.escape(h)
+                                pattern = re.compile(escaped_h, re.IGNORECASE)
+                                combined_h = pattern.sub(lambda m: f"<USED_HOOK>{m.group(0)}</USED_HOOK>", combined_h)
+                            except Exception:
+                                pass
+                    exclude_directive += "Hãy chọn một câu trích dẫn/highlight khác trong văn bản nguồn để làm Evidence Hook. Các đoạn trích dẫn đã bị hệ thống trước đó dùng làm Hook đã được bọc trong thẻ <USED_HOOK>...</USED_HOOK> ngay trong văn bản nguồn phía trên để bạn dễ nhận biết và tránh xa.]"
 
                 gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
                 
