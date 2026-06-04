@@ -1,8 +1,12 @@
-"""VvC Second Brain — Article Image Extractor (v8.9.6).
+"""VvC Second Brain — Article Image Extractor (v8.9.7).
 
 Downloads, filters, and compresses article images locally for Obsidian embedding.
 Smart Filter heuristics exclude noise (logos, icons, trackers, navigation).
 Saves to ``04 - Permanent/sources/assets/<domain>/`` as WebP.
+
+v8.9.7 — JIT Vision Captioning: automatically generates Vietnamese alt-text for raster
+images with empty alt attributes, enabling the REDUCE LLM step to correctly embed
+diagrams into Concept Notes using Obsidian ``![[filename]]`` syntax.
 
 Usage::
 
@@ -270,6 +274,41 @@ def _download_and_compress(url: str, save_path: Path) -> bool:
         return False
 
 
+def _generate_vision_caption(save_path: Path) -> str:
+    """JIT Vision Caption — generate a short Vietnamese description for a raster image.
+
+    Called only when the image's original ``alt`` attribute is empty. Skips SVG files
+    because Pillow (used internally by ``encode_image``) does not support SVG decoding.
+
+    Args:
+        save_path: Local path to the already-downloaded WebP/PNG/JPG image.
+
+    Returns:
+        Short Vietnamese description (1-2 sentences), or empty string on failure.
+    """
+    if save_path.suffix.lower() == ".svg":
+        return ""  # SVG not supported by Pillow encoder
+    if not save_path.exists():
+        return ""
+    try:
+        from core.llm.vision_client import call_vision  # lazy import — avoid circular dep
+        prompt = (
+            "Mô tả ngắn gọn (1-2 câu tiếng Việt) nội dung hình ảnh này: "
+            "đây là loại sơ đồ/biểu đồ/hình minh hoạ/ảnh chụp màn hình gì, "
+            "thể hiện khái niệm hoặc thông tin gì? "
+            "Chỉ mô tả nội dung chính, không bình luận thêm, không bắt đầu bằng 'Hình ảnh này'."
+        )
+        caption = call_vision(save_path, prompt, max_pixels=768) or ""
+        # Truncate to 200 chars to keep metadata compact
+        if len(caption) > 200:
+            caption = caption[:197].rsplit(" ", 1)[0] + "..."
+        _logger.debug(f"[JIT caption] {save_path.name}: {caption[:60]}...")
+        return caption
+    except Exception as exc:
+        _logger.debug(f"[JIT caption] Skipped {save_path.name}: {exc}")
+        return ""
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -401,9 +440,11 @@ def extract_article_images(
     already_cached = [c for c in candidates if c["save_path"].exists()]
 
     for c in already_cached:
+        # JIT caption for cached files with empty alt
+        alt = c["alt"] or _generate_vision_caption(c["save_path"])
         results.append({
             "filename": c["filename"],
-            "alt": c["alt"],
+            "alt": alt,
             "original_url": c["url"],
         })
 
@@ -419,9 +460,11 @@ def extract_article_images(
                 cand = future_map[future]
                 try:
                     if future.result():
+                        # JIT caption for newly downloaded files with empty alt
+                        alt = cand["alt"] or _generate_vision_caption(cand["save_path"])
                         results.append({
                             "filename": cand["filename"],
-                            "alt": cand["alt"],
+                            "alt": alt,
                             "original_url": cand["url"],
                         })
                 except Exception as exc:

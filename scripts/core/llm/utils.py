@@ -98,6 +98,9 @@ def encode_image(image_path: Path, max_pixels: int = 1024, quality: int = 85) ->
         img = ImageOps.exif_transpose(img)  # Auto-orient
         img.thumbnail((max_pixels, max_pixels), Image.Resampling.LANCZOS)
 
+        if img.mode in ("RGBA", "P"):
+            img = img.convert("RGB")
+
         from io import BytesIO
         buf = BytesIO()
         img.save(buf, format="JPEG", quality=quality)
