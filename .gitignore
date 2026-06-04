@@ -37,6 +37,8 @@ scripts/_query_log.jsonl
 scripts/_sync_manifest.json
 scripts/logs/
 scripts/.state/
+scripts/knowledge_graph/graph_data.json
+scripts/knowledge_graph/graph_data.js
 
 # --- Obsidian Core & Syncthing ---
 .obsidian/

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>VvC Knowledge Graph</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- ===== Toolbar ===== -->
+    <header id="toolbar">
+      <div class="logo">🧠 <span>VvC</span> Knowledge Graph</div>
+
+      <!-- Search -->
+      <div class="search-wrapper">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M11.5 7a4.5 4.5 0 1 1-9 0 4.5 4.5 0 0 1 9 0Zm-.82 4.74a6 6 0 1 1 1.06-1.06l3.04 3.04a.75.75 0 1 1-1.06 1.06l-3.04-3.04Z"/>
+        </svg>
+        <input id="search-input" type="text" placeholder="Search nodes… (title, alias, tag)" autocomplete="off" />
+      </div>
+      <span id="search-count"></span>
+
+      <!-- Type Filters -->
+      <div class="filter-group">
+        <button class="filter-btn active" data-type="concept">
+          <span class="dot"></span> Concepts
+        </button>
+        <button class="filter-btn active" data-type="source">
+          <span class="dot"></span> Sources
+        </button>
+        <button class="filter-btn active" data-type="topic">
+          <span class="dot"></span> Topics
+        </button>
+
+        <!-- Tag Filter -->
+        <div class="tag-filter-wrapper">
+          <button id="tag-filter-btn">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M1 2a1 1 0 0 1 1-1h12a1 1 0 0 1 1 1v2.586a1 1 0 0 1-.293.707L10 10v4a1 1 0 0 1-.553.894l-2 1A1 1 0 0 1 6 15V10L1.293 5.293A1 1 0 0 1 1 4.586V2Z"/>
+            </svg>
+            Tags
+          </button>
+          <div id="tag-dropdown">
+            <input id="tag-search" type="text" placeholder="Filter tags…" autocomplete="off" />
+            <div id="tag-list"></div>
+            <button id="clear-tags">Clear all</button>
+          </div>
+        </div>
+      </div>
+
+      <span id="stats-badge"></span>
+    </header>
+
+    <!-- ===== Main Area ===== -->
+    <div id="main">
+      <!-- Graph Canvas -->
+      <div id="graph-container">
+        <div id="loading-overlay">
+          <div class="spinner"></div>
+          <p>Initializing graph…</p>
+        </div>
+      </div>
+
+      <!-- Sidebar (details panel) -->
+      <aside id="sidebar">
+        <div class="sidebar-header">
+          <h2 id="sidebar-title">Node Details</h2>
+          <button class="close-btn" id="sidebar-close" title="Close">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
+              <path d="M3.72 3.72a.75.75 0 0 1 1.06 0L8 6.94l3.22-3.22a.75.75 0 1 1 1.06 1.06L9.06 8l3.22 3.22a.75.75 0 1 1-1.06 1.06L8 9.06l-3.22 3.22a.75.75 0 0 1-1.06-1.06L6.94 8 3.72 4.78a.75.75 0 0 1 0-1.06Z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="sidebar-body" id="sidebar-body">
+          <div class="empty-state">Click a node to view details</div>
+        </div>
+      </aside>
+    </div>
+  </div>
+
+  <!-- ===== Dependencies ===== -->
+  <!-- force-graph: Canvas-based 2D force-directed graph (handles 2000+ nodes) -->
+  <script src="https://unpkg.com/force-graph@1.47.4/dist/force-graph.min.js"></script>
+
+  <!-- Graph data: expects window.GRAPH_DATA to be set -->
+  <script src="graph_data.js"></script>
+
+  <!-- App logic -->
+  <script src="graph.js"></script>
+</body>
+</html>
