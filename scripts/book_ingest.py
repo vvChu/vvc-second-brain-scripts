@@ -55,6 +55,39 @@ _logger = logging.getLogger("vvc.book")
 
 BOOK_EXTENSIONS = {".epub", ".pdf"}
 
+_PID_FILE = _SCRIPT_DIR / ".book_ingest.pid"
+
+
+def _write_pid() -> None:
+    """Write PID file to prevent duplicate instances."""
+    _PID_FILE.write_text(str(os.getpid()))
+
+
+def _cleanup_pid() -> None:
+    """Remove PID file on shutdown."""
+    try:
+        _PID_FILE.unlink(missing_ok=True)
+    except OSError:
+        pass
+
+
+def _check_pid() -> bool:
+    """Check if another book ingestion daemon instance is running."""
+    if not _PID_FILE.exists():
+        return False
+    try:
+        pid = int(_PID_FILE.read_text().strip())
+        import ctypes
+        kernel32 = ctypes.windll.kernel32
+        handle = kernel32.OpenProcess(0x1000, False, pid)
+        if handle:
+            kernel32.CloseHandle(handle)
+            return True
+    except (ValueError, OSError, AttributeError):
+        pass
+    return False
+
+
 import queue
 
 _work_queue: queue.Queue[Path] = queue.Queue()
@@ -327,6 +360,11 @@ def main() -> None:
 
     _logger.info("Book Ingestion Daemon v8.0 (Watchdog-driven) started")
 
+    if _check_pid():
+        _logger.warning("Another book ingestion daemon instance is already running. Exiting.")
+        return
+    _write_pid()
+
     # JIT Google Drive mount / junction directory readiness guard
     max_retries = 15
     for attempt in range(max_retries):
@@ -404,6 +442,7 @@ def main() -> None:
         # Graceful shutdown: wait for book worker thread to finish
         _logger.info("Waiting for book worker thread to finish...")
         worker.join(timeout=30)
+        _cleanup_pid()
         _logger.info("Book Ingestion Daemon stopped")
 
 

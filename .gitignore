@@ -32,6 +32,7 @@ llm-wiki.md
 .rejected_stubs.json
 .domain_suggestions.json
 scripts/.daemon.pid
+scripts/.book_ingest.pid
 scripts/.dump_state.json
 scripts/_embedding_index.npz*
 scripts/_query_log.jsonl
