@@ -173,3 +173,149 @@ def test_parse_key_frames_response_dedup_and_mixed():
     assert indices == [2, 5]
     assert alts[2] == "Mô tả 2"
 
+
+def test_resolve_key_frames_with_fallback_respects_empty():
+    """Verify that KEY_FRAMES: [] (intentional model refusal for podcasts/talking heads) is respected and does NOT fallback."""
+    from services.youtube_transcript import _resolve_key_frames_with_fallback
+
+    # Case A1: Standard explicit empty list
+    summary_empty = (
+        "Video là podcast thảo luận bàn tròn, 100% người nói chuyện, không chứa slide hay sơ đồ học thuật.\n\n"
+        "KEY_FRAMES: []"
+    )
+    cleaned, indices, alts = _resolve_key_frames_with_fallback(summary_empty, total_frames=6)
+    assert cleaned == "Video là podcast thảo luận bàn tròn, 100% người nói chuyện, không chứa slide hay sơ đồ học thuật."
+    assert indices == []
+    assert alts == {}
+
+    # Case A2: Explicit empty list wrapped in markdown code fence
+    summary_fenced_empty = (
+        "Nội dung trò chuyện.\n\n"
+        "KEY_FRAMES:\n```json\n[]\n```"
+    )
+    cleaned_f, indices_f, alts_f = _resolve_key_frames_with_fallback(summary_fenced_empty, total_frames=4)
+    assert cleaned_f == "Nội dung trò chuyện."
+    assert indices_f == []
+    assert alts_f == {}
+
+    # Case A3: Explicit empty list with spaces inside brackets
+    summary_spaced_empty = "Trò chuyện trực tuyến.\nKEY_FRAMES: [   ]"
+    cleaned_s, indices_s, alts_s = _resolve_key_frames_with_fallback(summary_spaced_empty, total_frames=5)
+    assert cleaned_s == "Trò chuyện trực tuyến."
+    assert indices_s == []
+    assert alts_s == {}
+
+    # Case A4: Case-insensitive and markdown bold header with empty list
+    summary_bold_empty = "Video phỏng vấn.\n\n**KEY_FRAMES:** []"
+    cleaned_b, indices_b, alts_b = _resolve_key_frames_with_fallback(summary_bold_empty, total_frames=5)
+    assert cleaned_b == "Video phỏng vấn."
+    assert indices_b == []
+    assert alts_b == {}
+
+
+def test_resolve_key_frames_with_fallback_missing_header():
+    """Verify that missing KEY_FRAMES: header (format non-compliance) triggers automatic frame selection fallback."""
+    from services.youtube_transcript import _resolve_key_frames_with_fallback
+
+    # Case B1: No KEY_FRAMES: header in response at all (>= 3 frames -> start, middle, end)
+    summary_no_header = "Mô tả toàn bộ visual của video nhưng model quên xuất header KEY_FRAMES."
+    cleaned, indices, alts = _resolve_key_frames_with_fallback(summary_no_header, total_frames=7)
+    assert cleaned == "Mô tả toàn bộ visual của video nhưng model quên xuất header KEY_FRAMES."
+    assert indices == [0, 3, 6]
+    assert alts == {}
+
+    # Case B2: Missing header with exactly 3 frames
+    _, indices_3, _ = _resolve_key_frames_with_fallback(summary_no_header, total_frames=3)
+    assert indices_3 == [0, 1, 2]
+
+    # Case B3: Missing header with 2 frames (< 3 frames -> list(range(total_frames)))
+    _, indices_2, _ = _resolve_key_frames_with_fallback(summary_no_header, total_frames=2)
+    assert indices_2 == [0, 1]
+
+    # Case B4: Missing header with 0 frames
+    _, indices_0, _ = _resolve_key_frames_with_fallback(summary_no_header, total_frames=0)
+    assert indices_0 == []
+
+
+def test_resolve_key_frames_with_fallback_parse_failure():
+    """Verify that malformed JSON or parse failure triggers fallback instead of falsely treating as refusal."""
+    from services.youtube_transcript import _resolve_key_frames_with_fallback, KeyFramesParseResult
+
+    # Case C1: Truncated JSON with unclosed bracket (e.g. token cutoff)
+    summary_truncated = (
+        "Video chứa slide kỹ thuật.\n\n"
+        'KEY_FRAMES: [{"index": 1, "alt": "Slide kiến trúc"'
+    )
+    cleaned_t, indices_t, alts_t = _resolve_key_frames_with_fallback(summary_truncated, total_frames=6)
+    assert cleaned_t == "Video chứa slide kỹ thuật."
+    assert indices_t == [0, 3, 5]  # Fallback triggered!
+    assert alts_t == {}
+
+    # Case C2: Non-JSON payload after header
+    summary_non_json = "Mô tả visual.\nKEY_FRAMES: None"
+    cleaned_nj, indices_nj, _ = _resolve_key_frames_with_fallback(summary_non_json, total_frames=4)
+    assert cleaned_nj == "Mô tả visual."
+    assert indices_nj == [0, 2, 3]
+
+    # Case C3: Empty text after header
+    summary_empty_header = "Mô tả visual.\nKEY_FRAMES:"
+    cleaned_eh, indices_eh, _ = _resolve_key_frames_with_fallback(summary_empty_header, total_frames=5)
+    assert cleaned_eh == "Mô tả visual."
+    assert indices_eh == [0, 2, 4]
+
+    # Case C4: JSON objects with no valid integer indices
+    summary_invalid_indices = 'Mô tả.\nKEY_FRAMES: [{"index": "invalid", "alt": "test"}]'
+    cleaned_ii, indices_ii, _ = _resolve_key_frames_with_fallback(summary_invalid_indices, total_frames=6)
+    assert cleaned_ii == "Mô tả."
+    assert indices_ii == [0, 3, 5]
+
+
+def test_resolve_key_frames_with_fallback_valid_selection():
+    """Verify that normal valid KEY_FRAMES selection returns correct indices without fallback."""
+    from services.youtube_transcript import _resolve_key_frames_with_fallback
+
+    summary = (
+        "Mô tả visual.\n\n"
+        'KEY_FRAMES: [{"index": 1, "alt": "Slide 1"}, {"index": 4, "alt": "Sơ đồ kiến trúc"}]'
+    )
+    cleaned, indices, alts = _resolve_key_frames_with_fallback(summary, total_frames=6)
+    assert cleaned == "Mô tả visual."
+    assert indices == [1, 4]
+    assert alts == {1: "Slide 1", 4: "Sơ đồ kiến trúc"}
+
+
+def test_keyframes_parse_result_attributes():
+    """Verify KeyFramesParseResult behaves as a 3-tuple while exposing explicit flags."""
+    from services.youtube_transcript import _parse_key_frames_response, KeyFramesParseResult
+
+    # Normal valid
+    res_valid = _parse_key_frames_response('Tóm tắt\nKEY_FRAMES: [{"index": 0}]')
+    assert isinstance(res_valid, tuple)
+    assert len(res_valid) == 3
+    cleaned, ind, alts = res_valid
+    assert cleaned == "Tóm tắt"
+    assert ind == [0]
+    assert res_valid.header_present is True
+    assert res_valid.parse_success is True
+    assert res_valid.is_explicit_empty is False
+
+    # Explicit empty
+    res_empty = _parse_key_frames_response("Tóm tắt\nKEY_FRAMES: []")
+    assert res_empty.header_present is True
+    assert res_empty.parse_success is True
+    assert res_empty.is_explicit_empty is True
+
+    # Parse failure
+    res_fail = _parse_key_frames_response("Tóm tắt\nKEY_FRAMES: [unclosed")
+    assert res_fail.header_present is True
+    assert res_fail.parse_success is False
+    assert res_fail.is_explicit_empty is False
+
+    # Missing header
+    res_none = _parse_key_frames_response("Chỉ có văn bản")
+    assert res_none.header_present is False
+    assert res_none.parse_success is False
+    assert res_none.is_explicit_empty is False
+
+
+

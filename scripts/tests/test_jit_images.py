@@ -55,15 +55,27 @@ def test_is_decorative_image(tmp_path):
     assert _is_decorative_image("book_cover.jpg", tmp_path) is True
     assert _is_decorative_image("logo_vibe.png", tmp_path) is True
     assert _is_decorative_image("some_credits_page.png", tmp_path) is True
+    assert _is_decorative_image("system_icon.png", tmp_path) is True
+    assert _is_decorative_image("decorative_header.jpg", tmp_path) is True
+
+    # Test image_processor._is_decorative_image keyword synchronization
+    from pipeline.image_processor import _is_decorative_image as _is_decorative_image_ip
+    assert _is_decorative_image_ip("book_cover.jpg", tmp_path) is True
+    assert _is_decorative_image_ip("logo_vibe.png", tmp_path) is True
+    assert _is_decorative_image_ip("some_credits_page.png", tmp_path) is True
+    assert _is_decorative_image_ip("system_icon.png", tmp_path) is True
+    assert _is_decorative_image_ip("decorative_header.jpg", tmp_path) is True
     
     # Test file size matching
     small_file = tmp_path / "small.jpg"
     small_file.write_bytes(b"\x00" * 4000)  # 4 KB
     assert _is_decorative_image("normal_fig.jpg", small_file) is True
+    assert _is_decorative_image_ip("normal_fig.jpg", small_file) is True
 
     large_file = tmp_path / "large.jpg"
     large_file.write_bytes(b"\x00" * 8000)  # 8 KB
     assert _is_decorative_image("normal_fig.jpg", large_file) is False
+    assert _is_decorative_image_ip("normal_fig.jpg", large_file) is False
 
 
 def _create_noise_image(path: Path, fmt: str):

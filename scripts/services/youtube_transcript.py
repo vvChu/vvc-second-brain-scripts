@@ -16,6 +16,8 @@ from services.youtube.visual_extractor import (  # noqa: F401
     _select_best_storyboard_format,
     _get_video_download_ydl_opts,
     _parse_key_frames_response,
+    _resolve_key_frames_with_fallback,
+    KeyFramesParseResult,
     _MAX_KEY_FRAMES,
 )
 from services.youtube.transcript import (  # noqa: F401

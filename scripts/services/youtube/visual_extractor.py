@@ -428,7 +428,31 @@ def _get_video_download_ydl_opts(out_tmpl: str) -> dict:
     }
 
 
-def _parse_key_frames_response(summary: str) -> tuple[str, list[int], dict[int, str]]:
+class KeyFramesParseResult(tuple):
+    """3-tuple subclass preserving (cleaned_summary, key_frame_indices, key_frame_alts)
+    while exposing explicit parsing status flags."""
+    is_explicit_empty: bool = False
+    parse_success: bool = False
+    header_present: bool = False
+
+    def __new__(
+        cls,
+        cleaned_summary: str,
+        key_frame_indices: list[int],
+        key_frame_alts: dict[int, str],
+        *,
+        is_explicit_empty: bool = False,
+        parse_success: bool = False,
+        header_present: bool = False,
+    ):
+        obj = super().__new__(cls, (cleaned_summary, key_frame_indices, key_frame_alts))
+        obj.is_explicit_empty = is_explicit_empty
+        obj.parse_success = parse_success
+        obj.header_present = header_present
+        return obj
+
+
+def _parse_key_frames_response(summary: str) -> KeyFramesParseResult:
     """Parse KEY_FRAMES from LLM-as-Judge output.
     
     Supports both v12.0 format:
@@ -437,18 +461,23 @@ def _parse_key_frames_response(summary: str) -> tuple[str, list[int], dict[int, 
         KEY_FRAMES: [1, 2, 3]
         
     Returns:
-        tuple: (cleaned_summary, list_of_indices, dict_of_alts)
+        KeyFramesParseResult (3-tuple): (cleaned_summary, list_of_indices, dict_of_alts)
+        with flags: .is_explicit_empty, .parse_success, .header_present.
     """
     key_frame_indices: list[int] = []
     key_frame_alts: dict[int, str] = {}
     cleaned_summary = summary
     
-    if "KEY_FRAMES:" not in summary:
-        return cleaned_summary, key_frame_indices, key_frame_alts
+    matches = list(re.finditer(r"(?:\*\*|__)?KEY_FRAMES(?:\*\*|__)?\s*:(?:\*\*|__)?", summary, flags=re.IGNORECASE))
+    if not matches:
+        return KeyFramesParseResult(
+            cleaned_summary, key_frame_indices, key_frame_alts,
+            is_explicit_empty=False, parse_success=False, header_present=False
+        )
         
-    parts = summary.split("KEY_FRAMES:", 1)
-    cleaned_summary = parts[0].strip()
-    json_part = parts[1].strip()
+    match = matches[-1]
+    cleaned_summary = summary[:match.start()].strip()
+    json_part = summary[match.end():].strip()
 
     # Strip markdown code fences if output is wrapped
     json_part = re.sub(r"^```(?:json)?\s*", "", json_part, flags=re.IGNORECASE)
@@ -479,7 +508,16 @@ def _parse_key_frames_response(summary: str) -> tuple[str, list[int], dict[int, 
 
     if not isinstance(raw_list, list):
         _logger.warning("Không thể parse JSON KEY_FRAMES từ response.")
-        return cleaned_summary, key_frame_indices, key_frame_alts
+        return KeyFramesParseResult(
+            cleaned_summary, key_frame_indices, key_frame_alts,
+            is_explicit_empty=False, parse_success=False, header_present=True
+        )
+
+    if len(raw_list) == 0:
+        return KeyFramesParseResult(
+            cleaned_summary, key_frame_indices, key_frame_alts,
+            is_explicit_empty=True, parse_success=True, header_present=True
+        )
 
     seen_indices = set()
     for item in raw_list:
@@ -505,6 +543,46 @@ def _parse_key_frames_response(summary: str) -> tuple[str, list[int], dict[int, 
             except (ValueError, TypeError):
                 pass
         
+    return KeyFramesParseResult(
+        cleaned_summary, key_frame_indices, key_frame_alts,
+        is_explicit_empty=False, parse_success=True, header_present=True
+    )
+
+
+def _resolve_key_frames_with_fallback(
+    summary: str,
+    total_frames: int,
+) -> tuple[str, list[int], dict[int, str]]:
+    """Phân giải KEY_FRAMES từ phản hồi của model, phân biệt rõ quyết định từ chối và lỗi format / parse thất bại.
+    
+    - Trường hợp 1 (Từ chối có chủ ý): Phản hồi chứa 'KEY_FRAMES:' và danh sách parse được là rỗng []
+      (video 100% talking heads/podcast không có slide/sơ đồ). Tôn trọng quyết định, key_frame_indices = [].
+    - Trường hợp 2 (Chọn frames thành công): Phản hồi chứa 'KEY_FRAMES:' và parse được danh sách indices hợp lệ.
+    - Trường hợp 3 (Lỗi format / Parse thất bại): Chuỗi 'KEY_FRAMES:' hoàn toàn không xuất hiện HOẶC
+      parse JSON thất bại / không trích xuất được frame hợp lệ nào -> Kích hoạt fallback tự động chọn frame (đầu, giữa, cuối).
+    """
+    parse_result = _parse_key_frames_response(summary)
+    cleaned_summary, key_frame_indices, key_frame_alts = parse_result
+    
+    if parse_result.is_explicit_empty:
+        _logger.info("Model từ chối chọn frame có chủ ý (KEY_FRAMES: []). Tôn trọng quyết định, không trích xuất frame.")
+        return cleaned_summary, [], {}
+        
+    if key_frame_indices:
+        return cleaned_summary, key_frame_indices, key_frame_alts
+        
+    # Trường hợp 3: Header thiếu hoặc parse thất bại
+    if total_frames > 0:
+        if not parse_result.header_present:
+            _logger.warning("Không tìm thấy chuỗi KEY_FRAMES: trong mô tả của model (lỗi format). Áp dụng fallback tự động chọn frame...")
+        else:
+            _logger.warning("Phát hiện chuỗi KEY_FRAMES: nhưng không parse được frame hợp lệ (parse thất bại). Áp dụng fallback tự động chọn frame...")
+            
+        if total_frames >= 3:
+            key_frame_indices = [0, total_frames // 2, total_frames - 1]
+        else:
+            key_frame_indices = list(range(total_frames))
+            
     return cleaned_summary, key_frame_indices, key_frame_alts
 
 
@@ -818,14 +896,9 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         _logger.info("Đã nhận được mô tả visual thành công từ Gateway API.")
         
         # 6. Parse KEY_FRAMES từ response (hỗ trợ cả JSON object list v12.0 lẫn int list v11.0)
-        summary, key_frame_indices, key_frame_alts = _parse_key_frames_response(summary)
-            
-        if not key_frame_indices and len(extracted_frames) > 0:
-            _logger.info("Không tìm thấy KEY_FRAMES từ mô tả của model. Áp dụng fallback tự động chọn frame...")
-            if len(extracted_frames) >= 3:
-                key_frame_indices = [0, len(extracted_frames) // 2, len(extracted_frames) - 1]
-            else:
-                key_frame_indices = list(range(len(extracted_frames)))
+        summary, key_frame_indices, key_frame_alts = _resolve_key_frames_with_fallback(
+            summary, len(extracted_frames)
+        )
                 
         # 7. Stage 2 — High-Resolution Targeted FFmpeg Extraction
         saved_frames = []

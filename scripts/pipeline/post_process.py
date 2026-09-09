@@ -113,7 +113,8 @@ def _validate_quality(content: str, stem: str) -> list[str]:
 def _is_decorative_image(name: str, path: Path) -> bool:
     """Check if an image is decorative based on filename keywords or small file size."""
     name_lower = name.lower()
-    if any(k in name_lower for k in ["cover", "logo", "credit", "title_page"]):
+    decorative_keywords = {"cover", "logo", "credit", "title_page", "icon", "decorative"}
+    if any(k in name_lower for k in decorative_keywords):
         return True
     try:
         if path.exists() and path.stat().st_size < 5120:  # 5 KB
