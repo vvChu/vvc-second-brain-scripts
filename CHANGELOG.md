@@ -4,6 +4,25 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.12.4 — YouTube Visual Extractor v12.0: Dynamic Storyboard & 1-Pass Multimodal Judge
+Nâng cấp toàn diện cơ chế trích xuất hình ảnh video YouTube (`visual_extractor.py`) lên v12.0:
+- **Dynamic Storyboard Selection**: Tự động tính toán diện tích tile ($W \times H$) lớn nhất thay cho chuỗi formats tĩnh, luôn ưu tiên `sb0` (320x180 px = 57.600 px²/tile, gấp 16 lần `sb2` 80x45 px).
+- **Invariant Slicing & Timestamp Math**: Dùng kích thước cố định `tile_w`, `tile_h` loại bỏ biến dạng cắt méo ở fragment cuối và đồng bộ chuẩn xác timestamp (`actual_ts = global_tile_idx * tile_duration`), triệt tiêu độ lệch pha 120s.
+- **Robust Progressive & DASH Selector**: Nâng cấp selector `'bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720]/b/18/bestvideo/best'` hỗ trợ hoàn hảo progressive streams (format 18) lẫn DASH 720p.
+- **1-Pass Multimodal LLM-as-Judge & Self-Healing**: Nhận diện keyframes và sinh trực tiếp JSON alt-text ngay trong phiên nhìn ảnh. Bổ sung công cụ `heal_video_frames.py` quét và tự động chữa lành các frame suy thoái toàn vault.
+
+## v8.12.3 — YouTube 403 CDN Defense & Constitution LLM Routing Sync
+Đồng bộ hóa kiến trúc định tuyến mô hình và tăng cường năng lực bóc tách video YouTube:
+- **YouTube 403 CDN Signature Fix**: Nâng cấp cận dưới `yt-dlp>=2026.8.19` trong `requirements.txt`. Khắc phục triệt để lỗi `HTTP 403 Forbidden` do cơ chế n-sig mới của YouTube, giải phóng hoàn toàn luồng tải HD 720p và ngăn pipeline suy thoái về thumbnail thô 320x180.
+- **Constitution Routing Sync**: Đồng bộ bảng Model Routing trong `AGENTS.md` (§8), `scripts/GEMINI.md`, và `scripts/README.md` theo cấu hình thực tế `gemini-3.8-flash-high` cho cả Map (trích xuất) và Reduce (tổng hợp note).
+- **Cognitive Allocation Enforcement**: Phân định chính xác vai trò Claude Opus 4.6 Thinking cho Strategic Arbitration / Architecture Planning và Gemini 3.8 Flash High cho Autonomous Compiler loops.
+
+## v8.12.2 — Antigravity CLI Integration & Full Pipeline Map-Reduce Acceleration
+Nâng cấp toàn diện cơ chế gọi LLM và đồng bộ hóa pipeline Map-Reduce với Antigravity CLI (agy.exe):
+- **Native Antigravity JSON Bridge**: Nâng cấp `call_gemini_cli` thành native client giao tiếp với `agy.exe` qua `--output-format json` và `--disable-slash-commands`. Tự động bóc tách sạch 100% thinking tokens, triệt tiêu rủi ro rò rỉ `<think>` vào Concept Notes, đồng thời thu thập chi tiết telemetry hiệu năng.
+- **Pipeline Map-Reduce Acceleration**: Đồng bộ hóa toàn bộ chu trình Map (trích xuất ý tưởng nguyên tử) và Reduce (tổng hợp Concept Note) trên `gemini-3.8-flash-high`. Tận dụng tối đa Context Caching (8.155 tokens) giúp tăng tốc độ trích xuất Map từ 96s xuống ~7.9s và hoàn tất Note trong ~3-5s.
+- **Cognitive Labor Division**: Phân định rõ ràng vai trò các tầng model: Gemini 3.8 Flash High cho băng chuyền tự động tốc độ cao (Map & Reduce), và bảo toàn Claude Opus 4.6 Thinking cho các tác vụ tương tác chiến lược cấp cao (Command.md, Macro-Synthesis topics/, Semantic Merger Arbitrator).
+
 ## v8.12.1 — Sequential Hook Overlap Prevention in Batch Processing
 Nâng cấp và cải tiến toàn diện quy trình xử lý batch để loại bỏ hiện tượng trùng lặp trích dẫn giữa các trang liền kề:
 - **Sequential Hook Exclusion**: Khởi tạo danh sách loại trừ `exclude_hooks` động trong scope của một batch. Trích xuất blockquote (Evidence Hook) từ các Concept Note được tạo thành công, làm sạch qua hàm helper `_clean_blockquote_quote()`, và append vào danh sách loại trừ tuần tự.

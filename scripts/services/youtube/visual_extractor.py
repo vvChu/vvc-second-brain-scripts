@@ -207,8 +207,8 @@ def _download_grid_with_retry(url: str, dest_path: Path, max_retries: int = 3, t
 def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[float], duration_sec: float = 600.0) -> list[Path]:
     """Download storyboard grids and crop target timestamps into static frame files.
     
-    Bypasses decoding the raw video by extracting small frame tiles directly from
-    Google CDN storyboard grid images in RAM.
+    Uses invariant tile dimensions and fragment 0 duration to calculate accurate
+    timestamps, preventing distortion on partial last fragments and eliminating phase shift.
     """
     fragments = sb0.get("fragments") or []
     if not fragments or PILImage is None:
@@ -220,40 +220,35 @@ def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[flo
     if num_tiles <= 0:
         num_tiles = 9
 
-    fragment_duration = sb0.get("fragment_duration")
-    if not fragment_duration:
-        total_dur = sum(f.get("duration", 0) for f in fragments)
-        if total_dur > 0:
-            fragment_duration = total_dur / len(fragments)
-        elif duration_sec and len(fragments) > 0:
-            fragment_duration = duration_sec / len(fragments)
-        else:
-            fragment_duration = 88.62
+    fixed_tile_w = sb0.get("width")
+    fixed_tile_h = sb0.get("height")
 
-    if fragment_duration <= 0:
+    base_frag_duration = fragments[0].get("duration") or sb0.get("fragment_duration")
+    if not base_frag_duration or base_frag_duration <= 0:
         if duration_sec and len(fragments) > 0:
-            fragment_duration = duration_sec / len(fragments)
+            base_frag_duration = duration_sec / len(fragments)
         else:
-            fragment_duration = 88.62
+            base_frag_duration = 89.18
 
-    tile_duration = fragment_duration / num_tiles
+    tile_duration = base_frag_duration / num_tiles
     if tile_duration <= 0:
-        tile_duration = 9.84
+        tile_duration = 9.91
+
+    max_global_tile = len(fragments) * num_tiles - 1
     grid_cache = {}
     static_frames = []
 
     for i, ts in enumerate(target_timestamps):
-        frag_idx = int(ts // fragment_duration)
-        if frag_idx >= len(fragments):
-            frag_idx = len(fragments) - 1
-        if frag_idx < 0:
-            frag_idx = 0
+        global_tile_idx = int(ts / tile_duration)
+        if global_tile_idx > max_global_tile:
+            global_tile_idx = max_global_tile
+        if global_tile_idx < 0:
+            global_tile_idx = 0
 
-        tile_idx = int((ts % fragment_duration) // tile_duration)
-        if tile_idx >= num_tiles:
-            tile_idx = num_tiles - 1
-        if tile_idx < 0:
-            tile_idx = 0
+        frag_idx = global_tile_idx // num_tiles
+        tile_idx = global_tile_idx % num_tiles
+
+        actual_ts = min(global_tile_idx * tile_duration, duration_sec)
 
         grid_url = fragments[frag_idx].get("url")
         if not grid_url:
@@ -273,16 +268,28 @@ def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[flo
 
         grid_img = grid_cache[frag_idx]
         w, h = grid_img.size
-        tile_w = w // columns
-        tile_h = h // rows
+
+        tile_w = fixed_tile_w or (w // columns)
+        tile_h = fixed_tile_h or (h // rows)
+        if not fixed_tile_w:
+            fixed_tile_w = tile_w
+        if not fixed_tile_h:
+            fixed_tile_h = tile_h
 
         r = tile_idx // columns
         c = tile_idx % columns
+
+        # Bound check against partial fragment grids to prevent distorted aspect ratios
+        if (r + 1) * tile_h > h:
+            r = max(0, (h // tile_h) - 1)
+        if (c + 1) * tile_w > w:
+            c = max(0, (w // tile_w) - 1)
+
         box = (c * tile_w, r * tile_h, (c + 1) * tile_w, (r + 1) * tile_h)
 
         try:
             tile = grid_img.crop(box)
-            out_path = tmp_dir / f"frame_static_{i:04d}.jpg"
+            out_path = tmp_dir / f"frame_static_{i:04d}_ts{int(actual_ts)}.jpg"
             tile.save(out_path, "JPEG")
             static_frames.append(out_path)
         except Exception as e:
@@ -370,6 +377,137 @@ def _get_high_res_stream_url(info_dict: dict) -> tuple[str | None, str]:
     return best_url, best_ua
 
 
+def _select_best_storyboard_format(formats: list[dict]) -> dict | None:
+    """Select the storyboard format with the largest tile area (width * height).
+    
+    Prioritizes sb0 (320x180 = 57,600 px²/tile) over lower resolution boards
+    like sb1 (160x90 = 14,400 px²) and sb2 (80x45 = 3,600 px²).
+    """
+    if not formats:
+        return None
+        
+    sb_candidates = [
+        fmt for fmt in formats
+        if fmt.get("format_id", "").startswith("sb") or "storyboard" in fmt.get("format_note", "")
+    ]
+    if not sb_candidates:
+        return None
+
+    def _tile_score(fmt: dict) -> tuple[int, int]:
+        w = fmt.get("width") or 0
+        h = fmt.get("height") or 0
+        area = w * h
+        fid = fmt.get("format_id", "")
+        fid_score = 0
+        if fid == "sb0":
+            fid_score = 4
+        elif fid == "sb1":
+            fid_score = 3
+        elif fid == "sb2":
+            fid_score = 2
+        elif fid.startswith("sb"):
+            fid_score = 1
+        return (area, fid_score)
+
+    sb_candidates.sort(key=_tile_score, reverse=True)
+    return sb_candidates[0]
+
+
+def _get_video_download_ydl_opts(out_tmpl: str) -> dict:
+    """yt-dlp options specifically for high-quality video extraction.
+    
+    CRITICAL: Does NOT use mobile player_client (android/ios/mweb) from transcript
+    options because mobile emulation drops 720p DASH video streams on YouTube.
+    Supports both progressive format 18 (640x360) and DASH 720p streams.
+    """
+    return {
+        "quiet": True,
+        "no_warnings": True,
+        "format": "bestvideo[height<=720][ext=mp4]/bestvideo[height<=720]/best[height<=720]/b/18/bestvideo/best",
+        "outtmpl": out_tmpl,
+    }
+
+
+def _parse_key_frames_response(summary: str) -> tuple[str, list[int], dict[int, str]]:
+    """Parse KEY_FRAMES from LLM-as-Judge output.
+    
+    Supports both v12.0 format:
+        KEY_FRAMES: [{"index": 1, "alt": "..."}, ...]
+    and backward-compatible integer list:
+        KEY_FRAMES: [1, 2, 3]
+        
+    Returns:
+        tuple: (cleaned_summary, list_of_indices, dict_of_alts)
+    """
+    key_frame_indices: list[int] = []
+    key_frame_alts: dict[int, str] = {}
+    cleaned_summary = summary
+    
+    if "KEY_FRAMES:" not in summary:
+        return cleaned_summary, key_frame_indices, key_frame_alts
+        
+    parts = summary.split("KEY_FRAMES:", 1)
+    cleaned_summary = parts[0].strip()
+    json_part = parts[1].strip()
+
+    # Strip markdown code fences if output is wrapped
+    json_part = re.sub(r"^```(?:json)?\s*", "", json_part, flags=re.IGNORECASE)
+    json_part = re.sub(r"\s*```$", "", json_part)
+
+    # Strategy 1: Greedy match from outermost '[' to last ']'
+    # (prevents premature cutoffs when alt text contains square brackets)
+    raw_list = None
+    greedy_match = re.search(r"\[[\s\S]*\]", json_part)
+    if greedy_match:
+        try:
+            parsed = json.loads(greedy_match.group(0))
+            if isinstance(parsed, list):
+                raw_list = parsed
+        except Exception:
+            pass
+
+    # Strategy 2: Non-greedy match if greedy parsing failed
+    if raw_list is None:
+        lazy_match = re.search(r"\[[\s\S]*?\]", json_part)
+        if lazy_match:
+            try:
+                parsed = json.loads(lazy_match.group(0))
+                if isinstance(parsed, list):
+                    raw_list = parsed
+            except Exception:
+                pass
+
+    if not isinstance(raw_list, list):
+        _logger.warning("Không thể parse JSON KEY_FRAMES từ response.")
+        return cleaned_summary, key_frame_indices, key_frame_alts
+
+    seen_indices = set()
+    for item in raw_list:
+        if isinstance(item, dict):
+            idx = item.get("index")
+            alt = str(item.get("alt", "")).strip()
+            if idx is not None:
+                try:
+                    idx_int = int(idx)
+                    if idx_int not in seen_indices:
+                        seen_indices.add(idx_int)
+                        key_frame_indices.append(idx_int)
+                    if alt and idx_int not in key_frame_alts:
+                        key_frame_alts[idx_int] = alt
+                except (ValueError, TypeError):
+                    pass
+        elif isinstance(item, (int, str)):
+            try:
+                idx_int = int(item)
+                if idx_int not in seen_indices:
+                    seen_indices.add(idx_int)
+                    key_frame_indices.append(idx_int)
+            except (ValueError, TypeError):
+                pass
+        
+    return cleaned_summary, key_frame_indices, key_frame_alts
+
+
 def _generate_semantic_alt_texts(visual_summary: str, saved_frames: list[str]) -> dict[str, str]:
     """Gọi LLM cực nhanh để ánh xạ và tạo alt-text giàu ngữ nghĩa cho từng frame ảnh dựa trên Visual Summary."""
     if not saved_frames:
@@ -443,7 +581,8 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         # 1. Phân tích JIT siêu dữ liệu nếu chưa được truyền vào
         if not info_dict:
             _logger.info(f"Đang phân tích siêu dữ liệu JIT cho: {url}")
-            with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+            from services.youtube.transcript import get_base_ydl_opts
+            with yt_dlp.YoutubeDL(get_base_ydl_opts()) as ydl:
                 info_dict = ydl.extract_info(url, download=False)
                 
         if not info_dict:
@@ -453,22 +592,14 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         chapters = info_dict.get("chapters") or []
         heatmap = info_dict.get("heatmap") or []
         
-        # Tìm cấu hình Storyboard sb2, sb1, sb0 (ưu tiên chất lượng cao nhất)
-        sb0 = None
-        for target_sb in ["sb2", "sb1", "sb0"]:
-            for fmt in info_dict.get("formats", []):
-                if fmt.get("format_id") == target_sb:
-                    sb0 = fmt
-                    break
-            if sb0:
-                break
-        if not sb0:
-            for fmt in info_dict.get("formats", []):
-                if "storyboard" in fmt.get("format_note", "") or fmt.get("format_id", "").startswith("sb"):
-                    sb0 = fmt
-                    break
-                    
-        # 2. Thực hiện trích xuất theo Pipeline v11.0 (Serverless coarse) hoặc Fallback v9.1
+        # 1. Tìm cấu hình Storyboard có diện tích tile lớn nhất (ưu tiên sb0: 320x180 px)
+        sb0 = _select_best_storyboard_format(info_dict.get("formats", []))
+        if sb0:
+            w = sb0.get("width") or 0
+            h = sb0.get("height") or 0
+            _logger.info(f"Đã chọn cấu hình Storyboard: {sb0.get('format_id')} ({w}x{h} px/tile)")
+
+        # 2. Thực hiện trích xuất theo Pipeline v12.0 (Serverless coarse) hoặc Fallback v9.1
         target_timestamps = _get_target_timestamps(duration_sec, chapters, heatmap)
         
         frame_metadata = {}
@@ -478,8 +609,10 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
             extraction_method = "storyboard_slice"
             _logger.info(f"Đã trích xuất {len(extracted_frames)} coarse frames từ storyboards CDN.")
             for i, p in enumerate(extracted_frames):
+                ts_match = re.search(r"_ts(\d+)", p.name)
+                frame_ts = float(ts_match.group(1)) if ts_match else (target_timestamps[i] if i < len(target_timestamps) else 0.0)
                 frame_metadata[p] = {
-                    "timestamp": target_timestamps[i] if i < len(target_timestamps) else 0.0,
+                    "timestamp": frame_ts,
                     "original_index": i
                 }
         else:
@@ -487,12 +620,7 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
             
             # Tải video chất lượng thấp
             out_tmpl = str(tmp_dir / f"{video_id}.%(ext)s")
-            ydl_opts = {
-                'format': 'bestvideo[height<=720][ext=mp4]/bestvideo[height<=480]/worstvideo',
-                'outtmpl': out_tmpl,
-                'quiet': True,
-                'no_warnings': True,
-            }
+            ydl_opts = _get_video_download_ydl_opts(out_tmpl)
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.extract_info(url, download=True)
                 
@@ -626,9 +754,9 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
             "- LƯU Ý ĐẶC BIỆT: Các khung hình ghép (split-screen, picture-in-picture, hoặc slide lớn có ghép mặt nhỏ diễn giả ở góc) vẫn ĐƯỢC CHẤP NHẬN và vô cùng giá trị. Chỉ từ chối khi khung hình CHỈ có duy nhất khuôn mặt người nói phóng to mà không có bất kỳ thông tin slide học thuật nào.\n"
             "- CẤM chọn các khung hình chứa nút kêu gọi 'SUBSCRIBE' (Đăng ký kênh), nút Like, intro, outro, logo chuyển cảnh, hoặc hình ảnh phong cảnh chung chung không mang tính học thuật cô đọng trực quan.\n"
             "- CHỈ CHẤP NHẬN các khung hình là phương tiện truyền tải thông tin trực quan độc lập và rõ ràng: slide bài giảng đọc được chữ, sơ đồ kiến trúc hệ thống, sơ đồ tư duy (mindmap), bảng so sánh số liệu, mã nguồn (code snippet) thực tế, hoặc công thức toán học.\n\n"
-            "Ở DÒNG CUỐI CÙNG của câu trả lời, xuất ra chính xác định dạng:\n"
-            "KEY_FRAMES: [index1, index2, ...]\n"
-            "trong đó chọn ra các chỉ số index (0-indexed của ảnh đầu vào) thỏa mãn quy tắc trên. Nếu không có khung hình nào chứa sơ đồ/slide trực quan giá trị học thuật thực sự, hãy xuất ra: KEY_FRAMES: []\n\n"
+            "Ở DÒNG CUỐI CÙNG của câu trả lời, xuất ra chính xác định dạng JSON:\n"
+            "KEY_FRAMES: [{\"index\": <index>, \"alt\": \"<mô tả ngắn 10-20 từ về slide/sơ đồ bằng tiếng Việt>\"}, ...]\n"
+            "trong đó chọn ra các chỉ số index (0-indexed của ảnh đầu vào) kèm mô tả alt-text tương ứng. Nếu không có khung hình nào chứa sơ đồ/slide trực quan giá trị học thuật thực sự, hãy xuất ra: KEY_FRAMES: []\n\n"
         )
         if transcript_text:
             prompt_text += f"=== [AUDIO TRANSCRIPT CONTEXT] ===\n{transcript_text}\n==================================\n\n"
@@ -689,22 +817,8 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
         
         _logger.info("Đã nhận được mô tả visual thành công từ Gateway API.")
         
-        # 6. Parse KEY_FRAMES từ response
-        key_frame_indices = []
-        if "KEY_FRAMES:" in summary:
-            parts = summary.split("KEY_FRAMES:", 1)
-            summary_text = parts[0].strip()
-            try:
-                json_str = parts[1].strip()
-                match = re.search(r"\[\s*\d+\s*(?:,\s*\d+\s*)*\]", json_str)
-                if match:
-                    key_frame_indices = json.loads(match.group(0))
-                else:
-                    key_frame_indices = json.loads(json_str)
-            except Exception as e:
-                _logger.warning(f"Không thể parse KEY_FRAMES từ response: {e}")
-                key_frame_indices = []
-            summary = summary.strip()
+        # 6. Parse KEY_FRAMES từ response (hỗ trợ cả JSON object list v12.0 lẫn int list v11.0)
+        summary, key_frame_indices, key_frame_alts = _parse_key_frames_response(summary)
             
         if not key_frame_indices and len(extracted_frames) > 0:
             _logger.info("Không tìm thấy KEY_FRAMES từ mô tả của model. Áp dụng fallback tự động chọn frame...")
@@ -715,6 +829,7 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
                 
         # 7. Stage 2 — High-Resolution Targeted FFmpeg Extraction
         saved_frames = []
+        frame_to_alt = {}
         if key_frame_indices and PILImage is not None:
             assets_dir = cfg.assets_dir / "video_frames"
             assets_dir.mkdir(parents=True, exist_ok=True)
@@ -736,45 +851,54 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
                         ts_int = int(ts)
                         filename = f"yt_{video_id}_frame_{original_idx:03d}_ts{ts_int}.webp"
                         keep_filenames.add(filename)
-                        # Nếu ảnh chưa tồn tại HOẶC tồn tại nhưng có độ phân giải thấp (320x180) -> cần tải video để nâng cấp lên HD 720p
+                        if idx in key_frame_alts:
+                            frame_to_alt[filename] = key_frame_alts[idx]
+                        elif original_idx in key_frame_alts:
+                            frame_to_alt[filename] = key_frame_alts[original_idx]
                         save_path = assets_dir / filename
                         if not save_path.exists():
                             need_download = True
                         else:
                             try:
                                 with PILImage.open(save_path) as img_check:
-                                    if img_check.size == (320, 180):
+                                    if max(img_check.size) < 480 or img_check.size == (320, 180) or img_check.size == (80, 45):
                                         need_download = True
                             except Exception:
                                 need_download = True
                 except Exception:
                     pass
 
-
-
-            # Triển khai lớp 1: Tải video 720p cục bộ bằng yt-dlp
+            # Triển khai lớp 1: Tải video 720p/360p cục bộ bằng yt-dlp
             local_video_path = None
             if need_download:
+                out_tmpl = str(tmp_dir / f"{video_id}_temp.%(ext)s")
+                ydl_opts = _get_video_download_ydl_opts(out_tmpl)
                 try:
                     _logger.info("Stage 2: Đang tải video 720p cục bộ để trích xuất frame chất lượng cao...")
-                    out_tmpl = str(tmp_dir / f"{video_id}_temp.%(ext)s")
-                    ydl_opts = {
-                        'format': 'bestvideo[height<=720][ext=mp4]/bestvideo[height<=480]/worstvideo',
-                        'outtmpl': out_tmpl,
-                        'quiet': True,
-                        'no_warnings': True,
-                    }
                     import yt_dlp
                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                         ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
-                        
-                    for f in tmp_dir.glob(f"{video_id}_temp.*"):
-                        if f.is_file() and f.suffix in (".mp4", ".webm", ".mkv", ".m4v"):
-                            local_video_path = f
-                            _logger.info(f"Tải video cục bộ thành công: {f.name} ({f.stat().st_size / 1024 / 1024:.2f} MB)")
-                            break
                 except Exception as dl_err:
-                    _logger.warning(f"Không tải được video cục bộ bằng yt-dlp: {dl_err}. Sẽ fallback sang seek remote stream URL.")
+                    _logger.warning(f"Tải video theo selector chính thất bại ({dl_err}). Thử fallback format 18...")
+                    try:
+                        fallback_opts = dict(ydl_opts)
+                        fallback_opts["format"] = "18/best"
+                        fallback_opts["extractor_args"] = {"youtube": {"player_client": ["android", "web"]}}
+                        with yt_dlp.YoutubeDL(fallback_opts) as ydl:
+                            ydl.extract_info(f"https://www.youtube.com/watch?v={video_id}", download=True)
+                    except Exception as fallback_err:
+                        _logger.warning(f"Không tải được video cục bộ bằng yt-dlp: {fallback_err}. Sẽ fallback sang storyboard frames.")
+                        
+                for f in tmp_dir.glob(f"{video_id}_temp.*"):
+                    if f.is_file() and f.suffix in (".mp4", ".webm", ".mkv", ".m4v"):
+                        local_video_path = f
+                        try:
+                            sz = f.stat().st_size / 1024 / 1024
+                            sz_str = f" ({sz:.2f} MB)"
+                        except Exception:
+                            sz_str = ""
+                        _logger.info(f"Tải video cục bộ thành công: {f.name}{sz_str}")
+                        break
 
             # Trích xuất key frames đắt giá nhất (LLM tự quyết số lượng, safety cap: _MAX_KEY_FRAMES)
             for idx in key_frame_indices[:_MAX_KEY_FRAMES]:
@@ -792,10 +916,11 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
                         if save_path.exists():
                             try:
                                 with PILImage.open(save_path) as img_check:
-                                    if img_check.size == (320, 180):
-                                        _logger.info(f"Phát hiện ảnh chất lượng thấp {filename} (320x180). Sẽ trích xuất lại cục bộ để nâng cấp lên 720p...")
+                                    if max(img_check.size) < 480 or img_check.size == (320, 180) or img_check.size == (80, 45):
+                                        _logger.info(f"Phát hiện ảnh chất lượng thấp {filename} ({img_check.size}). Sẽ trích xuất lại cục bộ để nâng cấp lên HD...")
                                     else:
-                                        saved_frames.append(filename)
+                                        if filename not in saved_frames:
+                                            saved_frames.append(filename)
                                         continue
                             except Exception:
                                 pass
@@ -832,13 +957,10 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
                                     if res.returncode == 0 and high_res_jpg.exists():
                                         src_frame_path = high_res_jpg
                                         is_high_res = True
-                                        _logger.info(f"Stage 2 trích xuất thành công frame cục bộ {idx} (720p).")
+                                        _logger.info(f"Stage 2 trích xuất thành công frame cục bộ {idx} (HD).")
                                 except Exception as local_exc:
                                     _logger.warning(f"Lớp 1 Local seek thất bại: {local_exc}. Fallback sang Lớp 3 (Storyboard).")
                                     
-                            # Lớp 2: Remote Seek đã bị loại bỏ vĩnh viễn theo thiết kế Giải pháp C để tối ưu hóa Latency và tránh nghẽn mạng.
-                            # Hệ thống sẽ chuyển tiếp trực tiếp từ Lớp 1 (Local Seek) sang Lớp 3 (Storyboard Fallback).
-                                            
                             if not is_high_res:
                                 _logger.warning(f"Stage 2 trích xuất chất lượng cao cục bộ thất bại cho frame {idx}. Lớp 3: Degrade về storyboard frame.")
                         
@@ -849,23 +971,26 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
                             img = img.convert("RGB")
                         img.save(save_path, "WEBP", quality=80)
                         
-                        res_label = "720p" if is_high_res else "320x180"
+                        res_label = "HD" if is_high_res else "Storyboard"
                         _logger.info(f"Đã lưu frame {idx} ({res_label}) thành công thành WebP: {filename}")
-                        saved_frames.append(filename)
+                        if filename not in saved_frames:
+                            saved_frames.append(filename)
                 except Exception as e:
                     _logger.warning(f"Lỗi khi lưu frame video {idx}: {e}")
                     
         # Nhúng các IMG markers vào visual summary để brain_dump.py nhận diện và bảo toàn
         if saved_frames:
-            alt_texts = {}
-            try:
-                alt_texts = _generate_semantic_alt_texts(summary, saved_frames)
-            except Exception as e:
-                _logger.warning(f"Lỗi khi tạo semantic alt-text: {e}")
+            missing_alts = [f for f in saved_frames if f not in frame_to_alt]
+            if missing_alts:
+                try:
+                    fallback_alts = _generate_semantic_alt_texts(summary, missing_alts)
+                    frame_to_alt.update(fallback_alts)
+                except Exception as e:
+                    _logger.warning(f"Lỗi khi tạo semantic alt-text fallback: {e}")
                 
             img_section = "\n\n## 🎬 Hình ảnh trực quan từ video (Đã tải cục bộ)"
             for f in saved_frames:
-                desc = alt_texts.get(f, "Video frame - diagram/slide")
+                desc = frame_to_alt.get(f, "Video frame - diagram/slide")
                 img_section += f"\n[IMG:{f}|alt={desc}]"
             summary = f"{summary}{img_section}"
             

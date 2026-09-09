@@ -60,6 +60,10 @@ _GARBAGE_PATTERNS = [
     r"fetch failed",
     r"rate limit exceeded",
     r"quota exceeded",
+    r"no longer available",
+    r"invalid model selection",
+    r"Please switch to",
+    r"is not supported",
 ]
 
 def is_garbage(text: str, allowed_shorts: tuple[str, ...] = (), *, min_length: int = 10) -> bool:

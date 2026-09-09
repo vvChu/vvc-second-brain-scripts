@@ -10,7 +10,7 @@ from core.config import cfg
 from core.llm.utils import strip_think_tags, encode_image, is_garbage, increment_counter
 from core.llm.gateway_client import call_gateway
 from core.llm.copilot_client import call_copilot
-from core.llm.gemini_client import call_gemini_cli, call_gemini_api
+from core.llm.gemini_client import call_gemini_cli, call_antigravity_cli, call_gemini_api
 from core.llm.vision_client import call_vision
 from core.llm.audio_client import call_audio
 
@@ -32,9 +32,9 @@ def call_llm(
     allowed_shorts: tuple[str, ...] = (),
     min_length: int = 10,
 ) -> str:
-    """Call LLM with automatic 3-tier fallback routing.
+    """Call LLM with automatic 4-tier fallback routing.
 
-    Routing order: Gateway → Copilot CLI → Gemini CLI.
+    Routing order: Gateway → Antigravity CLI (agy) → Copilot CLI → Gemini API.
 
     Args:
         prompt: Text prompt.
@@ -45,7 +45,7 @@ def call_llm(
             - "reasoning": Use reasoning model
             - "general": Use default model
         strategy: Routing strategy:
-            - "fallback": Always try Gateway -> Copilot -> Gemini CLI -> API (default).
+            - "fallback": Always try Gateway -> Gemini CLI -> Copilot -> API (default).
             - "round_robin": Rotate the primary tier for each call to balance load.
         validator: Optional function to validate the output. If it returns False, fallback to next tier.
         allowed_shorts: Optional list of short strings permitted in is_garbage check.
@@ -59,17 +59,35 @@ def call_llm(
     cp_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.copilot_timeout
 
     # Determine Models based on Task
-    gw_model = model or (cfg.reasoning_gateway_model if task == "reasoning" else (cfg.gateway_correction_model if task == "correction" else cfg.gateway_proxy_model))
+    if task == "reasoning":
+        gw_model = model or cfg.reasoning_gateway_model
+    elif task == "synthesis":
+        gw_model = model or (cfg.gateway_synthesis_model or "gemini-3.8-flash-high")
+    elif task == "correction":
+        gw_model = model or cfg.gateway_correction_model
+    else:
+        gw_model = model or cfg.gateway_proxy_model
+
     cp_model = model or (cfg.copilot_correction_model if task == "correction" else cfg.copilot_model)
     gemini_model = model or (cfg.gemini_text_synthesis_model if task == "synthesis" else (cfg.gemini_text_correction_model if task == "correction" else cfg.gemini_model))
 
-    # Try each tier
-    tiers = [
-        ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
-        ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
-        ("gemini-cli", lambda: call_gemini_cli(prompt, model=gemini_model, timeout=gw_timeout)),
-        ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
-    ]
+    # Try each tier:
+    # For synthesis (Reduce/Note Generation), prioritize Antigravity CLI (gemini-3.8-flash-high)
+    # as primary tier, with Gateway (gemini-3.8-flash-high) as immediate fallback.
+    if task == "synthesis":
+        tiers = [
+            ("gemini-cli", lambda: call_gemini_cli(prompt, model=gemini_model, timeout=gw_timeout)),
+            ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
+            ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
+            ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
+        ]
+    else:
+        tiers = [
+            ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
+            ("gemini-cli", lambda: call_gemini_cli(prompt, model=gemini_model, timeout=gw_timeout)),
+            ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
+            ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
+        ]
 
     # Apply Round-Robin Strategy
     if strategy == "round_robin":
@@ -98,6 +116,7 @@ def call_llm(
 
 __all__ = [
     "call_llm",
+    "call_antigravity_cli",
     "call_vision",
     "call_audio",
     "strip_think_tags",

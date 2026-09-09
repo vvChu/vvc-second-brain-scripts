@@ -14,6 +14,8 @@ import shutil
 from pathlib import Path
 from PIL import Image
 
+from core.config import cfg
+
 _logger = logging.getLogger("vvc.pdf_convert")
 
 
@@ -145,24 +147,43 @@ def convert_pdf(pdf_path: Path, output_dir: Path | None = None, workspace_dir: P
         shutil.rmtree(output_dir, ignore_errors=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    # Use a temporary directory without spaces to run pymupdf4llm.to_markdown
+    # to avoid errors when the vault path contains spaces/symlinks.
+    temp_dir = cfg.vault_root / "scripts/scratch/temp_pdf_convert"
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
     _logger.info(f"Converting PDF: {pdf_path.name}")
     
     try:
-        # Change CWD to avoid pymupdf4llm slugifying absolute paths with spaces
+        # Copy PDF to temp directory
+        temp_pdf_path = temp_dir / pdf_path.name
+        shutil.copy2(pdf_path, temp_pdf_path)
+
+        # Change CWD to temp_dir
         import os
         old_cwd = os.getcwd()
-        os.chdir(str(output_dir))
+        os.chdir(str(temp_dir))
         
         # 1. Extract markdown and images page by page
         try:
             chunks = pymupdf4llm.to_markdown(
-                str(pdf_path), 
+                str(temp_pdf_path.name), 
                 page_chunks=True, 
                 write_images=True, 
                 image_path="."
             )
         finally:
             os.chdir(old_cwd)
+        
+        # Copy all extracted image files to output_dir
+        for img_file in temp_dir.glob("*.*"):
+            if img_file.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+                shutil.copy2(img_file, output_dir / img_file.name)
+        
+        # Clean up temp directory
+        shutil.rmtree(temp_dir, ignore_errors=True)
         
         # 2. Optimize extracted images
         _optimize_images(output_dir)

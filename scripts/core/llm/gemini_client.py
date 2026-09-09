@@ -3,7 +3,9 @@
 Tier 3 logic for Gemini CLI and direct REST API.
 """
 
+import json
 import logging
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,32 +16,48 @@ from core.llm.utils import http_session, strip_think_tags
 
 _logger = logging.getLogger("vvc.llm.gemini")
 
-def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
-    """Call LLM via Gemini CLI (OAuth-authenticated)."""
+def _resolve_cli_path() -> str:
+    """Resolve absolute path to Antigravity CLI (agy.exe)."""
     cmd = cfg.gemini_cmd
+    if cmd and Path(cmd).exists():
+        return cmd
+    which_agy = shutil.which("agy")
+    if which_agy:
+        return which_agy
+    fallback = Path.home() / "AppData" / "Local" / "agy" / "bin" / "agy.exe"
+    if fallback.exists():
+        return str(fallback)
+    return cmd or "agy"
+
+
+def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
+    """Call LLM via Google Antigravity CLI (agy.exe) with native JSON bridge."""
+    cmd = _resolve_cli_path()
     if not cmd:
         return ""
 
     target_model = model or cfg.gemini_model
-    _logger.info(f"[Gemini CLI] Routed to: {target_model}")
+    # Normalize reasoning tier suffix for flash models if not explicitly set
+    if target_model in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
+        target_model = f"{target_model}-high"
+
+    _logger.info(f"[Antigravity CLI] Routed to: {target_model}")
     try:
-        # To bypass cmd.exe's 8191 character limit and utilize CreateProcessW's 32767 limit,
-        # we directly invoke node.exe with the gemini.js path instead of using gemini.cmd.
-        if cmd.endswith(".cmd"):
-            js_path = Path(cmd).parent / "node_modules" / "@google" / "gemini-cli" / "bundle" / "gemini.js"
-            if js_path.exists():
-                args = ["node", str(js_path), "-m", target_model, "-p", prompt]
-            else:
-                args = [cmd, "-m", target_model, "-p", prompt]
-        else:
-            args = [cmd, "-m", target_model, "-p", prompt]
+        # Build arguments for Antigravity CLI (Headless / Print Mode with JSON output)
+        args = [
+            cmd,
+            "--model", target_model,
+            "--output-format", "json",
+            "--disable-slash-commands",
+            "-p", prompt,
+        ]
 
         kwargs: dict[str, Any] = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            # Windows command line limit is technically 8191 for cmd.exe, or 32767 for CreateProcess.
+            # Windows CreateProcessW character limit guard
             if len(prompt) > 30000:
-                _logger.warning("Prompt length exceeds CreateProcessW limits. Skipping Gemini CLI to prevent WinError 206.")
+                _logger.warning("Prompt length exceeds CreateProcessW limits. Skipping Antigravity CLI to prevent WinError 206.")
                 return ""
 
         result = subprocess.run(
@@ -52,15 +70,51 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
             cwd=str(Path(__file__).parent.parent.parent),
             **kwargs,
         )
-        if result.returncode == 0 and result.stdout.strip():
-            return strip_think_tags(result.stdout.strip())
-        return ""
+
+        if result.returncode != 0:
+            err_snippet = result.stderr.strip()[:200] if result.stderr else "unknown error"
+            _logger.warning(f"[Antigravity CLI] Non-zero exit code ({result.returncode}): {err_snippet}")
+            return ""
+
+        stdout = result.stdout.strip()
+        if not stdout:
+            return ""
+
+        # Parse JSON response from agy.exe
+        try:
+            data = json.loads(stdout)
+            if isinstance(data, dict):
+                status = data.get("status", "")
+                if status and status != "SUCCESS":
+                    _logger.warning(f"[Antigravity CLI] Execution status: {status}")
+                    return ""
+
+                resp_text = data.get("response", "")
+                duration = data.get("duration_seconds", 0)
+                usage = data.get("usage", {})
+                in_tok = usage.get("input_tokens", 0)
+                out_tok = usage.get("output_tokens", 0)
+                think_tok = usage.get("thinking_tokens", 0)
+                cached_tok = usage.get("cache_read_tokens", 0)
+
+                _logger.info(
+                    f"[Antigravity CLI] Done in {duration:.2f}s | "
+                    f"Tokens: {in_tok} in, {out_tok} out, {think_tok} think, {cached_tok} cached"
+                )
+                return strip_think_tags(resp_text.strip())
+        except json.JSONDecodeError:
+            _logger.debug("[Antigravity CLI] Output is not JSON, falling back to raw text.")
+
+        return strip_think_tags(stdout)
     except subprocess.TimeoutExpired:
-        _logger.warning("Gemini CLI timed out")
+        _logger.warning("Antigravity CLI timed out")
         return ""
     except Exception as e:
-        _logger.warning(f"Gemini CLI error: {e}")
+        _logger.warning(f"Antigravity CLI error: {e}")
         return ""
+
+
+call_antigravity_cli = call_gemini_cli
 
 
 def call_gemini_api(

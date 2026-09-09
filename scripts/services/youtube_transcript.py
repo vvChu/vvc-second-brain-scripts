@@ -13,9 +13,17 @@ from services.youtube.visual_extractor import (  # noqa: F401
     _get_high_res_stream_url,
     _generate_semantic_alt_texts,
     _download_grid_with_retry,
+    _select_best_storyboard_format,
+    _get_video_download_ydl_opts,
+    _parse_key_frames_response,
     _MAX_KEY_FRAMES,
 )
-from services.youtube.transcript import _download_audio_via_ytdlp  # noqa: F401
+from services.youtube.transcript import (  # noqa: F401
+    fetch_youtube_transcript,
+    get_base_ydl_opts,
+    extract_transcript_via_ytdlp,
+    _download_audio_via_ytdlp,
+)
 
 # Re-export internal deps so test patches against this module still work
 from core.llm.utils import http_session, encode_image  # noqa: F401

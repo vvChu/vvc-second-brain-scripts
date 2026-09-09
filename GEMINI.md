@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Project Context (v8.12.1)
+# 🧠 VvC Second Brain — Project Context (v8.12.4)
 
 > [!NOTE] Context File Hierarchy
 > | File | Role | Authority |
@@ -16,7 +16,7 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 
 - **Philosophy**: AI agents = **librarians & compilers**. Human = **source provider**.
 - **Core Pattern**: Raw images/books/URLs → OCR → Ground Truth RAG → Atomic Concept Synthesis → Zettelkasten.
-- **Current version**: v8.12.1 — See `CHANGELOG.md` for full history.
+- **Current version**: v8.12.4 — See `CHANGELOG.md` for full history.
 
 ## Directory Structure
 
@@ -50,3 +50,5 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 - **Concept Note Format** (v8.3): Evidence Hook (VN) → Citation Line → `## Core Idea` → `## 📖 Ground Truth` (EN) → `---` → `## References`.
 - **Quality Gate**: 5 pre-save checks in `post_process.py`. Failed notes are rejected, never saved.
 - **Research Discipline**: Double-Pass Adversarial Review required before proposing changes. See `AGENTS.md` §7.
+- **Topic Backlog**: When asked to write new articles or brainstorm topics, always refer to the existing backlog of potential ideas at [[y_tuong_bai_viet_tiem_nang|Danh Mục Các Bài Viết Tiềm Năng]].
+

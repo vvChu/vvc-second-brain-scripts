@@ -21,6 +21,7 @@ __pycache__/
 # --- Logs & Dynamic Pipeline Outputs ---
 *.log
 log.md
+log_archive_*.md
 cleanup_report.txt
 test_result.xml
 context.txt
@@ -58,6 +59,7 @@ concepts/
 sources/
 wiki/
 copilot/
+.copilot/
 raw/
 scratch/
 scripts_recovered/

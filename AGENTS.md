@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.10.0)
+# 🧠 VvC Second Brain — Agent Constitution (v8.12.4)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -356,20 +356,21 @@ Trước khi đề xuất bất kỳ thay đổi kỹ thuật nào đối với 
 
 ---
 
-## 8. AI Infrastructure — 3-Tier Routing (v7.7)
+## 8. AI Infrastructure — 3-Tier Routing (v8.12.3)
 
 ```
-Tier 1 (Primary):  AI Gateway (ccba-ai SDK)  ← 22 models via LiteLLM
-Tier 2 (Fallback): Copilot CLI               ← claude-sonnet-4
-Tier 3 (Direct):   Gemini REST API            ← gemini-3-flash-preview
+Tier 1 (Primary):  Antigravity CLI Driver (gemini-3.8-flash-high) / AI Gateway (ccba-ai SDK)  ← 22 models via LiteLLM
+Tier 2 (Fallback): Gateway / Copilot CLI
+Tier 3 (Direct):   Gemini REST API
 ```
 
 | Task | Routing | Model |
 |---|---|---|
-| OCR / Vision | Gemini REST API | `gemini-3-flash-preview` |
-| Text synthesis | Gateway → Copilot CLI fallback | `gemini-3.1-pro-high` (w/ `gemini-pro-agent` fallback) |
+| OCR / Vision | Gemini REST API / Gateway | `gemini-3.1-flash-lite-preview` |
+| Text synthesis (Reduce) | Antigravity CLI → Gateway fallback | `gemini-3.8-flash-high` (Think ~3k-4.5k tokens, ~17-23s) |
 | OCR correction | Gateway → Copilot CLI fallback | `gemini-3.1-flash-lite` |
-| Reasoning (Map Step) | Gateway → Copilot CLI fallback | `claude-opus-4-6-thinking` |
+| Concept Extraction (Map Step) | Antigravity CLI → Gateway fallback | `gemini-3.8-flash-high` (Cached ~8k tokens, ~13s) |
+| Strategic Reasoning & Plan | Copilot CLI (CLI Tier) | `claude-opus-4-6-thinking` (Reserved for high-stakes decisions) |
 | Audio / Transcription | AI Gateway | `audio-primary` (`faster-whisper-large-v3-turbo-ct2`) |
 | Excalidraw diagrams | Copilot CLI | `claude-sonnet-4.6` (w/ LZString Safe Healer) |
 

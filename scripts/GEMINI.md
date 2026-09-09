@@ -43,15 +43,16 @@ In this mode, enforce these rules with maximum strictness:
 ### LLM Routing (3-Tier)
 - **Tier 1 (Primary)**: AI Gateway (ccba-ai SDK) — 22 models via LiteLLM on Server Spark
 - **Tier 2 (Fallback)**: Copilot CLI (`copilot --model <model> -p "<prompt>"`)
-- **Tier 3 (Direct)**: Gemini REST API (`gemini-3-flash-preview`)
+- **Tier 3 (Direct & CLI)**: Gemini REST API & Antigravity/Gemini CLI (`agy.exe --model ... --print ...` / `gemini.cmd`)
 - **WinError 206 Safeguard**: CLI payload limits are safely raised to **30,000 chars** by natively invoking `CreateProcessW` (bypassing `cmd.exe`). Only payloads > 30,000 chars bypass CLI to HTTP REST APIs.
 - **Round-Robin Load Balancing**: For bulk tasks, `call_llm(strategy="round_robin")` rotates the primary tier across all 3 tiers to multiply the total RPM capacity and avoid rate-limiting.
 
 ### Model Assignments
-- **Vision/OCR**: Gemini REST API (`gemini-3-flash-preview`) — `google-genai` SDK
-- **Text synthesis**: Gateway (`gemini-3.1-pro-high` w/ `gemini-pro-agent` fallback) → Copilot CLI fallback (`claude-sonnet-4.6`)
+- **Vision/OCR**: Gemini REST API (`gemini-3.1-flash-lite-preview`) — `google-genai` SDK
+- **Text synthesis (Reduce)**: Antigravity CLI Driver (`gemini-3.8-flash-high`) → Gateway fallback (`gemini-3.8-flash-high`)
 - **OCR correction**: Gateway (`gemini-3.1-flash-lite`) → Copilot CLI fallback (`gpt-5-mini`)
-- **Reasoning (Map Step)**: Gateway (`claude-opus-4-6-thinking`) → Copilot CLI (`claude-sonnet-4.6`). Employs Dynamic Extraction Limits (3-12 concepts).
+- **Concept extraction (Map Step)**: Antigravity CLI Driver (`gemini-3.8-flash-high`) → Gateway fallback (`gemini-3.8-flash-high`). Employs Dynamic Extraction Limits (1-18 concepts).
+- **Strategic Reasoning & Plan**: Copilot CLI (`claude-opus-4-6-thinking`) — reserved for architectural & strategic decisions.
 - **Audio / Transcription**: Gateway (`audio-primary` / `faster-whisper-large-v3-turbo-ct2`). VAD Filter is enabled via `extra_body` to strip silences.
 - **Excalidraw Diagrams**: Copilot CLI (`claude-sonnet-4.6` w/ LZString Safe Healer, Deterministic Layouts, and Text Auto-Sync)
 - **Unconditional**: `strip_think_tags()` runs on ALL LLM outputs before saving

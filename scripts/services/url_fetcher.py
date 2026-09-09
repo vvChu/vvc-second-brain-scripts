@@ -111,8 +111,9 @@ def fetch_url(url: str, visual: bool = False) -> str:
         if visual:
             try:
                 import yt_dlp
+                from services.youtube.transcript import get_base_ydl_opts
                 _logger.info(f"Đang tải JIT metadata cho YouTube URL: {url}")
-                with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+                with yt_dlp.YoutubeDL(get_base_ydl_opts()) as ydl:
                     info_dict = ydl.extract_info(url, download=False)
             except Exception as e:
                 _logger.warning(f"Lỗi khi tải JIT metadata qua yt_dlp (sẽ tự động fallback): {e}")

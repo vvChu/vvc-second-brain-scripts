@@ -94,8 +94,9 @@ def test_tier2_size_limit_blocks_merge():
         object.__setattr__(cfg, "concepts_dir", tmpdir)
         try:
             (tmpdir / "large_note.md").write_text(existing_content, encoding="utf-8")
-            result = arbitrate_and_merge("new content", "large_note")
-            assert result is None, "Should force SEPARATE when file > 7700 bytes"
+            with patch("pipeline.semantic_merger.call_llm", return_value="NOT_SUBSUME"):
+                result = arbitrate_and_merge("new content", "large_note")
+                assert result is None, "Should force SEPARATE when file > 7700 bytes"
         finally:
             object.__setattr__(cfg, "concepts_dir", orig)
 

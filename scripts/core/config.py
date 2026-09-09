@@ -67,6 +67,7 @@ class VaultConfig:
     gateway_api_key: str = ""
     gateway_proxy_model: str = ""
     gateway_direct_model: str = ""
+    gateway_synthesis_model: str = ""
     gateway_correction_model: str = ""
 
     # --- Backend Selection ---
@@ -169,6 +170,7 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
         gateway_api_key=os.environ.get("VVC_GATEWAY_KEY", gw.get("api_key", "")),
         gateway_proxy_model=gw.get("proxy_model", ""),
         gateway_direct_model=gw.get("direct_model", ""),
+        gateway_synthesis_model=gw.get("synthesis_model", ""),
         gateway_correction_model=gw.get("correction_model", ""),
         # Backend
         backend=raw.get("backend", "gateway"),

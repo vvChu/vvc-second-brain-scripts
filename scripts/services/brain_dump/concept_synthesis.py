@@ -430,8 +430,8 @@ def _synthesize_and_save_concepts(dump_text: str, url_content: str, source_ref: 
         max_concepts=max_c,
     )
     
-    _logger.info("Executing Map step: Extracting atomic concepts via Reasoning tier...")
-    map_result = call_llm(map_prompt, task="reasoning")
+    _logger.info("Executing Map step: Extracting atomic concepts via Synthesis tier (Gemini 3.8 Flash High)...")
+    map_result = call_llm(map_prompt, task="synthesis")
     if not map_result:
         log("error", "Brain Dump MAP step failed")
         return []
@@ -482,8 +482,8 @@ def _synthesize_and_save_concepts(dump_text: str, url_content: str, source_ref: 
             _logger.warning(f"Failed to generate concept: {c_title}")
             continue
             
-        # Robustly extract from the first YAML marker
-        match = re.search(r"(---\n.*)", concept_body, re.DOTALL)
+        # Robustly extract from the first YAML marker (support CRLF and LF)
+        match = re.search(r"(---\r?\n.*)", concept_body, re.DOTALL)
         if not match:
             _logger.warning(f"Failed to find YAML frontmatter for: {c_title}")
             continue

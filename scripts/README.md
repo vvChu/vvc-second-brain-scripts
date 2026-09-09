@@ -1,6 +1,7 @@
-# VvC Second Brain — Pipeline Scripts (v8.12.1 - Hook Overlap Prevention & JIT Images)
+# VvC Second Brain — Pipeline Scripts (v8.12.4 - YouTube Visual Extractor v12.0)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
+*Upgraded in v8.12.4: Upgraded YouTube Visual Extractor to v12.0 with dynamic storyboard max tile area selection (prioritizing sb0 320x180 px over sb2 80x45 px), invariant slicing and timestamp synchronization, format selector supporting progressive (format 18) and DASH streams, 1-pass multimodal LLM-as-Judge, and automated self-healing across vault.*
 *Upgraded in v8.12.1: Implemented Sequential Hook Overlap Prevention in Batch Processing to dynamically exclude duplicate quotes across adjacent pages using dynamic exclude_hooks registry, auto-injecting [CRITICAL DIRECTIVE] into synthesis prompt, and resolved 188/188 passed tests.*
 *Upgraded in v8.12.0: Implemented JIT Image Alignment (extracting raw illustrations from book corpus matching Ground Truth ±800 chars and embedding standard WebP ![[image.webp]] inside ## Core Idea) and smart Adaptive Naming ([book]_[chapter]_[page]_[original_name] format).*
 *Upgraded in v8.11.0: Implemented JIT Environment Loading (.env helper), secured enrich_book_context against YAML metadata erasure, fixed fuzzy-matching [L10] for truncated workspace names.*
@@ -91,13 +92,13 @@ pythonw daemon.py
 pythonw book_ingest.py
 ```
 
-## 3-Tier AI Infrastructure (v8.12.1)
+## 3-Tier AI Infrastructure (v8.12.3)
 
 The v8.12 compiler routes requests based on availability and capability using tier-specific model resolution:
 
-1. **Tier 1 (Primary)**: AI Gateway (`ccba-ai` SDK) → 22 local/cloud models. Includes `gemini-3.5-flash-low` (with direct fallback), `audio-primary` (Whisper V3 Turbo with `vad_filter`), and `gemini-embed` (3072-dimensional vector embedding model).
-2. **Tier 2 (Fallback)**: Copilot CLI (`claude-sonnet-4.6` / `gpt-5-mini`)
-3. **Tier 3 (Direct)**: Gemini REST API (`gemini-3-flash-preview`)
+1. **Tier 1 (Primary)**: Antigravity CLI Driver (`gemini-3.8-flash-high`) for Map & Reduce / AI Gateway (`ccba-ai` SDK) → 22 local/cloud models (includes `gemini-3.8-flash-high`, `audio-primary` Whisper V3 Turbo with `vad_filter`, and `gemini-embed` 3072-dim).
+2. **Tier 2 (Fallback)**: Copilot CLI (`claude-sonnet-4.6` / `claude-opus-4-6-thinking` for planning / `gpt-5-mini`)
+3. **Tier 3 (Direct)**: Gemini REST API (`gemini-3.1-flash-lite-preview`)
 
 **Round-Robin Load Balancing**: For high-volume background tasks (e.g. `wiki_health`), the router automatically distributes requests evenly across all 3 tiers (`call_llm(strategy="round_robin")`) to bypass standard API rate limits.
 **WinError 206 Protection**: By directly invoking the underlying OS `CreateProcessW` APIs (bypassing `cmd.exe`), payloads up to **30,000 characters** are now safely passed natively. Only payloads exceeding this limit trigger HTTP REST API fallback. This allows `text_chunker.py` to utilize a massive **25,000 max_chunk_size**, maximizing throughput.

@@ -22,25 +22,26 @@ vault:
 ai_gateway:
   url: "http://100.83.192.30:8090/v1"
   api_key: ""  # Set via System Env Var or local .env: VVC_GATEWAY_KEY (never hardcode here)
-  proxy_model: "gemini-3.5-flash-low"
-  direct_model: "gemini-3.5-flash-low"
+  proxy_model: "gemini-3.7-flash-high"
+  direct_model: "gemini-3.7-flash-high"
+  synthesis_model: "gemini-3.8-flash-high"
   correction_model: "gemini-3.1-flash-lite"
 
 # --- Backend Selection ---
 # Options: "gemini-cli" | "copilot-cli" | "gateway"
 backend: "gateway"
-fallback: "copilot-cli"
+fallback: "gemini-cli"
 
 # --- Gemini CLI + API ---
 # CLI: text completion (gemini-2.5-pro, signed-in account)
 # API: vision/OCR (needs api_key from https://aistudio.google.com/apikey)
 # Auto-rotation: switches to batch model when approaching daily quota
 gemini_cli:
-  cmd: "C:\\Users\\chuvu\\AppData\\Roaming\\npm\\gemini.cmd"
-  model: "gemini-3-flash-preview"
+  cmd: "C:\\Users\\chuvu\\AppData\\Local\\agy\\bin\\agy.exe"
+  model: "gemini-3.8-flash-high"
   vision_model: "gemini-3.1-flash-lite-preview"          # Primary: best OCR quality + speed
   vision_model_batch: "gemini-3.1-flash-lite-preview"    # Batch: high throughput (500 RPD)
-  text_synthesis_model: "gemini-3.1-pro-preview"         # Upgrade to Pro-level for premium Tier 3 synthesis fallback!
+  text_synthesis_model: "gemini-3.8-flash-high"         # Upgrade to Pro-level for premium Tier 3 synthesis fallback!
   text_correction_model: "gemini-3.1-flash-lite-preview" # Exact CLI name for correction
 
   api_key: ""  # Set via System Env Var: GEMINI_API_KEY (never hardcode here — synced to GDrive)

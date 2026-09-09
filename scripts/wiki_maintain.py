@@ -450,6 +450,10 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         _logger.error(f"Failed to write index: {e}")
 
 
+# Canonical alias
+maintain_wiki = rebuild_all
+
+
 if __name__ == "__main__":
     import sys
     try:

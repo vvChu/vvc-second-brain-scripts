@@ -88,3 +88,44 @@ def test_download_audio_via_ytdlp(mock_ytdl_class, tmp_path):
         
     assert res == downloaded_file
     assert res.exists()
+
+
+@patch("yt_dlp.YoutubeDL")
+def test_extract_transcript_via_ytdlp_json3(mock_ytdl_class):
+    """Test extracting JSON3 subtitles using yt-dlp."""
+    from services.youtube.transcript import extract_transcript_via_ytdlp
+    
+    mock_ytdl = MagicMock()
+    mock_ytdl_class.return_value = mock_ytdl
+    mock_context = MagicMock()
+    mock_ytdl.__enter__.return_value = mock_context
+
+    mock_context.extract_info.return_value = {
+        "subtitles": {
+            "vi": [{"ext": "json3", "url": "https://fake.url/sub.json3"}]
+        }
+    }
+
+    import json
+    fake_json3 = json.dumps({
+        "events": [
+            {
+                "tStartMs": 1500,
+                "segs": [{"utf8": "Xin chào thế giới"}]
+            },
+            {
+                "tStartMs": 35000,
+                "segs": [{"utf8": "Câu nói thứ hai"}]
+            }
+        ]
+    })
+    
+    mock_response = MagicMock()
+    mock_response.read.return_value = fake_json3.encode("utf-8")
+    mock_context.urlopen.return_value = mock_response
+
+    result = extract_transcript_via_ytdlp("https://youtube.com/watch?v=ABC123xyz")
+    assert result is not None
+    assert "[00:01] Xin chào thế giới" in result
+    assert "[00:35] Câu nói thứ hai" in result
+

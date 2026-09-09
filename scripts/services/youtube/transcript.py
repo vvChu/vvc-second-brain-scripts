@@ -1,11 +1,16 @@
 """VvC Second Brain — YouTube Transcript Fetcher.
 
-Extracts transcripts from YouTube via API, fallbacks to yt-dlp + whisper.
+Extracts transcripts from YouTube via yt-dlp mobile client emulation,
+with fallbacks to youtube_transcript_api and audio download + Whisper.
 """
 
+from __future__ import annotations
+
+import json
 import logging
 import urllib.parse
 from pathlib import Path
+from typing import Any
 
 from core.config import cfg
 from core.llm import call_audio
@@ -13,34 +18,163 @@ from core.llm import call_audio
 _logger = logging.getLogger("vvc.youtube")
 
 
-def _download_audio_via_ytdlp(url: str, info_dict: dict = None) -> Path | None:
-    """Download audio from URL using yt-dlp as fallback."""
+def get_base_ydl_opts() -> dict[str, Any]:
+    """Base yt-dlp options configured to bypass YouTube bot checks."""
+    return {
+        "quiet": True,
+        "no_warnings": True,
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "ios", "mweb", "web"]
+            }
+        },
+    }
+
+
+def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str | None:
+    """Extract official or auto-generated subtitles directly using yt-dlp.
+
+    Bypasses Botguard / IP block by using mobile client emulation.
+    """
     try:
         import yt_dlp
-        
+
+        ydl_opts = get_base_ydl_opts()
+        ydl_opts.update({
+            "skip_download": True,
+            "writesubtitles": True,
+            "writeautomaticsub": True,
+            "subtitleslangs": ["vi", "en"],
+        })
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = info_dict or ydl.extract_info(url, download=False)
+            if not info:
+                return None
+
+            subtitles = info.get("subtitles") or {}
+            auto_subtitles = info.get("automatic_captions") or {}
+
+            # Priority: Manual vi -> Manual en -> Auto vi -> Auto en -> Any manual -> Any auto
+            selected_sub = None
+            for lang in ["vi", "en"]:
+                if lang in subtitles:
+                    selected_sub = subtitles[lang]
+                    break
+                if lang in auto_subtitles:
+                    selected_sub = auto_subtitles[lang]
+                    break
+
+            if not selected_sub:
+                if subtitles:
+                    first_lang = next(iter(subtitles.keys()))
+                    selected_sub = subtitles[first_lang]
+                elif auto_subtitles:
+                    first_lang = next(iter(auto_subtitles.keys()))
+                    selected_sub = auto_subtitles[first_lang]
+
+            if not selected_sub:
+                return None
+
+            # Prefer JSON3 format for precise timestamps, fallback to vtt / srv3
+            json3_url = None
+            vtt_url = None
+            for fmt in selected_sub:
+                ext = fmt.get("ext")
+                if ext == "json3":
+                    json3_url = fmt.get("url")
+                    break
+                elif ext == "vtt":
+                    vtt_url = fmt.get("url")
+
+            target_url = json3_url or vtt_url or selected_sub[0].get("url")
+            if not target_url:
+                return None
+
+            # Fetch subtitle content via yt-dlp's internal downloader (handles headers & cookies)
+            sub_content = ydl.urlopen(target_url).read().decode("utf-8")
+
+            # Parse JSON3 format
+            if "json3" in target_url or sub_content.strip().startswith("{"):
+                try:
+                    data = json.loads(sub_content)
+                    events = data.get("events", [])
+                    formatted_lines = []
+                    curr_start = None
+                    curr_texts = []
+
+                    for event in events:
+                        segs = event.get("segs")
+                        if not segs:
+                            continue
+                        t_offset = event.get("tStartMs", 0) / 1000.0
+                        text_part = "".join(s.get("utf8", "") for s in segs).strip()
+                        if not text_part or text_part == "\n":
+                            continue
+
+                        if curr_start is None:
+                            curr_start = t_offset
+                            curr_texts.append(text_part)
+                        elif t_offset - curr_start >= 30.0:
+                            m = int(curr_start // 60)
+                            s = int(curr_start % 60)
+                            formatted_lines.append(f"[{m:02d}:{s:02d}] " + " ".join(curr_texts))
+                            curr_start = t_offset
+                            curr_texts = [text_part]
+                        else:
+                            curr_texts.append(text_part)
+
+                    if curr_texts and curr_start is not None:
+                        m = int(curr_start // 60)
+                        s = int(curr_start % 60)
+                        formatted_lines.append(f"[{m:02d}:{s:02d}] " + " ".join(curr_texts))
+
+                    if formatted_lines:
+                        return "\n\n".join(formatted_lines)
+                except Exception as e:
+                    _logger.warning(f"Failed parsing JSON3 subtitles: {e}")
+
+            # Fallback simple text parser for other formats (vtt, srt, etc.)
+            lines = [
+                line.strip()
+                for line in sub_content.splitlines()
+                if line.strip() and not line.strip().isdigit() and "-->" not in line
+            ]
+            return "\n".join(lines) if lines else None
+
+    except Exception as e:
+        _logger.warning(f"yt-dlp subtitle extraction failed: {e}")
+        return None
+
+
+def _download_audio_via_ytdlp(url: str, info_dict: dict | None = None) -> Path | None:
+    """Download audio from URL using yt-dlp as fallback.
+
+    Uses mobile player clients to avoid bot blocks, and supports ba/b/18
+    when SABR streaming skips standalone audio-only streams.
+    """
+    try:
+        import yt_dlp
+
         # Save to 05 - Fleeting (scratch area)
         out_dir = cfg.concepts_dir.parent.parent / "05 - Fleeting"
         out_tmpl = str(out_dir / "%(id)s.%(ext)s")
-        
-        ydl_opts = {
-            'format': 'worstaudio/bestaudio',
-            'outtmpl': out_tmpl,
-            'quiet': True,
-            'no_warnings': True,
-        }
-        
+
+        ydl_opts = get_base_ydl_opts()
+        ydl_opts.update({
+            "format": "worstaudio/worst/ba/b/18",
+            "outtmpl": out_tmpl,
+        })
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Nếu đã có sẵn info_dict, ta vẫn gọi extract_info để download,
-            # nhưng quá trình sẽ được tối ưu hơn
             info = ydl.extract_info(url, download=True)
             if not info:
                 return None
-            
-            video_id = info.get('id', '')
+
+            video_id = info.get("id", "")
             if not video_id:
                 return None
-                
-            # If ffmpeg is missing, it keeps the original extension (.webm/.m4a)
+
             # Find the downloaded file by its ID
             for f in out_dir.glob(f"{video_id}.*"):
                 if f.is_file():
@@ -54,11 +188,11 @@ def _download_audio_via_ytdlp(url: str, info_dict: dict = None) -> Path | None:
         return None
 
 
-def fetch_youtube_transcript(url: str, info_dict: dict = None) -> str:
-    """Fetch transcript from YouTube URL, fallback to audio download + Whisper."""
+def _fetch_transcript_via_api(url: str) -> str:
+    """Fetch transcript via youtube_transcript_api (secondary fallback)."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
-        
+
         parsed = urllib.parse.urlparse(url)
         video_id = None
         if parsed.hostname in ("youtu.be", "www.youtu.be"):
@@ -69,34 +203,34 @@ def fetch_youtube_transcript(url: str, info_dict: dict = None) -> str:
                 video_id = qs.get("v", [None])[0]
             elif parsed.path.startswith(("/embed/", "/v/", "/live/")):
                 video_id = parsed.path.split("/")[2]
-                
+
         if not video_id:
             return ""
-            
+
         api = YouTubeTranscriptApi()
         transcript_list = api.list(video_id)
-        
+
         try:
-            transcript = transcript_list.find_transcript(['vi', 'en'])
+            transcript = transcript_list.find_transcript(["vi", "en"])
         except Exception:
             codes = [t.language_code for t in transcript_list]
             if not codes:
                 return ""
             transcript = transcript_list.find_transcript(codes)
-            
+
         data = transcript.fetch()
         formatted_lines = []
         current_group_start = None
         current_group_texts = []
-        
+
         for segment in data:
-            val_text = segment.text if hasattr(segment, 'text') else segment.get('text', '')
+            val_text = segment.text if hasattr(segment, "text") else segment.get("text", "")
             val_text = val_text.strip()
             if not val_text:
                 continue
-                
-            start = segment.start if hasattr(segment, 'start') else segment.get('start', 0.0)
-            
+
+            start = segment.start if hasattr(segment, "start") else segment.get("start", 0.0)
+
             if current_group_start is None:
                 current_group_start = start
                 current_group_texts.append(val_text)
@@ -109,33 +243,48 @@ def fetch_youtube_transcript(url: str, info_dict: dict = None) -> str:
                 current_group_texts = [val_text]
             else:
                 current_group_texts.append(val_text)
-                
+
         if current_group_texts and current_group_start is not None:
             minutes = int(current_group_start // 60)
             seconds = int(current_group_start % 60)
             time_str = f"[{minutes:02d}:{seconds:02d}]"
             formatted_lines.append(f"{time_str} " + " ".join(current_group_texts))
-            
-        text = "\n\n".join(formatted_lines)
-        return text
+
+        return "\n\n".join(formatted_lines)
     except Exception as e:
-        _logger.warning(f"YouTube transcript fetch failed: {e}")
-        _logger.info(f"Fallback to yt-dlp + Whisper for URL: {url}")
-        audio_path = _download_audio_via_ytdlp(url, info_dict=info_dict)
-        if audio_path:
-            try:
-                text = call_audio(audio_path, model="audio-primary", language="vi")
-                if audio_path.exists():
-                    try:
-                        audio_path.unlink()
-                    except OSError:
-                        pass
-                return text
-            except Exception as e:
-                _logger.error(f"Audio transcription failed: {e}")
-                if audio_path.exists():
-                    try:
-                        audio_path.unlink()
-                    except OSError:
-                        pass
+        _logger.warning(f"youtube_transcript_api fetch failed: {e}")
         return ""
+
+
+def fetch_youtube_transcript(url: str, info_dict: dict | None = None) -> str:
+    """Fetch transcript from YouTube URL, fallback to audio download + Whisper."""
+    # 1. Primary: Direct subtitle extraction via yt-dlp mobile client
+    text = extract_transcript_via_ytdlp(url, info_dict=info_dict)
+    if text:
+        return text
+
+    # 2. Secondary fallback: youtube_transcript_api
+    text = _fetch_transcript_via_api(url)
+    if text:
+        return text
+
+    # 3. Tertiary fallback: Audio Download via yt-dlp + Whisper AI
+    _logger.info(f"Fallback to yt-dlp + Whisper for URL: {url}")
+    audio_path = _download_audio_via_ytdlp(url, info_dict=info_dict)
+    if audio_path:
+        try:
+            text = call_audio(audio_path, model="audio-primary", language="vi")
+            if audio_path.exists():
+                try:
+                    audio_path.unlink()
+                except OSError:
+                    pass
+            return text or ""
+        except Exception as e:
+            _logger.error(f"Audio transcription failed: {e}")
+            if audio_path.exists():
+                try:
+                    audio_path.unlink()
+                except OSError:
+                    pass
+    return ""
