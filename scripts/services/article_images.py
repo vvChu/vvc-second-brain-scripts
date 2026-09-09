@@ -73,6 +73,7 @@ _STRUCTURAL_KEYWORDS: frozenset[str] = frozenset({
 MAX_IMAGES_PER_ARTICLE: int = 20
 _MIN_IMAGE_SIZE_BYTES: int = 5_000       # 5 KB minimum download size
 _MIN_DIMENSION: int = 200                # pixels — skip tiny images (avatars/icons)
+_MAX_ASPECT_RATIO: float = 4.5           # skip extreme aspect ratios (thin banners/dividers)
 _DOWNLOAD_TIMEOUT: int = 10             # seconds per image request
 _MAX_DOWNLOAD_WORKERS: int = 5
 _MIN_IMAGES_THRESHOLD: int = 1           # allow single high-value diagrams
@@ -258,6 +259,11 @@ def _download_and_compress(url: str, save_path: Path) -> bool:
 
         # Reject tiny images that passed the HTML attribute check
         if img.width < _MIN_DIMENSION and img.height < _MIN_DIMENSION:
+            return False
+
+        # Reject extreme aspect ratios (thin banners or decorative dividers)
+        min_dim = min(img.width, img.height)
+        if min_dim <= 0 or (max(img.width, img.height) / min_dim) > _MAX_ASPECT_RATIO:
             return False
 
         if img.mode not in ("RGB", "RGBA"):

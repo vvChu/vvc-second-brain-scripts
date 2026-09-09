@@ -123,23 +123,59 @@ def _get_heatmap_peaks(heatmap: list[dict], duration_sec: float, max_peaks: int 
     return sorted(peaks)
 
 
-def _get_target_timestamps(duration_sec: float, chapters: list[dict], heatmap: list[dict] = None) -> list[float]:
+def _get_target_timestamps(duration_sec: float, chapters: list[dict] = None, heatmap: list[dict] = None) -> list[float]:
     """Calculate adaptive target timestamps for chapter-aware multi-sampling and heatmap peaks.
-    
-    Upgraded in v11.0 to sample at a higher density (20-30 targets) to support Two-Stage visual reasoning.
+
+    Dynamic frame budget according to duration_sec:
+    - Short (< 15m / 900s): ~15 targets (saves Vision API tokens).
+    - Medium (15-60m / 900-3600s): ~25 targets (standard dense stage).
+    - Long (> 60m / 3600s): ~35-40 targets (ensures lecture slide coverage).
     """
+    if duration_sec <= 0:
+        return []
+
+    # Determine base budget according to duration_sec
+    if duration_sec < 900:
+        target_budget = 15
+    elif duration_sec <= 3600:
+        target_budget = 25
+    else:
+        target_budget = 36  # In range 35-40
+
     timestamps = []
     if chapters:
         num_chapters = len(chapters)
-        if num_chapters <= 3:
-            p_factors = [0.15, 0.35, 0.55, 0.75, 0.95]
-        elif num_chapters <= 6:
-            p_factors = [0.20, 0.40, 0.60, 0.80, 0.95]
-        elif num_chapters <= 12:
-            p_factors = [0.25, 0.50, 0.75, 0.95]
+        if duration_sec > 3600:
+            # Video dài (> 60m): phân bổ 35-40 targets phủ khắp các chương (kể cả khi chỉ có 1-3 chương)
+            if num_chapters == 1:
+                p_factors = [round((i + 1) / 37, 4) for i in range(36)]
+            elif num_chapters == 2:
+                p_factors = [round((i + 1) / 19, 4) for i in range(18)]
+            elif num_chapters == 3:
+                p_factors = [round((i + 1) / 13, 4) for i in range(12)]
+            elif num_chapters <= 4:
+                p_factors = [0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.90]
+            elif num_chapters <= 6:
+                p_factors = [round((i + 1) / 7, 4) for i in range(6)]
+            elif num_chapters <= 8:
+                p_factors = [0.15, 0.30, 0.45, 0.60, 0.75, 0.90]
+            elif num_chapters <= 14:
+                p_factors = [0.20, 0.40, 0.60, 0.80, 0.95]
+            else:
+                p_factors = [0.33, 0.66, 0.95]
         else:
-            p_factors = [0.33, 0.66, 0.95]
-            
+            # Video vừa và ngắn: mặc định hiện tại, bổ sung budget cho video chỉ có 1 chương duy nhất
+            if num_chapters == 1:
+                p_factors = [round((i + 1) / (target_budget + 1), 4) for i in range(target_budget)]
+            elif num_chapters <= 3:
+                p_factors = [0.15, 0.35, 0.55, 0.75, 0.95]
+            elif num_chapters <= 6:
+                p_factors = [0.20, 0.40, 0.60, 0.80, 0.95]
+            elif num_chapters <= 12:
+                p_factors = [0.25, 0.50, 0.75, 0.95]
+            else:
+                p_factors = [0.33, 0.66, 0.95]
+
         for ch in chapters:
             start = ch.get("start_time", 0.0)
             end = ch.get("end_time", duration_sec)
@@ -149,14 +185,15 @@ def _get_target_timestamps(duration_sec: float, chapters: list[dict], heatmap: l
                 end = duration_sec
             if end <= start:
                 continue
-                
+
             for p in p_factors:
                 ts = start + (end - start) * p
                 if 0.0 <= ts <= duration_sec:
                     timestamps.append(ts)
-    else:
-        # Fallback: Sample 20 evenly spaced points for v11.0 dense coarse stage
-        N = 20
+
+    # Fallback nếu không có chapters hoặc chapters bị rỗng/lỗi không sinh ra timestamps
+    if not timestamps:
+        N = target_budget
         step = duration_sec / (N + 1)
         for i in range(1, N + 1):
             ts = i * step

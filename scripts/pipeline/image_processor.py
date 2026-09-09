@@ -116,46 +116,8 @@ def _get_chapter_diagrams(book_name: str, chapter_stem: str, ground_truth_text: 
     except OSError:
         return ""
 
-    # Parse paragraphs from ground truth to find position in chapter text
-    paragraphs = [p.strip() for p in ground_truth_text.split("\n\n") if p.strip()]
-    if not paragraphs:
-        paragraphs = [ground_truth_text.strip()]
-
-    pos = -1
-    for para in paragraphs:
-        para_clean = re.sub(r"\s+", " ", para).strip()
-        if not para_clean or len(para_clean) < 15:
-            continue
-        pos = chapter_text.find(para)
-        if pos == -1:
-            prefix = para_clean[:80].strip()
-            pos = chapter_text.find(prefix)
-            if pos == -1 and len(para_clean) > 150:
-                middle = para_clean[len(para_clean)//2 : len(para_clean)//2 + 80].strip()
-                pos = chapter_text.find(middle)
-        if pos != -1:
-            break
-
-    if pos == -1:
-        return ""
-
-    # Scan ±800 chars around the matched position
-    start_win = max(0, pos - 800)
-    end_win = min(len(chapter_text), pos + len(ground_truth_text) + 800)
-    window = chapter_text[start_win:end_win]
-
-    image_regex = re.compile(
-        r'!\[\[([^\]]+\.(?:jpg|jpeg|png|webp))\]\]|!\[.*?\]\(([^\)]+\.(?:jpg|jpeg|png|webp))\)',
-        re.IGNORECASE
-    )
-    found_images: list[str] = []
-    for m in image_regex.finditer(window):
-        img_name = m.group(1) or m.group(2)
-        if img_name:
-            img_name = img_name.strip()
-            if img_name not in found_images:
-                found_images.append(img_name)
-
+    from pipeline.ground_truth import find_images_around_ground_truth
+    found_images = find_images_around_ground_truth(chapter_text, ground_truth_text)
     if not found_images:
         return ""
 
@@ -217,8 +179,14 @@ def _get_chapter_diagrams(book_name: str, chapter_stem: str, ground_truth_text: 
         if not caption or not alt_text:
             _logger.info(f"JIT Diagram Enrichment triggered for: {img_name}")
             try:
+                img_pos = chapter_text.find(img_name)
+                if img_pos != -1:
+                    context_window = chapter_text[max(0, img_pos - 500) : min(len(chapter_text), img_pos + len(img_name) + 500)]
+                else:
+                    context_window = ground_truth_text[:1000]
+
                 image_b64 = encode_image(original_img_path, max_pixels=1024)
-                formatted_prompt = FIGURE_ENRICH_PROMPT.format(context_text=window)
+                formatted_prompt = FIGURE_ENRICH_PROMPT.format(context_text=context_window)
                 llm_result = call_gateway_vision(
                     image_b64, 
                     formatted_prompt, 
@@ -247,7 +215,7 @@ def _get_chapter_diagrams(book_name: str, chapter_stem: str, ground_truth_text: 
                             "chapter_file": f"{chapter_stem}.md",
                             "chapter_title": chapter_stem.replace("_", " "),
                             "chapter_num": None,
-                            "surrounding_context": window[:1000],
+                            "surrounding_context": context_window[:1000],
                             "caption": caption,
                             "alt_text": alt_text
                         }

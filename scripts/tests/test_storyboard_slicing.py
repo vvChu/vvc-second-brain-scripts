@@ -318,4 +318,69 @@ def test_keyframes_parse_result_attributes():
     assert res_none.is_explicit_empty is False
 
 
+def test_get_target_timestamps_dynamic_budget_by_duration():
+    """Verify dynamic target timestamps budget according to duration_sec."""
+    # 1. Short video (< 15 min / 900s) -> ~15 targets
+    ts_short = _get_target_timestamps(duration_sec=600.0)
+    assert len(ts_short) == 15
+    assert all(0.0 < t < 600.0 for t in ts_short)
+
+    # 2. Medium video (15-60 min / 900s - 3600s) -> ~25 targets
+    ts_medium = _get_target_timestamps(duration_sec=1800.0)
+    assert len(ts_medium) == 25
+    assert all(0.0 < t < 1800.0 for t in ts_medium)
+
+    # 3. Long video (> 60 min / 3600s) -> 35-40 targets
+    ts_long = _get_target_timestamps(duration_sec=5400.0)
+    assert 35 <= len(ts_long) <= 40
+    assert len(ts_long) == 36
+    assert all(0.0 < t < 5400.0 for t in ts_long)
+
+    # 4. Long video with chapters (> 60 min, 4 chapters) -> 35-40 targets
+    chapters_long = [
+        {"start_time": 0.0, "end_time": 1200.0, "title": "Part 1"},
+        {"start_time": 1200.0, "end_time": 2400.0, "title": "Part 2"},
+        {"start_time": 2400.0, "end_time": 3600.0, "title": "Part 3"},
+        {"start_time": 3600.0, "end_time": 4800.0, "title": "Part 4"},
+    ]
+    ts_long_ch = _get_target_timestamps(duration_sec=4800.0, chapters=chapters_long)
+    assert 35 <= len(ts_long_ch) <= 40
+    assert len(ts_long_ch) == 36
+
+    # 5. Boundary conditions
+    ts_899 = _get_target_timestamps(duration_sec=899.0)
+    assert len(ts_899) == 15
+    ts_900 = _get_target_timestamps(duration_sec=900.0)
+    assert len(ts_900) == 25
+    ts_3600 = _get_target_timestamps(duration_sec=3600.0)
+    assert len(ts_3600) == 25
+    ts_3601 = _get_target_timestamps(duration_sec=3601.0)
+    assert len(ts_3601) == 36
+
+    # 6. Long video with 1 or 2 chapters (ensure lecture slide coverage is not throttled)
+    ts_long_1ch = _get_target_timestamps(duration_sec=5400.0, chapters=[{"start_time": 0.0, "end_time": 5400.0, "title": "Full"}])
+    assert 35 <= len(ts_long_1ch) <= 40
+    assert len(ts_long_1ch) == 36
+
+    chapters_2 = [
+        {"start_time": 0.0, "end_time": 2700.0, "title": "Part 1"},
+        {"start_time": 2700.0, "end_time": 5400.0, "title": "Part 2"},
+    ]
+    ts_long_2ch = _get_target_timestamps(duration_sec=5400.0, chapters=chapters_2)
+    assert 35 <= len(ts_long_2ch) <= 40
+    assert len(ts_long_2ch) == 36
+
+    # 7. Medium video with 1 chapter
+    ts_medium_1ch = _get_target_timestamps(duration_sec=1800.0, chapters=[{"start_time": 0.0, "end_time": 1800.0, "title": "Single Talk"}])
+    assert len(ts_medium_1ch) == 25
+
+    # 8. Edge cases: zero/negative duration, and malformed chapters fallback
+    assert _get_target_timestamps(duration_sec=0.0) == []
+    assert _get_target_timestamps(duration_sec=-10.0) == []
+    malformed_chapters = [{"start_time": 500.0, "end_time": 200.0, "title": "Broken"}]
+    ts_malformed = _get_target_timestamps(duration_sec=1800.0, chapters=malformed_chapters)
+    assert len(ts_malformed) == 25
+
+
+
 

@@ -223,3 +223,114 @@ def test_find_ground_truth_static_language_toc(tmp_path):
         # JIT translate should NOT be called since static language in _toc.json is 'vi'
         mock_translate.assert_not_called()
         assert result.chapter == "01_ch1"
+
+
+def test_find_images_around_ground_truth_basic():
+    """Verify basic image finding with exact paragraph match and deduplication."""
+    from pipeline.ground_truth import find_images_around_ground_truth
+
+    chapter_text = """# Chapter 1
+Introduction to systems thinking.
+
+![[system_diagram_01.png]]
+
+A feedback loop is a circuit of cause-and-effect relationship where information about the system is fed back.
+
+![[feedback_loop.jpg]]
+Some other trailing text here.
+"""
+    gt_text = "A feedback loop is a circuit of cause-and-effect relationship where information about the system is fed back."
+    images = find_images_around_ground_truth(chapter_text, gt_text, window_radius=200)
+    assert images == ["system_diagram_01.png", "feedback_loop.jpg"]
+
+
+def test_find_images_around_ground_truth_multi_paragraph_and_formats():
+    """Verify scanning across multiple paragraphs, blockquotes, and Markdown image syntax."""
+    from pipeline.ground_truth import find_images_around_ground_truth
+
+    chapter_text = """# Chapter 5
+
+First main concept discussion.
+![[first_concept.webp]]
+This is the first substantive paragraph detailing how elements connect in complex networks.
+
+Middle section with no images.
+
+![Architecture](diagrams/arch_overview.png)
+Second key discussion covers the overarching architectural patterns for high-reliability systems.
+![[second_concept.webp]]
+"""
+    # Ground truth formatted with Markdown blockquotes
+    gt_text = """> This is the first substantive paragraph detailing how elements connect in complex networks.
+>
+> Second key discussion covers the overarching architectural patterns for high-reliability systems."""
+
+    images = find_images_around_ground_truth(chapter_text, gt_text, window_radius=300)
+    assert "first_concept.webp" in images
+    assert "diagrams/arch_overview.png" in images
+    assert "second_concept.webp" in images
+    assert len(images) == 3
+
+
+def test_find_images_around_ground_truth_prefix_middle_fallback():
+    """Verify prefix and middle fallback matching for long paragraphs."""
+    from pipeline.ground_truth import find_images_around_ground_truth
+
+    # Chapter text has different ending
+    chapter_text = """# Section 3
+![[prefix_matched.png]]
+This is an extraordinarily detailed paragraph that is well over one hundred and fifty characters in length and begins with a very specific prefix that matches perfectly but diverges slightly at the very end of the sentence.
+"""
+    gt_text = "This is an extraordinarily detailed paragraph that is well over one hundred and fifty characters in length and begins with a very specific prefix that matches perfectly but has some OCR error here at the end."
+
+    images = find_images_around_ground_truth(chapter_text, gt_text, window_radius=200)
+    assert images == ["prefix_matched.png"]
+
+
+def test_find_images_around_ground_truth_edge_cases():
+    """Verify behavior on empty inputs, out of radius images, and no matches."""
+    from pipeline.ground_truth import find_images_around_ground_truth
+
+    # Empty inputs
+    assert find_images_around_ground_truth("", "some text") == []
+    assert find_images_around_ground_truth("some text", "") == []
+    assert find_images_around_ground_truth("", "") == []
+
+    # Image outside radius
+    padding = "x" * 1500
+    chapter_text = f"![[far_away.png]]{padding}Target paragraph content for testing window limits.{padding}"
+    gt_text = "Target paragraph content for testing window limits."
+    assert find_images_around_ground_truth(chapter_text, gt_text, window_radius=300) == []
+    assert find_images_around_ground_truth(chapter_text, gt_text, window_radius=2000) == ["far_away.png"]
+
+    # No match
+    assert find_images_around_ground_truth("![[foo.png]] Completely different text.", "Unrelated search query text.") == []
+
+
+def test_find_images_around_ground_truth_quotes_newlines_and_callouts():
+    """Verify ground truth with surrounding quotes, wrapped newlines, and callouts."""
+    from pipeline.ground_truth import find_images_around_ground_truth
+
+    # 1. Quoted ground truth against unquoted book text
+    chapter_text = """# Chapter 1
+![[model_flow.png]]
+A feedback loop is a circuit of cause-and-effect relationship where information about the system is fed back.
+"""
+    gt_quoted = '> "A feedback loop is a circuit of cause-and-effect relationship where information about the system is fed back."'
+    assert find_images_around_ground_truth(chapter_text, gt_quoted, window_radius=200) == ["model_flow.png"]
+
+    # 2. Wrapped newlines inside chapter text (e.g. hard wrapped EPUB/Markdown)
+    chapter_wrapped = """# Chapter 2
+![[wrapped_diagram.webp]]
+A feedback loop is a circuit of cause-and-effect
+relationship where information about the system is fed back.
+"""
+    assert find_images_around_ground_truth(chapter_wrapped, gt_quoted, window_radius=200) == ["wrapped_diagram.webp"]
+
+    # 3. Ground truth with Obsidian callout headers and citation lines
+    gt_with_callout = """> [!quote] Ground Truth
+> "A feedback loop is a circuit of cause-and-effect relationship where information about the system is fed back."
+> — **Donella Meadows**, trích dẫn trong sách *Thinking in Systems*
+"""
+    assert find_images_around_ground_truth(chapter_text, gt_with_callout, window_radius=200) == ["model_flow.png"]
+

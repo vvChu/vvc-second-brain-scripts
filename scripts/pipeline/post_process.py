@@ -190,60 +190,10 @@ def _align_jit_images(content: str, book_name: str) -> str:
         return content
 
     gt_block = gt_section_match.group(1)
-    paragraphs: list[str] = []
-    current_para: list[str] = []
-    
-    for line in gt_block.splitlines():
-        line = line.strip()
-        if line.startswith(">"):
-            clean_line = line.lstrip(">").strip()
-            if clean_line:
-                current_para.append(clean_line)
-            else:
-                if current_para:
-                    paragraphs.append(" ".join(current_para))
-                    current_para = []
-        else:
-            if current_para:
-                paragraphs.append(" ".join(current_para))
-                current_para = []
-    if current_para:
-        paragraphs.append(" ".join(current_para))
 
-    # 5. Search for paragraphs in the chapter file
-    found_images: list[str] = []
-    image_regex = re.compile(
-        r'!\[\[([^\]]+\.(?:jpg|jpeg|png|webp))\]\]|!\[.*?\]\(([^\)]+\.(?:jpg|jpeg|png|webp))\)',
-        re.IGNORECASE
-    )
-
-    for para in paragraphs:
-        para_clean = re.sub(r"\s+", " ", para).strip()
-        if not para_clean or len(para_clean) < 15:
-            continue
-
-        # Find position of this paragraph in chapter_text
-        pos = chapter_text.find(para)
-        if pos == -1:
-            # Try search by prefix to be robust
-            prefix = para_clean[:80].strip()
-            pos = chapter_text.find(prefix)
-            if pos == -1 and len(para_clean) > 150:
-                middle = para_clean[len(para_clean)//2 : len(para_clean)//2 + 80].strip()
-                pos = chapter_text.find(middle)
-
-        if pos != -1:
-            # Scan ±800 chars around the matched position
-            start_win = max(0, pos - 800)
-            end_win = min(len(chapter_text), pos + len(para) + 800)
-            window = chapter_text[start_win:end_win]
-
-            for m in image_regex.finditer(window):
-                img_name = m.group(1) or m.group(2)
-                if img_name:
-                    img_name = img_name.strip()
-                    if img_name not in found_images:
-                        found_images.append(img_name)
+    # 5. Search for images around Ground Truth in the chapter file
+    from pipeline.ground_truth import find_images_around_ground_truth
+    found_images = find_images_around_ground_truth(chapter_text, gt_block)
 
     if not found_images:
         _logger.debug("[JIT Image] No book images found close to Ground Truth in chapter")

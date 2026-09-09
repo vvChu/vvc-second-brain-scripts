@@ -362,3 +362,117 @@ def find_ground_truth(ocr_text: str, book_name: str, *, page: int | None = None)
         return GroundTruthResult("", score, ch, page)
 
     return GroundTruthResult(para, score, ch, page)
+
+
+def find_images_around_ground_truth(
+    chapter_text: str,
+    ground_truth_text: str,
+    window_radius: int = 800,
+) -> list[str]:
+    """Scan for embedded image references within a character window around Ground Truth.
+
+    Parses ground_truth_text into paragraphs, finds their locations in chapter_text,
+    and collects unique image filenames referenced via Obsidian wiki-links (![[image.ext]])
+    or Markdown images (![alt](image.ext)) within ±window_radius chars around each match.
+
+    Args:
+        chapter_text: Full markdown content of the chapter.
+        ground_truth_text: Ground truth quote/text (can be raw text, blockquote formatted,
+            or enclosed in quotation marks).
+        window_radius: Character radius to expand search before and after match (default 800).
+
+    Returns:
+        List of unique image filenames found within the search windows, in order of discovery.
+    """
+    if not chapter_text or not ground_truth_text:
+        return []
+
+    # Extract clean paragraphs (handling raw text, blockquote formatting, callouts, and citations)
+    paragraphs: list[str] = []
+    current_para: list[str] = []
+    for raw_line in ground_truth_text.splitlines():
+        line = raw_line.strip()
+        if line.startswith(">"):
+            line = line.lstrip(">").strip()
+
+        # Skip Obsidian callout headers (e.g. [!quote], [!info])
+        if re.match(r"^\[![\w\-]+\]", line):
+            continue
+
+        # Skip citation lines (e.g. — **Author**, *Book*...)
+        if re.match(r"^[—\-]{1,2}\s*(?:\*\*|[A-Z])", line):
+            continue
+
+        if line:
+            current_para.append(line)
+        else:
+            if current_para:
+                paragraphs.append(" ".join(current_para))
+                current_para = []
+    if current_para:
+        paragraphs.append(" ".join(current_para))
+
+    if not paragraphs:
+        paragraphs = [ground_truth_text.strip()]
+
+    image_regex = re.compile(
+        r'!\[\[([^\]]+\.(?:jpg|jpeg|png|webp))\]\]|!\[.*?\]\(([^\)]+\.(?:jpg|jpeg|png|webp))\)',
+        re.IGNORECASE,
+    )
+    found_images: list[str] = []
+    quote_chars = '"\'“”«»‘’„”'
+
+    for para in paragraphs:
+        # Strip surrounding quotes and normalize internal whitespace
+        para_clean = re.sub(r"\s+", " ", para.strip().strip(quote_chars)).strip()
+        if not para_clean or len(para_clean) < 15:
+            continue
+
+        # 1. Exact search
+        pos = chapter_text.find(para_clean)
+        if pos == -1 and para != para_clean:
+            pos = chapter_text.find(para.strip())
+
+        # 2. Prefix search fallback
+        if pos == -1:
+            prefix = para_clean[:80].strip()
+            pos = chapter_text.find(prefix)
+
+        # 3. Regex search fallback across linebreaks / whitespace differences
+        if pos == -1:
+            words = para_clean.split()
+            if len(words) >= 3:
+                first_words = [re.escape(w) for w in words[:min(8, len(words))]]
+                pattern = re.compile(r"\s+".join(first_words), re.IGNORECASE)
+                m = pattern.search(chapter_text)
+                if m:
+                    pos = m.start()
+
+        # 4. Middle search fallback for longer paragraphs
+        if pos == -1 and len(para_clean) > 80:
+            words = para_clean.split()
+            if len(words) >= 8:
+                mid = len(words) // 2
+                mid_words = [re.escape(w) for w in words[mid : mid + min(6, len(words) - mid)]]
+                pattern = re.compile(r"\s+".join(mid_words), re.IGNORECASE)
+                m = pattern.search(chapter_text)
+                if m:
+                    pos = m.start()
+            if pos == -1:
+                middle = para_clean[len(para_clean) // 2 : len(para_clean) // 2 + 80].strip()
+                pos = chapter_text.find(middle)
+
+        if pos != -1:
+            # Scan ±window_radius chars around the matched position
+            start_win = max(0, pos - window_radius)
+            end_win = min(len(chapter_text), pos + len(para_clean) + window_radius)
+            window = chapter_text[start_win:end_win]
+
+            for m in image_regex.finditer(window):
+                img_name = m.group(1) or m.group(2)
+                if img_name:
+                    img_name = img_name.strip()
+                    if img_name not in found_images:
+                        found_images.append(img_name)
+
+    return found_images
