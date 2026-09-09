@@ -74,6 +74,7 @@ fix_co_cau_diagram.py
 
 # --- Allow Core Codebase & System Context ---
 !scripts/
+!scripts/vvc_kbcompiler.xml
 !templates/
 !AGENTS.md
 !GEMINI.md

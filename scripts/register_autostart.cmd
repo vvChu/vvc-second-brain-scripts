@@ -31,7 +31,11 @@ echo [1/2] Removing old task if exists...
 schtasks /Delete /TN "VvC_KBCompiler" /F >nul 2>&1
 
 echo [2/2] Creating scheduled task...
-schtasks /Create /TN "VvC_KBCompiler" /TR "wscript.exe \"%~dp0run_watcher.vbs\"" /SC ONLOGON /RL LIMITED /F
+if exist "%~dp0vvc_kbcompiler.xml" (
+    schtasks /Create /XML "%~dp0vvc_kbcompiler.xml" /TN "VvC_KBCompiler" /F
+) else (
+    schtasks /Create /TN "VvC_KBCompiler" /TR "wscript.exe \"%~dp0run_watcher.vbs\"" /SC ONLOGON /RL LIMITED /F
+)
 
 if %errorlevel% EQU 0 (
     echo.
