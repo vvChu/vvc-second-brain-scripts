@@ -381,3 +381,16 @@ Tier 3 (Direct):   Gemini REST API
 - **WinError 206 Safeguard**: CLI payload limits are safely raised to **30,000 characters** by natively invoking `CreateProcessW` (bypassing `cmd.exe` wrappers like `gemini.cmd` via `node.exe`). Payloads exceeding this limit bypass CLI directly to HTTP REST APIs.
 - **VAD Filter**: Audio transcription (Whisper) automatically injects `"vad_filter": true` via `extra_body` to remove silences.
 - **Unconditional think-tag stripping**: `strip_think_tags()` runs on ALL LLM outputs before saving
+
+---
+
+## 9. Agent Skills
+
+### Issue Tracker
+Các lỗi (bugs) và yêu cầu tính năng (Specs) của dự án này được theo dõi trên GitHub Issues. Sử dụng công cụ `gh` CLI cho mọi thao tác. Xem `.md/knowledge/agents/issue_tracker.md`.
+
+### Domain Docs
+Dự án sử dụng cấu trúc Single-context. Tra cứu `CONTEXT.md` và `docs/adr/` tại thư mục gốc. Xem `.md/knowledge/agents/domain.md`.
+
+### Skills Governance
+Tuân thủ Khung Quyết Định Hai Giai Đoạn (ADR-0057 & RES-2026-ARCH-001 v1.2) với kiến trúc 3 tầng (Tier 1: Package Function, Tier 2A: Progressive Reference, Tier 2B: Standalone Kernel Skill, Tier 3: Composite Orchestrator). Mọi kỹ năng độc lập bắt buộc đạt $GPI \ge 12.0$ và vượt qua `python scripts/validate_skills.py --file <path> --enforce-gpi`.

@@ -80,3 +80,10 @@ fix_co_cau_diagram.py
 !AGENTS.md
 !GEMINI.md
 !.gitignore
+
+# Hub auto-generated editable links & Spoke Leakage Guard (ADR 0045)
+requirements-hub.txt
+.md/teach/
+.md/scratch/
+.tmp/
+.out-of-scope/
