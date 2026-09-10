@@ -1,11 +1,17 @@
-"""VvC Second Brain — Worker Dispatcher.
+"""VvC Second Brain — Artifact Engine & Worker Dispatcher (v8.0).
 
-Triggers background workers based on LLM response.
+Centralized Seam for scanning LLM responses, detecting embedded artifact placeholders
+(Mermaid, Excalidraw, EA Scripts, DOCX, CSV/XLSX), and dispatching to background workers
+via an extensible Strategy & Registry pattern.
 """
+
+from __future__ import annotations
 
 import logging
 import re
+from typing import Callable
 
+# Import individual workers with graceful fallback
 try:
     from services.excalidraw_worker import trigger_excalidraw_generation
 except ImportError:
@@ -33,45 +39,129 @@ except ImportError:
 
 _logger = logging.getLogger("vvc.dispatcher")
 
-def trigger_workers(response: str, query: str) -> None:
-    """Detect placeholders and trigger background workers."""
-    excali = re.findall(r"!\[\[([^\]|]+\.excalidraw\.md)(?:\|[^\]]*)?\]\]", response)
-    mermaid = re.findall(r"!\[\[([^\]|]+\.mermaid\.md)(?:\|[^\]]*)?\]\]", response)
-    ea = re.findall(r"!\[\[([^\]|]+\.ea\.md)(?:\|[^\]]*)?\]\]", response)
-    docx = re.findall(r"!\[\[([^\]|]+\.docx)(?:\|[^\]]*)?\]\]", response)
-    qc = re.findall(r"!\[\[([^\]|]+\.(?:csv|xlsx))(?:\|[^\]]*)?\]\]", response)
+# Type alias for artifact handlers: (name: str, response: str, query: str) -> None
+ArtifactHandler = Callable[[str, str, str], None]
 
-    if trigger_excalidraw_generation:
-        for name in excali:
-            try:
-                trigger_excalidraw_generation(name, response)
-            except Exception:
-                _logger.debug(f"Excalidraw generation failed for: {name}")
 
-    if trigger_mermaid_generation:
-        for name in mermaid:
-            try:
-                trigger_mermaid_generation(name, response)
-            except Exception:
-                _logger.debug(f"Mermaid generation failed for: {name}")
+class ArtifactEntry:
+    """Descriptor for a registered artifact adapter."""
 
-    if trigger_ea_generation:
-        for name in ea:
-            try:
-                trigger_ea_generation(name, response)
-            except Exception:
-                _logger.debug(f"EA Macro generation failed for: {name}")
+    def __init__(self, pattern: re.Pattern, handler: ArtifactHandler, name: str) -> None:
+        """Initialize an artifact adapter entry.
 
-    if trigger_doc_generation:
-        for name in docx:
-            try:
-                trigger_doc_generation(name, response)
-            except Exception:
-                _logger.debug(f"Doc generation failed for: {name}")
+        Args:
+            pattern: Compiled regex pattern for matching placeholders.
+            handler: Callable handler to invoke when placeholder is found.
+            name: Human-readable name for telemetry and logging.
+        """
+        self.pattern = pattern
+        self.handler = handler
+        self.name = name
 
-    if trigger_qc_generation:
-        for name in qc:
+
+# Global registry of artifact adapters
+_REGISTRY: list[ArtifactEntry] = []
+
+
+def register_artifact_adapter(
+    pattern: str | re.Pattern,
+    handler: ArtifactHandler,
+    name: str = "",
+) -> None:
+    """Register a new artifact handler with a regex pattern.
+
+    Args:
+        pattern: Regex string or compiled Pattern matching the wiki-link placeholder.
+        handler: Callback function taking (name: str, response: str, query: str).
+        name: Human-readable name for logging.
+    """
+    compiled_pattern = re.compile(pattern) if isinstance(pattern, str) else pattern
+    entry_name = name or getattr(handler, "__name__", "custom_adapter")
+    _REGISTRY.append(ArtifactEntry(compiled_pattern, handler, entry_name))
+
+
+# Built-in adapter bridges
+def _excali_bridge(name: str, response: str, query: str) -> None:
+    if trigger_excalidraw_generation is not None:
+        trigger_excalidraw_generation(name, response)
+
+
+def _mermaid_bridge(name: str, response: str, query: str) -> None:
+    if trigger_mermaid_generation is not None:
+        trigger_mermaid_generation(name, response)
+
+
+def _ea_bridge(name: str, response: str, query: str) -> None:
+    if trigger_ea_generation is not None:
+        trigger_ea_generation(name, response)
+
+
+def _doc_bridge(name: str, response: str, query: str) -> None:
+    if trigger_doc_generation is not None:
+        trigger_doc_generation(name, response)
+
+
+def _qc_bridge(name: str, response: str, query: str) -> None:
+    if trigger_qc_generation is not None:
+        trigger_qc_generation(name, response, query)
+
+
+def _init_default_registry() -> None:
+    """Initialize built-in artifact adapters."""
+    _REGISTRY.clear()
+    register_artifact_adapter(
+        r"!\[\[([^\]|]+\.excalidraw\.md)(?:\|[^\]]*)?\]\]",
+        _excali_bridge,
+        name="excalidraw",
+    )
+    register_artifact_adapter(
+        r"!\[\[([^\]|]+\.mermaid\.md)(?:\|[^\]]*)?\]\]",
+        _mermaid_bridge,
+        name="mermaid",
+    )
+    register_artifact_adapter(
+        r"!\[\[([^\]|]+\.ea\.md)(?:\|[^\]]*)?\]\]",
+        _ea_bridge,
+        name="ea_script",
+    )
+    register_artifact_adapter(
+        r"!\[\[([^\]|]+\.docx)(?:\|[^\]]*)?\]\]",
+        _doc_bridge,
+        name="docx",
+    )
+    register_artifact_adapter(
+        r"!\[\[([^\]|]+\.(?:csv|xlsx))(?:\|[^\]]*)?\]\]",
+        _qc_bridge,
+        name="qc_matrix",
+    )
+
+
+# Pre-populate registry on module load
+_init_default_registry()
+
+
+def trigger_workers(response: str, query: str = "") -> list[str]:
+    """Detect artifact placeholders in response and dispatch to registered workers.
+
+    Args:
+        response: Full LLM response markdown text containing placeholders.
+        query: Optional user query (forwarded to specialized workers like QC).
+
+    Returns:
+        List of detected and triggered artifact filenames.
+    """
+    if not response:
+        return []
+
+    triggered: list[str] = []
+
+    for entry in _REGISTRY:
+        matches = entry.pattern.findall(response)
+        for name in matches:
             try:
-                trigger_qc_generation(name, response, query)
-            except Exception:
-                _logger.debug(f"QC generation failed for: {name}")
+                entry.handler(name, response, query)
+                triggered.append(name)
+            except Exception as e:
+                _logger.warning(f"Worker '{entry.name}' failed for artifact '{name}': {e}")
+
+    return triggered

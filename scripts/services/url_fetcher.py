@@ -22,7 +22,7 @@ try:
 except ImportError:
     BeautifulSoup = None
 
-from services.youtube_transcript import fetch_youtube_transcript, extract_video_visuals
+from services.youtube import fetch_youtube_transcript, extract_video_visuals
 from services.article_images import extract_article_images, format_image_metadata
 
 _logger = logging.getLogger("vvc.url_fetcher")
@@ -72,6 +72,7 @@ def fetch_url_title(url: str) -> str:
     try:
         url = url.rstrip('.,;:"\'')
         resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
+        resp.encoding = resp.apparent_encoding or "utf-8"
         resp.raise_for_status()
         if BeautifulSoup is not None:
             soup = BeautifulSoup(resp.text, "html.parser")
@@ -126,6 +127,17 @@ def fetch_url(url: str, visual: bool = False) -> str:
         # Never fallback to HTML scraping for YouTube URLs. 
         # If transcript/audio fails, return empty string so Semantic Arbitrator rejects it.
         return yt_text or ""
+
+    # Route podcast URLs
+    try:
+        from services.podcast import is_podcast_url, fetch_podcast
+        if is_podcast_url(url):
+            podcast_text = fetch_podcast(url)
+            if podcast_text:
+                return podcast_text
+    except Exception as e:
+        _logger.warning(f"Podcast fetch error for {url}: {e}")
+
     # Convert Twitter/X URLs to Nitter mirror JIT with fallbacks
     if "x.com" in url or "twitter.com" in url:
         nitter_instances = [

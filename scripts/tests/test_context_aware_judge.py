@@ -1,11 +1,11 @@
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
-from services.youtube_transcript import (
+from services.youtube import extract_video_visuals
+from services.youtube.visual_extractor import (
     _get_high_res_stream_url,
     _find_ffmpeg_bin,
     _get_target_timestamps,
-    extract_video_visuals
 )
 
 def test_get_high_res_stream_url():

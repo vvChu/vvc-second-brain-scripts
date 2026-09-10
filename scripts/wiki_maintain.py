@@ -110,14 +110,14 @@ from services.moc_mermaid import (
     build_mermaid_overview as _build_mermaid_overview,
     format_concept_line as _format_concept_line,
     flatten_source_list,
+    group_by_chapter,
+    clean_chapter_name,
 )
 
 # --- Source MOCs ---
 
 def _build_source_mocs(concepts: list[dict], sources: list[dict]) -> list[Path]:
     """Build MOC_*.md for each source book with Mermaid concept map diagrams."""
-    from services.moc_diagram import group_by_chapter, clean_chapter_name
-
     source_map: dict[str, list[dict]] = defaultdict(list)
     active_paths = []
 

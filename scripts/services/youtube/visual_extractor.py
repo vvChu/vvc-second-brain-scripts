@@ -22,6 +22,7 @@ except ImportError:
 from core.config import cfg
 from core.llm import call_llm
 from core.llm.utils import http_session, encode_image
+from core.media import find_ffmpeg_bin as _find_ffmpeg_bin
 
 _logger = logging.getLogger("vvc.youtube")
 
@@ -335,29 +336,7 @@ def _get_storyboard_frames(sb0: dict, tmp_dir: Path, target_timestamps: list[flo
     return static_frames
 
 
-def _find_ffmpeg_bin() -> str | None:
-    """Find the system path to the FFmpeg executable."""
-    ffmpeg_bin = shutil.which("ffmpeg")
-    if ffmpeg_bin:
-        return ffmpeg_bin
-        
-    fallbacks = [
-        Path("C:\\ffmpeg\\bin\\ffmpeg.exe"),
-        Path("C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe"),
-    ]
-    pkg_dir = Path("C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages")
-    if pkg_dir.exists():
-        try:
-            for fb in pkg_dir.glob("**/ffmpeg.exe"):
-                fallbacks.append(fb)
-        except Exception:
-            pass
-            
-    for fb in fallbacks:
-        if fb.exists():
-            return str(fb)
-            
-    return None
+
 
 
 def _get_high_res_stream_url(info_dict: dict) -> tuple[str | None, str]:

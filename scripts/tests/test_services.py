@@ -141,7 +141,7 @@ def test_clean_mermaid_invalid():
 
 def test_group_by_chapter():
     """Should group concepts by ground_truth_chapter with fallback."""
-    from services.moc_diagram import group_by_chapter
+    from services.moc_mermaid import group_by_chapter
 
     concepts = [
         {"_stem": "a", "ground_truth_chapter": '[[07_CHAPTER 4]]'},
@@ -161,7 +161,7 @@ def test_group_by_chapter():
 
 def test_clean_chapter_name():
     """Should clean chapter key into display-friendly name."""
-    from services.moc_diagram import clean_chapter_name
+    from services.moc_mermaid import clean_chapter_name
 
     assert clean_chapter_name("09_Chuong_6_Hop_phan_van_de") == "Chuong 6 Hop Phan Van De"
     assert clean_chapter_name("07_CHAPTER 4") == "Chapter 4"
@@ -228,7 +228,7 @@ def test_url_deduplication_logic():
 
 def test_extract_video_visuals_mock():
     """Should mock video download and frames extraction, returning mock visual description."""
-    from services.youtube_transcript import extract_video_visuals
+    from services.youtube import extract_video_visuals
     
     with patch("yt_dlp.YoutubeDL") as mock_ydl, \
          patch("shutil.which", return_value="C:\\ffmpeg\\bin\\ffmpeg.exe"), \
@@ -274,7 +274,7 @@ def test_extract_video_visuals_mock():
 
 def test_extract_video_visuals_with_keyframes():
     """Should save selected key frames and append IMG markers to visual summary."""
-    from services.youtube_transcript import extract_video_visuals
+    from services.youtube import extract_video_visuals
     
     with patch("yt_dlp.YoutubeDL") as mock_ydl, \
          patch("shutil.which", return_value="C:\\ffmpeg\\bin\\ffmpeg.exe"), \

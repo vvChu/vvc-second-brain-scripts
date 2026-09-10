@@ -1,6 +1,6 @@
 import pytest
 from pathlib import Path
-from services.youtube_transcript import _get_target_timestamps, _get_heatmap_peaks
+from services.youtube.visual_extractor import _get_target_timestamps, _get_heatmap_peaks
 
 def test_get_heatmap_peaks():
     # Mock heatmap data
@@ -32,7 +32,7 @@ def test_get_target_timestamps_with_heatmap():
 
 
 def test_select_best_storyboard_format_max_area():
-    from services.youtube_transcript import _select_best_storyboard_format
+    from services.youtube.visual_extractor import _select_best_storyboard_format
     formats = [
         {"format_id": "sb3", "width": 48, "height": 27, "format_note": "storyboard"},
         {"format_id": "sb2", "width": 80, "height": 45, "format_note": "storyboard"},
@@ -56,7 +56,7 @@ def test_select_best_storyboard_format_max_area():
 def test_get_storyboard_frames_partial_fragment_undistorted(tmp_path):
     from unittest.mock import patch
     from PIL import Image
-    from services.youtube_transcript import _get_storyboard_frames
+    from services.youtube.visual_extractor import _get_storyboard_frames
 
     grid0 = Image.new("RGB", (960, 540), color="blue")
     grid1 = Image.new("RGB", (960, 180), color="red")
@@ -87,7 +87,7 @@ def test_get_storyboard_frames_partial_fragment_undistorted(tmp_path):
 
 
 def test_get_video_download_ydl_opts_format18_and_no_player_client():
-    from services.youtube_transcript import _get_video_download_ydl_opts
+    from services.youtube.visual_extractor import _get_video_download_ydl_opts
     opts = _get_video_download_ydl_opts("/tmp/output.mp4")
     
     fmt = opts.get("format", "")
@@ -100,7 +100,7 @@ def test_get_video_download_ydl_opts_format18_and_no_player_client():
 
 
 def test_parse_key_frames_response_v12_and_backward_compatible():
-    from services.youtube_transcript import _parse_key_frames_response
+    from services.youtube.visual_extractor import _parse_key_frames_response
 
     # v12.0 format: JSON array of objects with index and alt
     v12_summary = (
@@ -129,7 +129,7 @@ def test_parse_key_frames_response_v12_and_backward_compatible():
 
 def test_parse_key_frames_response_square_brackets_in_alt():
     """Verify parser does not fail with JSONDecodeError when alt text contains square brackets."""
-    from services.youtube_transcript import _parse_key_frames_response
+    from services.youtube.visual_extractor import _parse_key_frames_response
 
     summary_with_brackets = (
         "Bản tóm tắt học thuật trực quan.\n\n"
@@ -145,7 +145,7 @@ def test_parse_key_frames_response_square_brackets_in_alt():
 
 def test_parse_key_frames_response_with_markdown_code_fences():
     """Verify parser correctly handles JSON wrapped in markdown code blocks."""
-    from services.youtube_transcript import _parse_key_frames_response
+    from services.youtube.visual_extractor import _parse_key_frames_response
 
     summary_fenced = (
         "Nội dung tóm tắt.\n\n"
@@ -162,7 +162,7 @@ def test_parse_key_frames_response_with_markdown_code_fences():
 
 def test_parse_key_frames_response_dedup_and_mixed():
     """Verify duplicate indices are deduplicated preserving order, and mixed types are handled."""
-    from services.youtube_transcript import _parse_key_frames_response
+    from services.youtube.visual_extractor import _parse_key_frames_response
 
     summary_mixed = (
         "Tóm tắt.\n"
@@ -176,7 +176,7 @@ def test_parse_key_frames_response_dedup_and_mixed():
 
 def test_resolve_key_frames_with_fallback_respects_empty():
     """Verify that KEY_FRAMES: [] (intentional model refusal for podcasts/talking heads) is respected and does NOT fallback."""
-    from services.youtube_transcript import _resolve_key_frames_with_fallback
+    from services.youtube.visual_extractor import _resolve_key_frames_with_fallback
 
     # Case A1: Standard explicit empty list
     summary_empty = (
@@ -215,7 +215,7 @@ def test_resolve_key_frames_with_fallback_respects_empty():
 
 def test_resolve_key_frames_with_fallback_missing_header():
     """Verify that missing KEY_FRAMES: header (format non-compliance) triggers automatic frame selection fallback."""
-    from services.youtube_transcript import _resolve_key_frames_with_fallback
+    from services.youtube.visual_extractor import _resolve_key_frames_with_fallback
 
     # Case B1: No KEY_FRAMES: header in response at all (>= 3 frames -> start, middle, end)
     summary_no_header = "Mô tả toàn bộ visual của video nhưng model quên xuất header KEY_FRAMES."
@@ -239,7 +239,7 @@ def test_resolve_key_frames_with_fallback_missing_header():
 
 def test_resolve_key_frames_with_fallback_parse_failure():
     """Verify that malformed JSON or parse failure triggers fallback instead of falsely treating as refusal."""
-    from services.youtube_transcript import _resolve_key_frames_with_fallback, KeyFramesParseResult
+    from services.youtube.visual_extractor import _resolve_key_frames_with_fallback, KeyFramesParseResult
 
     # Case C1: Truncated JSON with unclosed bracket (e.g. token cutoff)
     summary_truncated = (
@@ -272,7 +272,7 @@ def test_resolve_key_frames_with_fallback_parse_failure():
 
 def test_resolve_key_frames_with_fallback_valid_selection():
     """Verify that normal valid KEY_FRAMES selection returns correct indices without fallback."""
-    from services.youtube_transcript import _resolve_key_frames_with_fallback
+    from services.youtube.visual_extractor import _resolve_key_frames_with_fallback
 
     summary = (
         "Mô tả visual.\n\n"
@@ -286,7 +286,7 @@ def test_resolve_key_frames_with_fallback_valid_selection():
 
 def test_keyframes_parse_result_attributes():
     """Verify KeyFramesParseResult behaves as a 3-tuple while exposing explicit flags."""
-    from services.youtube_transcript import _parse_key_frames_response, KeyFramesParseResult
+    from services.youtube.visual_extractor import _parse_key_frames_response, KeyFramesParseResult
 
     # Normal valid
     res_valid = _parse_key_frames_response('Tóm tắt\nKEY_FRAMES: [{"index": 0}]')
