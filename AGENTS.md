@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.12.4)
+# 🧠 VvC Second Brain — Agent Constitution (v8.12.5)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -235,6 +235,7 @@ scripts/
 │   ├── config.py              ← VaultConfig dataclass (singleton)
 │   ├── types.py               ← Central type definitions & strict type checking
 │   ├── daemon_utils.py        ← Watchdog helper & file stability guards
+│   ├── media.py               ← Media utility seam (FFmpeg/FFprobe locator & transcode SSOT)
 │   ├── prompts/               ← Prompts Registry (modularized text templates)
 │   ├── llm/                   ← 3-tier LLM Modular Package (Gateway, Copilot, Gemini, Vision, Audio)
 │   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
@@ -255,21 +256,22 @@ scripts/
 │   ├── command.py             ← Command.md Facade (8 writing styles)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
+│   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
 │   ├── article_images.py      ← Web article image downloader & WebP compressor
-│   ├── worker_dispatcher.py   ← Triggers all generation workers
+│   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
 │   ├── chat_history.py        ← Command.md Auto-Archive logic
 │   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Trafilatura & BeautifulSoup web scraping (no truncation limits)
 │   ├── text_chunker.py        ← Semantic chunking (25K/chunk) & AI orthographic correction
 │   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment
-│   ├── moc_mermaid.py         ← MOC Mermaid diagram generators (Source + Domain)
+│   ├── moc_mermaid.py         ← MOC Mermaid diagram generators (Source + Domain, w/ chapter grouping)
 │   ├── diagram_base.py        ← Shared diagram infrastructure
 │   ├── excalidraw_worker.py   ← Excalidraw JSON via Copilot CLI (claude-sonnet) (w/ Text Auto-Sync)
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 167 unit tests (pytest) — coverage ≥ 50%
+└── tests/                     ← 266 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ### 1. Setup & Ingestion (`book_ingest.py` & `epub_convert.py`)

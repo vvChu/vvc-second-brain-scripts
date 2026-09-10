@@ -1,6 +1,7 @@
-# VvC Second Brain — Pipeline Scripts (v8.12.4 - YouTube Visual Extractor v12.0)
+# VvC Second Brain — Pipeline Scripts (v8.12.5 - Codebase Architecture Deepening & Podcast Pipeline)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
+*Upgraded in v8.12.5: Codebase Architecture Deepening via ccba-codebase-design: eliminated legacy shims (youtube_transcript.py, moc_diagram.py), established Media Utility Seam (core/media.py) for FFmpeg/FFprobe binary locator and transcode SSOT, upgraded worker_dispatcher.py to extensible Strategy & Adapter Registry ArtifactEngine, implemented autonomous Podcast Ingestion Engine (Apple/Spotify/Direct audio + Faster-Whisper), and hardened pytest suite to 266/266 passed tests.*
 *Upgraded in v8.12.4: Upgraded YouTube Visual Extractor to v12.0 with dynamic storyboard max tile area selection (prioritizing sb0 320x180 px over sb2 80x45 px), invariant slicing and timestamp synchronization, format selector supporting progressive (format 18) and DASH streams, 1-pass multimodal LLM-as-Judge, and automated self-healing across vault.*
 *Upgraded in v8.12.1: Implemented Sequential Hook Overlap Prevention in Batch Processing to dynamically exclude duplicate quotes across adjacent pages using dynamic exclude_hooks registry, auto-injecting [CRITICAL DIRECTIVE] into synthesis prompt, and resolved 188/188 passed tests.*
 *Upgraded in v8.12.0: Implemented JIT Image Alignment (extracting raw illustrations from book corpus matching Ground Truth ±800 chars and embedding standard WebP ![[image.webp]] inside ## Core Idea) and smart Adaptive Naming ([book]_[chapter]_[page]_[original_name] format).*
@@ -22,7 +23,7 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 *Upgraded in v8.9.10 (Next.js Custom Image Extraction & Native SVG Support): Upgraded Smart Filter in article_images.py to extract high-value diagrams from Next.js dynamic React Components (<ThemeImage>) using Regex. Added vector SVG download support to bypass Pillow and size constraints, preserving 100% graphic sharpness in Obsidian.*
 *Upgraded in v8.10.0 (Operational Separation & Ubiquitous Language): AI-Friendly Codebase Refactor. Migrated all log outputs to scripts/logs/ and operational states (.dump_state.json, .processed_urls.json, .rejected_stubs.json, .subsume_journal.jsonl, _embedding_index.npz) to scripts/.state/ for cloud and git isolation. Modularized brain_dump and youtube services, centralized templates in core/prompts/, enforced strict type safety, renamed variable abbreviations to match Ubiquitous Language (ground_truth, frontmatter, workspace_dir), and hardened pytest suite to 167/167 passed tests (coverage ≥ 50%).*
 
-## Architecture (v8.12.1)
+## Architecture (v8.12.5)
 
 ```text
 scripts/
@@ -42,11 +43,12 @@ scripts/
 │   ├── config.py              ← VaultConfig dataclass (singleton)
 │   ├── types.py               ← Central type definitions & strict type checking
 │   ├── daemon_utils.py        ← Watchdog helper & file stability guards
+│   ├── media.py               ← Media utility seam (FFmpeg/FFprobe locator & transcode SSOT)
 │   ├── prompts/               ← Prompts Registry (modularized text templates)
 │   ├── llm/                   ← 3-tier LLM Modular Package (Gateway, Copilot, Gemini, Vision, Audio)
 │   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
 │   ├── layout_router.py       ← Topology auto-detection → engine dispatch
-||   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
+│   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
 │   └── log.py                 ← Append-only logger → log.md (weekly rotation)
 │
 ├── pipeline/                  ← Ingestion stages (7 files)
@@ -62,20 +64,22 @@ scripts/
 │   ├── command.py             ← Command.md Facade handler
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
+│   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
 │   ├── article_images.py      ← Web article image downloader & WebP compressor
-│   ├── worker_dispatcher.py   ← Triggers all generation workers
+│   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
 │   ├── chat_history.py        ← Command.md Auto-Archive logic
 │   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Web scraping & garbage detection
 │   ├── text_chunker.py        ← Semantic chunking & AI correction
 │   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment + Strict Abort
+│   ├── moc_mermaid.py         ← MOC Mermaid diagram generator (w/ chapter grouping SSOT)
 │   ├── diagram_base.py        ← Shared diagram infrastructure
 │   ├── excalidraw_worker.py   ← Excalidraw JSON via Copilot CLI (w/ Text Auto-Sync)
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 188 unit tests (pytest) — coverage ≥ 50%
+└── tests/                     ← 266 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ## Quick Start

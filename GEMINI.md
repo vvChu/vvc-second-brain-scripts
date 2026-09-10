@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Project Context (v8.12.4)
+# 🧠 VvC Second Brain — Project Context (v8.12.5)
 
 > [!NOTE] Context File Hierarchy
 > | File | Role | Authority |
@@ -16,7 +16,7 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 
 - **Philosophy**: AI agents = **librarians & compilers**. Human = **source provider**.
 - **Core Pattern**: Raw images/books/URLs → OCR → Ground Truth RAG → Atomic Concept Synthesis → Zettelkasten.
-- **Current version**: v8.12.4 — See `CHANGELOG.md` for full history.
+- **Current version**: v8.12.5 — See `CHANGELOG.md` for full history.
 
 ## Directory Structure
 

@@ -4,6 +4,14 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.12.5 — Podcast Ingestion Pipeline & Codebase Architecture Deepening
+Tái cấu trúc kiến trúc mã nguồn theo chuẩn `ccba-codebase-design` và tích hợp engine bóc tách Podcast tự hành:
+- **Podcast Ingestion Engine (`services/podcast.py`)**: Tự động nhận diện nguồn Apple Podcasts, Spotify và link audio trực tiếp; phân giải JSON-LD metadata, tải và transcode âm thanh về chuẩn 16kHz mono 32kbps MP3 và chuyển tiếp sang Faster-Whisper trên Server Spark với tự động phát hiện ngôn ngữ và mốc thời gian `[MM:SS]`.
+- **Media Utility Seam (`core/media.py`)**: Thiết lập Seam SSOT hạ tầng nhị phân ngoại vi duy nhất cho hệ thống (`find_ffmpeg_bin`, `find_ffprobe_bin`, `transcode_audio_to_mp3`), tự động tìm kiếm qua WinGet và dọn dẹp file tạm khi gặp sự cố, loại bỏ hoàn toàn mã nguồn trùng lặp giữa YouTube và Podcast.
+- **Eliminate Legacy Shims**: Áp dụng triệt để *Deletion Test*, xóa sạch 2 tệp shim nông (`services/youtube_transcript.py` và `services/moc_diagram.py`), repoint 100% callers trực tiếp về `services.youtube` và `services.moc_mermaid`.
+- **Artifact Engine & Strategy Registry (`worker_dispatcher.py`)**: Chuyển đổi module điều phối thành Seam sâu theo mẫu Strategy & Adapter Registry, hỗ trợ đăng ký định dạng artifact động (`register_artifact_adapter`), cách ly lỗi độc lập từng worker và trả về telemetry chính xác.
+- **Suite Hardening**: Bổ sung `test_podcast.py`, `test_media.py`, `test_dispatcher.py`, nâng tổng số unit tests lên 266/266 tests passed (100%).
+
 ## v8.12.4 — YouTube Visual Extractor v12.0: Dynamic Storyboard & 1-Pass Multimodal Judge
 Nâng cấp toàn diện cơ chế trích xuất hình ảnh video YouTube (`visual_extractor.py`) lên v12.0:
 - **Dynamic Storyboard Selection**: Tự động tính toán diện tích tile ($W \times H$) lớn nhất thay cho chuỗi formats tĩnh, luôn ưu tiên `sb0` (320x180 px = 57.600 px²/tile, gấp 16 lần `sb2` 80x45 px).
