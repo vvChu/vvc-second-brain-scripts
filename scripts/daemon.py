@@ -251,8 +251,18 @@ def _poll_command() -> None:
         _logger.error(f"Command handler error: {e}", exc_info=True)
 
 
+_dump_in_progress = False
+
+
 def _poll_brain_dump() -> None:
-    """Poll Brain_Dump.md for new content."""
+    """Poll Brain_Dump.md for new content.
+
+    Runs in a separate daemon thread to avoid blocking Command.md polling
+    during long audio transcription or podcast runs.
+    """
+    global _dump_in_progress
+    if _dump_in_progress:
+        return
     if not cfg.dump_file.exists():
         return
 
@@ -261,13 +271,21 @@ def _poll_brain_dump() -> None:
         return
     _poller_state.dump_mtime = mtime
 
-    try:
-        from services.brain_dump import handle_brain_dump
-        handle_brain_dump()
-    except ImportError:
-        pass
-    except Exception as e:
-        _logger.error(f"Brain dump handler error: {e}", exc_info=True)
+    _dump_in_progress = True
+
+    def _run_dump() -> None:
+        global _dump_in_progress
+        try:
+            from services.brain_dump import handle_brain_dump
+            handle_brain_dump()
+        except ImportError:
+            pass
+        except Exception as e:
+            _logger.error(f"Brain dump handler error: {e}", exc_info=True)
+        finally:
+            _dump_in_progress = False
+
+    threading.Thread(target=_run_dump, daemon=True, name="brain-dump-worker").start()
 
 
 def _poll_fleeting_dir() -> None:

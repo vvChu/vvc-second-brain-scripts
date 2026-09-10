@@ -53,12 +53,21 @@ def _normalize_url(url: str) -> str:
         host = (parsed.hostname or "").lower().replace("www.", "")
         path = parsed.path.rstrip("/")
         
-        # Đặc cách Youtube: giữ lại query v để phân biệt video
         query = ""
+        # Đặc cách Youtube: giữ lại query v để phân biệt video
         if "youtube.com" in host or "youtu.be" in host:
             qs = parse_qs(parsed.query)
             if 'v' in qs:
                 query = f"?v={qs['v'][0]}"
+        # Apple Podcasts: Bỏ tiền tố quốc gia (/us/podcast -> /podcast), giữ query ?i=
+        elif "podcasts.apple.com" in host:
+            path = re.sub(r"^/[a-z]{2}/podcast", "/podcast", path, flags=re.IGNORECASE)
+            qs = {k.lower(): v for k, v in parse_qs(parsed.query).items()}
+            if 'i' in qs:
+                query = f"?i={qs['i'][0]}"
+        # Spotify: Bỏ tiền tố ngôn ngữ (/intl-xx/ -> /), bỏ tracking ?si=
+        elif "spotify.com" in host:
+            path = re.sub(r"^/intl-[a-z0-9-]+/", "/", path, flags=re.IGNORECASE)
                 
         return f"{host}{path}{query}"
     except Exception:
@@ -99,6 +108,7 @@ _NOISE_LINK_RE = re.compile("|".join(_NOISE_LINK_PATTERNS), re.IGNORECASE)
 _CONTENT_DOMAIN_PATTERNS = re.compile(
     r"(github\.com/[^/]+/[^/]+$"             # GitHub repo root only (not file paths)
     r"|youtube\.com/watch|youtu\.be/"         # YouTube videos
+    r"|podcasts\.apple\.com|open\.spotify\.com" # Podcast platforms
     r"|substack\.com|medium\.com"             # Blog platforms
     r"|dev\.to|hashnode|hbl\.io"              # Dev blogs
     r"|npmjs\.com|pypi\.org"                  # Package registries

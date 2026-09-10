@@ -191,7 +191,14 @@ def _save_transcript(text: str, original_url: str = "") -> str:
     
     timestamp_date = date.today().isoformat()
     title = ""
-    if original_url:
+    # Extract title from markdown heading in first line if present (prevents Mojibake re-fetch)
+    if text.strip().startswith("# "):
+        first_line = text.strip().split("\n", 1)[0]
+        extracted_title = first_line.lstrip("# ").strip()
+        if extracted_title:
+            title = extracted_title
+
+    if not title and original_url:
         title = fetch_url_title(original_url)
         
     slug = ""
@@ -258,11 +265,14 @@ def _save_transcript(text: str, original_url: str = "") -> str:
     
     if original_url:
         import datetime as dt
-        is_youtube = "youtube.com" in original_url or "youtu.be" in original_url
+        from services.podcast import is_podcast_url
 
-        # Option B: Source Note Enrichment — extract related links (articles only)
+        is_youtube = "youtube.com" in original_url or "youtu.be" in original_url
+        is_podcast = is_podcast_url(original_url)
+
+        # Option B: Source Note Enrichment — extract related links (articles only, skip YouTube and Podcasts)
         related_links_md = ""
-        if not is_youtube:
+        if not is_youtube and not is_podcast:
             related = _extract_related_links(original_url)
             if related:
                 links_block = "\n".join(f"- [{u}]({u})" for u in related)
