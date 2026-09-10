@@ -49,3 +49,28 @@ Kích hoạt hệ thống phân tích vết traceback tự động, truy vết n
 1. Trình bày báo cáo tóm tắt cho người dùng: Bản chất lỗi, giải pháp đã áp dụng và kết quả kiểm thử.
 2. Nếu lỗi liên quan đến kiến trúc hoặc mẫu phổ biến, cập nhật kinh nghiệm vào `.md/knowledge/session_learnings.md`.
 - **Tiêu chí hoàn thành:** Báo cáo hoàn tất gửi người dùng và nhật ký bài học được cập nhật nếu có.
+
+---
+
+## Mẫu Mocking Nâng cao & Cạm bẫy Cần tránh (Advanced Mocking Pitfalls)
+
+### 1. Cạm bẫy `@lru_cache` trên các hàm dò tìm nhị phân hệ thống
+- **Hiện tượng**: Hàm `find_binary_path()` dùng `shutil.which` được gắn `@lru_cache(maxsize=1)` để "tối ưu". Khi viết unit test, dù đã dùng `unittest.mock.patch("shutil.which", return_value=None)`, test vẫn pass hoặc fail sai do hàm trả về kết quả đã cache từ các test case trước đó.
+- **Quy tắc**:
+  - `shutil.which` thực thi cực nhanh trên hệ điều hành (~0.02ms). **KHÔNG** gắn `@lru_cache` vào hàm dò tìm file nhị phân nếu không thực sự có bottleneck đo lường được.
+  - Nếu bắt buộc cache, phải cung cấp hàm `clear_cache()` và gọi trong fixture `autouse=True` của pytest.
+
+### 2. Mock phương thức trên instance của Built-in / Standard Library (`Path.exists`)
+- **Hiện tượng**: Gọi `patch.object(Path, "exists", return_value=True)` hoặc `side_effect` dạng hàm không nhận tham số sẽ vấp lỗi:
+  `TypeError: ... takes 0 positional arguments but 1 was given` (do Python ngầm truyền `self` của instance `Path` vào mock).
+- **Giải pháp**:
+  Luôn sử dụng `autospec=True` kết hợp `side_effect` nhận tham số instance:
+  ```python
+  def mock_exists(path_instance):
+      if "target_file.mp3" in str(path_instance):
+          return True
+      return original_exists(path_instance)
+
+  with patch.object(Path, "exists", autospec=True, side_effect=mock_exists):
+      # Code logic cần test
+  ```
