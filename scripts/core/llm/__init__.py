@@ -13,6 +13,7 @@ from core.llm.copilot_client import call_copilot
 from core.llm.gemini_client import call_gemini_cli, call_antigravity_cli, call_gemini_api
 from core.llm.vision_client import call_vision
 from core.llm.audio_client import call_audio
+from core.llm.embedding_client import get_embedding, get_embedding_via_gateway
 
 _logger = logging.getLogger("vvc.llm")
 
@@ -91,6 +92,7 @@ def call_llm(
 
     # Apply Round-Robin Strategy
     if strategy == "round_robin":
+        global _rr_index
         with _rr_lock:
             start_idx = _rr_index % len(tiers)
             tiers = tiers[start_idx:] + tiers[:start_idx]

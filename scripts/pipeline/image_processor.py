@@ -13,36 +13,30 @@ Functions:
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from pathlib import Path
 
 from core.config import cfg
+from core.llm.gateway_client import call_gateway_vision  # noqa: F401
 from core.log import log
 from core.types import PageData
-from core.llm.gateway_client import call_gateway_vision
-from core.llm.utils import encode_image
+from pipeline.book_assets import (
+    find_book_md_dir,
+    is_decorative_image,
+    build_chapter_diagrams_catalog,
+)
+
+# Backward-compatible aliases for internal callers & tests
+_find_md_dir = find_book_md_dir
+_is_decorative_image = is_decorative_image
+_get_chapter_diagrams = build_chapter_diagrams_catalog
+
+from core.prompts.pipeline import FIGURE_ENRICH
 
 _logger = logging.getLogger("vvc.imgproc")
 
-FIGURE_ENRICH_PROMPT = """Bạn là chuyên gia phân tích tài liệu và tri thức hệ thống.
-Dưới đây là một sơ đồ/hình ảnh từ sách chuyên môn, cùng với đoạn văn bản ngữ cảnh xung quanh hình ảnh này trong sách.
-
-NGỮ CẢNH TRONG SÁCH:
----
-{context_text}
----
-
-Nhiệm vụ của bạn là phân tích hình ảnh và ngữ cảnh để trích xuất các thông tin sau bằng TIẾNG VIỆT:
-1. "caption": Tiêu đề chính thức của sơ đồ/hình ảnh (ví dụ: "Sơ đồ 1-4: Khung năng lực sáu phần..."). Nếu sách không ghi rõ caption, hãy tự tạo một tiêu đề ngắn gọn phản ánh đúng bản chất của sơ đồ. Dịch sang tiếng Việt nếu nguyên bản tiếng Anh.
-2. "alt_text": Mô tả chi tiết cấu trúc thị giác (topology), các thành phần chính (các nút, luồng chuyển động, các trục ma trận), và ý nghĩa cốt lõi của sơ đồ này. Mô tả này phải cực kỳ chi tiết (100-200 từ) để phục vụ cho công cụ tìm kiếm ngữ nghĩa (RAG) sau này.
-
-Hãy trả về một chuỗi JSON hợp lệ với cấu trúc sau (KHÔNG dùng markdown code fences, không giải thích gì thêm):
-{{
-  "caption": "tiêu đề hình vẽ bằng tiếng Việt",
-  "alt_text": "mô tả chi tiết cấu trúc sơ đồ phục vụ RAG"
-}}"""
+FIGURE_ENRICH_PROMPT = FIGURE_ENRICH
 
 
 def find_source_ref(book_name: str) -> str:
@@ -60,191 +54,16 @@ def find_source_ref(book_name: str) -> str:
     return book_name
 
 
-def trigger_moc_rebuild() -> None:
-    """Trigger MOC + Index rebuild after concept creation."""
+def trigger_moc_rebuild(concept: dict | Path | None = None) -> None:
+    """Trigger incremental or full MOC + Index rebuild after concept creation."""
     try:
-        from wiki_maintain import rebuild_all
-        rebuild_all()
+        from wiki_maintain import rebuild_all, rebuild_incremental
+        if concept:
+            rebuild_incremental(concept)
+        else:
+            rebuild_all()
     except Exception as e:
         _logger.warning(f"MOC rebuild failed: {e}")
-
-
-def _find_md_dir(book_name: str) -> Path | None:
-    """Find the extracted markdown corpus directory for the given book name."""
-    books_dir = cfg.resources_books_dir
-    if not books_dir.exists():
-        return None
-    try:
-        return next(
-            (d for d in books_dir.iterdir()
-             if d.is_dir() and d.name.endswith("_MD") and book_name.lower() in d.name.lower()),
-            None,
-        )
-    except OSError:
-        return None
-
-
-def _is_decorative_image(filename: str, file_path: Path) -> bool:
-    filename_lower = filename.lower()
-    decorative_keywords = {"cover", "logo", "credit", "title_page", "icon", "decorative"}
-    if any(kw in filename_lower for kw in decorative_keywords):
-        return True
-    if file_path.exists():
-        try:
-            if file_path.stat().st_size < 5120:
-                return True
-        except OSError:
-            pass
-    return False
-
-
-def _get_chapter_diagrams(book_name: str, chapter_stem: str, ground_truth_text: str, page: str) -> str:
-    """Find publisher diagrams close to the Ground Truth in the chapter and build an XML catalog."""
-    if not book_name or not chapter_stem or not ground_truth_text:
-        return ""
-
-    md_dir = _find_md_dir(book_name)
-    if not md_dir or not md_dir.exists():
-        return ""
-
-    chapter_file = md_dir / f"{chapter_stem}.md"
-    if not chapter_file.exists():
-        return ""
-
-    try:
-        chapter_text = chapter_file.read_text(encoding="utf-8")
-    except OSError:
-        return ""
-
-    from pipeline.ground_truth import find_images_around_ground_truth
-    found_images = find_images_around_ground_truth(chapter_text, ground_truth_text)
-    if not found_images:
-        return ""
-
-    # Load figure inventory if exists to fetch caption & alt-text
-    inventory_path = Path(__file__).parent.parent / "resources" / "figure_inventory.json"
-    inventory = {}
-    if inventory_path.exists():
-        try:
-            with open(inventory_path, "r", encoding="utf-8") as f:
-                inv_data = json.load(f)
-                for fig in inv_data.get("figures", []):
-                    inventory[fig["filename"].lower()] = fig
-        except Exception:
-            pass
-
-    # Build XML catalog
-    from core.frontmatter import normalize_stem
-    book_slug = normalize_stem(book_name)[:30].rstrip("_")
-    
-    def _shorten_chapter(ch_stem: str) -> str:
-        ch_match = re.search(r"(?:ch(?:apter)?|chuong)[\s_]*(\d+)", ch_stem, re.IGNORECASE)
-        if ch_match:
-            return f"ch{ch_match.group(1)}"
-        digits = "".join(filter(str.isdigit, ch_stem))
-        if digits:
-            return f"ch{digits[:3]}"
-        return ""
-
-    short_ch = _shorten_chapter(chapter_stem)
-    xml_lines = ["\n<CHAPTER_DIAGRAMS>"]
-
-    for img_name in found_images:
-        original_img_path = md_dir / img_name
-        if not original_img_path.exists():
-            continue
-        if _is_decorative_image(img_name, original_img_path):
-            continue
-
-        # Calculate Adaptive Name exactly matching post_process.py
-        orig_stem = normalize_stem(original_img_path.stem)
-        book_words = [w for w in book_slug.split("_") if len(w) > 3]
-        has_book_prefix = any(w in orig_stem for w in book_words)
-
-        if has_book_prefix:
-            dest_name = f"{orig_stem}.webp"
-        else:
-            parts = [book_slug]
-            if short_ch:
-                parts.append(short_ch)
-            if page:
-                parts.append(f"p{page}")
-            parts.append(orig_stem)
-            dest_name = f"{'_'.join(parts)}.webp"
-
-        fig_info = inventory.get(img_name.lower())
-        caption = fig_info.get("caption") if fig_info else ""
-        alt_text = fig_info.get("alt_text") if fig_info else ""
-
-        if not caption or not alt_text:
-            _logger.info(f"JIT Diagram Enrichment triggered for: {img_name}")
-            try:
-                img_pos = chapter_text.find(img_name)
-                if img_pos != -1:
-                    context_window = chapter_text[max(0, img_pos - 500) : min(len(chapter_text), img_pos + len(img_name) + 500)]
-                else:
-                    context_window = ground_truth_text[:1000]
-
-                image_b64 = encode_image(original_img_path, max_pixels=1024)
-                formatted_prompt = FIGURE_ENRICH_PROMPT.format(context_text=context_window)
-                llm_result = call_gateway_vision(
-                    image_b64, 
-                    formatted_prompt, 
-                    timeout=cfg.gemini_vision_timeout
-                )
-                if llm_result:
-                    clean_result = llm_result.strip()
-                    if clean_result.startswith("```"):
-                        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean_result, re.DOTALL)
-                        if json_match:
-                            clean_result = json_match.group(1)
-                    
-                    parsed_res = json.loads(clean_result)
-                    new_caption = parsed_res.get("caption", "").strip()
-                    new_alt = parsed_res.get("alt_text", "").strip()
-                    
-                    if new_caption and new_alt:
-                        caption = new_caption
-                        alt_text = new_alt
-                        # Update inventory JIT
-                        inventory[img_name.lower()] = {
-                            "path": str(original_img_path),
-                            "filename": img_name,
-                            "book": book_name,
-                            "topology": fig_info.get("topology", "other") if fig_info else "other",
-                            "chapter_file": f"{chapter_stem}.md",
-                            "chapter_title": chapter_stem.replace("_", " "),
-                            "chapter_num": None,
-                            "surrounding_context": context_window[:1000],
-                            "caption": caption,
-                            "alt_text": alt_text
-                        }
-                        # Save back to figure_inventory.json
-                        try:
-                            inventory_data = {"figures": list(inventory.values())}
-                            with open(inventory_path, "w", encoding="utf-8") as f_out:
-                                json.dump(inventory_data, f_out, ensure_ascii=False, indent=2)
-                            _logger.info(f"Successfully saved enriched diagram JIT: {img_name}")
-                        except Exception as save_err:
-                            _logger.warning(f"Failed to save figure_inventory.json during JIT: {save_err}")
-            except Exception as enrich_err:
-                _logger.warning(f"Failed to enrich diagram {img_name} JIT: {enrich_err}")
-
-        xml_lines.append("  <DIAGRAM>")
-        xml_lines.append(f"    <FILENAME>{img_name}</FILENAME>")
-        xml_lines.append(f"    <ADAPTIVE_NAME>{dest_name}</ADAPTIVE_NAME>")
-        if caption:
-            xml_lines.append(f"    <CAPTION>{caption}</CAPTION>")
-        if alt_text:
-            xml_lines.append(f"    <ALT_TEXT>{alt_text}</ALT_TEXT>")
-        xml_lines.append("  </DIAGRAM>")
-
-    xml_lines.append("</CHAPTER_DIAGRAMS>\n")
-    
-    if len(xml_lines) <= 2:
-        return ""
-
-    return "\n".join(xml_lines)
 
 
 def process_image(image_path: Path) -> bool:
@@ -358,7 +177,7 @@ def process_image(image_path: Path) -> bool:
                 _logger.info(f"Deleted successfully processed single image: {image_path.name}")
         except Exception as e:
             _logger.warning(f"Failed to delete processed single image {image_path.name}: {e}")
-        trigger_moc_rebuild()
+        trigger_moc_rebuild(saved)
         return True
 
     try:
@@ -470,6 +289,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     _interpolate_page_numbers(pages_data)
 
     created_count = 0
+    saved_concepts: list[Path] = []
     segmented = None
     processed_images: set[Path] = set()
     exclude_hooks: list[str] = []
@@ -584,6 +404,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
                         saved = save_concept(content, image_path=primary_img, book_name=book_name)
                         if saved:
                             created_count += 1
+                            saved_concepts.append(saved)
                             processed_images.add(primary_img)
 
     # Fallback to Classic Flow (Gộp thành 1 note) if Map-Reduce is bypassed or yielded zero notes
@@ -632,6 +453,7 @@ def process_image_batch(image_paths: list[Path]) -> bool:
             saved = save_concept(content, image_path=pages_data[0].image_path, book_name=book_name)
             if saved:
                 created_count += 1
+                saved_concepts.append(saved)
                 processed_images.add(pages_data[0].image_path)
 
     # Clean up and Archive all extra images in the batch, then delete originals
@@ -653,7 +475,8 @@ def process_image_batch(image_paths: list[Path]) -> bool:
             _logger.warning(f"Failed to delete fleeting source image {img_path.name}: {de}")
         
     if created_count > 0:
-        trigger_moc_rebuild()
+        for c_path in saved_concepts:
+            trigger_moc_rebuild(c_path)
         _logger.info(f"Batch processing completed successfully. Synthesized {created_count} concepts.")
         return True
 

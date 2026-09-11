@@ -19,83 +19,14 @@ from pathlib import Path
 from core.config import cfg
 from core.frontmatter import parse_frontmatter, extract_body, build_frontmatter
 from core.llm import call_llm
+from core.llm.embedding_client import get_embedding, get_embedding_via_gateway  # noqa: F401
 from core.log import log
+from core.vector_store import VectorStore
 
 _logger = logging.getLogger("vvc.merger")
 
 # Sentinel returned by arbitrate_and_merge when existing note fully subsumes new content
 SUBSUME_SENTINEL = Path("__SUBSUMED__")
-
-
-def get_embedding_via_gateway(text: str) -> list[float] | None:
-    """Fetch L2-normalized embedding vector from AI Gateway.
-
-    Implements a resilient retry mechanism with exponential backoff for transient errors 
-    (timeouts, network drops, HTTP 429/5xx), while aborting immediately on fatal errors (HTTP 401/403).
-
-    Args:
-        text: Input text (truncated to 2000 chars).
-
-    Returns:
-        Normalized embedding vector, or None on failure.
-    """
-    if not cfg.gateway_url or not cfg.gateway_api_key:
-        return None
-    
-    import time
-    import requests
-    import numpy as np
-
-    url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
-    headers = {
-        "Authorization": f"Bearer {cfg.gateway_api_key}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "model": "gemini-embed",
-        "input": [text[:2000]],
-    }
-
-    max_retries = 3
-    backoff_factor = 2.0  # Delays: 2s, 4s, 8s
-
-    for attempt in range(max_retries):
-        try:
-            resp = requests.post(url, json=payload, headers=headers, timeout=15)
-            resp.raise_for_status()
-            values = resp.json()["data"][0]["embedding"]
-            emb = np.array(values, dtype=np.float32)
-            norm = np.linalg.norm(emb)
-            normalized = emb / norm if norm > 0 else emb
-            return normalized.tolist()
-        except requests.exceptions.HTTPError as he:
-            status_code = he.response.status_code if he.response is not None else 500
-            # Fatal authentication/authorization or bad request: do not retry
-            if status_code in (401, 403, 400, 404):
-                _logger.error(f"[Merger] Fatal API error {status_code} fetching embedding. Aborting. Error: {he}")
-                break
-            
-            # Transient server error or rate limiting: retry with backoff
-            if attempt < max_retries - 1:
-                sleep_time = backoff_factor ** (attempt + 1)
-                _logger.warning(f"[Merger] Transient HTTP {status_code} fetching embedding (attempt {attempt+1}/{max_retries}). Retrying in {sleep_time}s... Error: {he}")
-                time.sleep(sleep_time)
-            else:
-                _logger.error(f"[Merger] Failed to fetch embedding after {max_retries} attempts due to HTTP {status_code}: {he}")
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as te:
-            # Network drop or connection timeout: retry with backoff
-            if attempt < max_retries - 1:
-                sleep_time = backoff_factor ** (attempt + 1)
-                _logger.warning(f"[Merger] Network/Timeout error fetching embedding (attempt {attempt+1}/{max_retries}). Retrying in {sleep_time}s... Error: {te}")
-                time.sleep(sleep_time)
-            else:
-                _logger.error(f"[Merger] Failed to fetch embedding after {max_retries} attempts due to Network/Timeout error: {te}")
-        except Exception as e:
-            # Any other unexpected exception
-            _logger.error(f"[Merger] Unexpected error fetching embedding: {e}")
-            break
-
-    return None
 
 
 def load_and_sync_bm25_cache(concept_files: list[Path]) -> dict:
@@ -112,7 +43,6 @@ def load_and_sync_bm25_cache(concept_files: list[Path]) -> dict:
     Returns:
         Dict mapping từ stem của ghi chú tới thông tin cache của nó.
     """
-    import os
     import json
     import re
     
@@ -327,44 +257,19 @@ def find_semantic_overlap(new_text: str) -> tuple[str, float] | None:
     Returns:
         Tuple of (existing_stem, similarity_score) if score >= 0.88, else None.
     """
-    import numpy as np
-    index_path = cfg.state_dir / "_embedding_index.npz"
-    bak_path = index_path.with_suffix(".npz.bak")
-
-    loaded_path = None
-    if index_path.exists():
-        loaded_path = index_path
-    elif bak_path.exists():
-        loaded_path = bak_path
-
-    if not loaded_path:
+    store = VectorStore.get_instance()
+    if store is None or len(store) == 0:
         return None
 
-    try:
-        data = np.load(loaded_path, allow_pickle=True)
-        if "embeddings" not in data or "sources" not in data:
-            return None
+    # Fetch query embedding
+    query_emb = get_embedding(new_text)
+    if query_emb is None:
+        _logger.info("[Merger] Embedding is unavailable. Activating BM25 + LLM fallback semantic overlap matching...")
+        return find_semantic_overlap_fallback(new_text)
 
-        embeddings = data["embeddings"]
-        sources = data["sources"].tolist()
-
-        # Fetch query embedding
-        query_emb = get_embedding_via_gateway(new_text)
-        if query_emb is None:
-            _logger.info("[Merger] Embedding is unavailable. Activating BM25 + LLM fallback semantic overlap matching...")
-            return find_semantic_overlap_fallback(new_text)
-
-        # Fast dot product on pre-normalized vectors
-        similarities = np.dot(embeddings, np.array(query_emb, dtype=np.float32))
-
-        # Find best match
-        best_idx = int(np.argmax(similarities))
-        best_score = float(similarities[best_idx])
-
-        if best_score >= 0.88:
-            return sources[best_idx], best_score
-    except Exception as e:
-        _logger.warning(f"Failed to scan semantic overlap: {e}")
+    matches = store.search(query_emb, top_k=1, threshold=0.88)
+    if matches:
+        return matches[0]
 
     return None
 

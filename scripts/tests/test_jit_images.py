@@ -1,8 +1,7 @@
-"""Tests for JIT Image Alignment stage (v8.12.0)."""
+"""Tests for JIT Image Alignment stage (v8.12.0) & pipeline.book_assets Deep Module."""
 
 import sys
 import shutil
-import re
 import random
 from pathlib import Path
 import pytest
@@ -11,7 +10,12 @@ from PIL import Image as PILImage
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.config import cfg
-from pipeline.post_process import save_concept, _align_jit_images, _is_decorative_image
+from pipeline.book_assets import (
+    is_decorative_image,
+    align_book_diagrams,
+    build_chapter_diagrams_catalog,
+)
+from pipeline.post_process import _align_jit_images, _is_decorative_image
 
 
 @pytest.fixture
@@ -50,32 +54,31 @@ def mock_vault_dirs(tmp_path):
 
 
 def test_is_decorative_image(tmp_path):
-    """Test decorative image detection."""
-    # Test keyword matching
-    assert _is_decorative_image("book_cover.jpg", tmp_path) is True
-    assert _is_decorative_image("logo_vibe.png", tmp_path) is True
-    assert _is_decorative_image("some_credits_page.png", tmp_path) is True
-    assert _is_decorative_image("system_icon.png", tmp_path) is True
-    assert _is_decorative_image("decorative_header.jpg", tmp_path) is True
+    """Test decorative image detection directly on pipeline.book_assets and aliases."""
+    # Test keyword matching directly via book_assets
+    assert is_decorative_image("book_cover.jpg", tmp_path) is True
+    assert is_decorative_image("logo_vibe.png", tmp_path) is True
+    assert is_decorative_image("some_credits_page.png", tmp_path) is True
+    assert is_decorative_image("system_icon.png", tmp_path) is True
+    assert is_decorative_image("decorative_header.jpg", tmp_path) is True
 
-    # Test image_processor._is_decorative_image keyword synchronization
+    # Test backward-compatible aliases in post_process & image_processor
     from pipeline.image_processor import _is_decorative_image as _is_decorative_image_ip
+    assert _is_decorative_image("book_cover.jpg", tmp_path) is True
     assert _is_decorative_image_ip("book_cover.jpg", tmp_path) is True
-    assert _is_decorative_image_ip("logo_vibe.png", tmp_path) is True
-    assert _is_decorative_image_ip("some_credits_page.png", tmp_path) is True
-    assert _is_decorative_image_ip("system_icon.png", tmp_path) is True
-    assert _is_decorative_image_ip("decorative_header.jpg", tmp_path) is True
-    
+    assert _is_decorative_image is is_decorative_image
+    assert _is_decorative_image_ip is is_decorative_image
+
     # Test file size matching
     small_file = tmp_path / "small.jpg"
     small_file.write_bytes(b"\x00" * 4000)  # 4 KB
+    assert is_decorative_image("normal_fig.jpg", small_file) is True
     assert _is_decorative_image("normal_fig.jpg", small_file) is True
-    assert _is_decorative_image_ip("normal_fig.jpg", small_file) is True
 
     large_file = tmp_path / "large.jpg"
     large_file.write_bytes(b"\x00" * 8000)  # 8 KB
+    assert is_decorative_image("normal_fig.jpg", large_file) is False
     assert _is_decorative_image("normal_fig.jpg", large_file) is False
-    assert _is_decorative_image_ip("normal_fig.jpg", large_file) is False
 
 
 def _create_noise_image(path: Path, fmt: str):
@@ -153,8 +156,9 @@ status: seed
 - [[Reinventing_the_Organization]]
 """
 
-    # Run JIT Image Alignment helper
-    aligned_content = _align_jit_images(concept_note, book_name)
+    # Run JIT Image Alignment directly via book_assets and verify alias identity
+    assert _align_jit_images is align_book_diagrams
+    aligned_content = align_book_diagrams(concept_note, book_name)
 
     # 1. Assert image name is correctly resolved and embedded
     # "Test_Book_Volume_1_Ch14_Figure_07-01.jpg" should be copied to:
@@ -229,8 +233,9 @@ Dave Ulrich and Arthur Yeung explain outcomes and behaviors.
         inventory_path.parent.mkdir(parents=True, exist_ok=True)
         inventory_path.write_text(json.dumps(mock_inv, ensure_ascii=False), encoding="utf-8")
 
-        # Run test
-        xml = _get_chapter_diagrams(
+        # Run test directly on build_chapter_diagrams_catalog and verify alias identity
+        assert _get_chapter_diagrams is build_chapter_diagrams_catalog
+        xml = build_chapter_diagrams_catalog(
             book_name=book_name,
             chapter_stem="14_7_Performance_Accountability",
             ground_truth_text="Dave Ulrich and Arthur Yeung explain outcomes and behaviors.",
@@ -299,8 +304,9 @@ Dave Ulrich and Arthur Yeung explain outcomes and behaviors.
         inventory_path.parent.mkdir(parents=True, exist_ok=True)
         inventory_path.write_text(json.dumps(empty_inv, ensure_ascii=False), encoding="utf-8")
 
-        # Run test
-        xml = _get_chapter_diagrams(
+        # Run test directly on build_chapter_diagrams_catalog
+        assert _get_chapter_diagrams is build_chapter_diagrams_catalog
+        xml = build_chapter_diagrams_catalog(
             book_name=book_name,
             chapter_stem="14_7_Performance_Accountability",
             ground_truth_text="Dave Ulrich and Arthur Yeung explain outcomes and behaviors.",

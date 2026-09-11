@@ -15,6 +15,7 @@ from typing import NamedTuple
 from core.config import cfg
 from core.llm import call_llm
 from core.prompts.pipeline import OCR_CORRECTION as _CORRECTION_PROMPT
+from pipeline.book_assets import find_book_md_dir
 
 try:
     from rank_bm25 import BM25Okapi as _BM25Okapi
@@ -54,18 +55,7 @@ def _load_toc(book_dir: Path) -> list[dict] | None:
 
 
 def _find_md_dir(book_name: str) -> Path | None:
-    """Find the extracted markdown corpus directory for the given book name."""
-    books_dir = cfg.resources_books_dir
-    if not books_dir.exists():
-        return None
-    try:
-        return next(
-            (d for d in books_dir.iterdir()
-             if d.is_dir() and d.name.endswith("_MD") and book_name.lower() in d.name.lower()),
-            None,
-        )
-    except OSError:
-        return None
+    return find_book_md_dir(book_name, books_dir=cfg.resources_books_dir)
 
 
 def _match_chapter_file(chapter_num: int, md_files: list[Path]) -> Path | None:

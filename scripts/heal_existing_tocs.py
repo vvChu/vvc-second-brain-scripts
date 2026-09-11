@@ -16,7 +16,8 @@ _SCRIPT_DIR = Path(__file__).parent.resolve()
 sys.path.insert(0, str(_SCRIPT_DIR))
 
 from core.config import cfg
-from pipeline.ground_truth import _find_md_dir, _match_chapter_file
+from pipeline.book_assets import find_book_md_dir as _find_md_dir
+from pipeline.ground_truth import _match_chapter_file
 from pipeline.ocr import _sync_source_note
 
 if sys.platform == "win32":
@@ -159,7 +160,6 @@ def heal_all_tocs() -> None:
         md_files = list(md_dir.glob("*.md"))
         
         # 3. Align each chapter and enrich fields
-        updated_any = False
         sorted_chapters = sorted(chapters, key=lambda x: (x.get("chapter_num") if x.get("chapter_num") is not None else 0))
 
         for idx, ch in enumerate(sorted_chapters):
@@ -185,7 +185,6 @@ def heal_all_tocs() -> None:
                 # Update epub_file
                 if ch.get("epub_file") != matched_file.name:
                     ch["epub_file"] = matched_file.name
-                    updated_any = True
                     _logger.info(f"  Mapped Chapter {chapter_num} -> {matched_file.name}")
 
                 # Update title_original
@@ -193,7 +192,6 @@ def heal_all_tocs() -> None:
                     h1_title = _extract_h1(matched_file)
                     if h1_title:
                         ch["title_original"] = h1_title
-                        updated_any = True
                         _logger.info(f"  Extracted original title for Ch {chapter_num}: '{h1_title}'")
             else:
                 _logger.warning(f"  Could not map Chapter {chapter_num} to any file in {md_dir.name}")
@@ -204,7 +202,6 @@ def heal_all_tocs() -> None:
                     ch_start = int(ch["page_start"])
                     if ch["page_start"] != ch_start:
                         ch["page_start"] = ch_start
-                        updated_any = True
                 except (ValueError, TypeError):
                     pass
 
@@ -216,7 +213,6 @@ def heal_all_tocs() -> None:
                     try:
                         next_start_int = int(next_start)
                         ch["page_end"] = next_start_int - 1 if next_start_int > 0 else None
-                        updated_any = True
                         _logger.info(f"  Auto-assigned Ch {chapter_num} page_end: {ch['page_end']}")
                     except (ValueError, TypeError):
                         pass
@@ -230,7 +226,6 @@ def heal_all_tocs() -> None:
             clean_title = ws.name.replace("_", " ")
             # Try to keep original if it exists as title
             toc_data["book_title_vi"] = clean_title
-            updated_any = True
 
         try:
             with open(toc_path, "w", encoding="utf-8") as f:

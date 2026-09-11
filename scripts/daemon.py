@@ -38,6 +38,7 @@ from core.daemon_utils import harden_headless_stdio, is_file_stable
 harden_headless_stdio()
 
 from core.config import cfg
+from core.file_lock import CrossProcessFileLock
 from core.log import log
 
 # --- Logging setup ---
@@ -57,7 +58,7 @@ COMMAND_POLL_INTERVAL = 15  # seconds
 BRAINDUMP_POLL_INTERVAL = 30
 FLEETING_POLL_INTERVAL = 30  # seconds
 _FILE_STABLE_WAIT = 1.5      # seconds between file size checks
-_BATCH_COOLDOWN = 30.0       # seconds of inactivity before flushing a batch
+_BATCH_COOLDOWN = 10.0       # seconds of inactivity before flushing a batch
 
 # --- Work Queue ---
 _work_queue: queue.Queue = queue.Queue()  # items: Path | list[Path]
@@ -348,41 +349,32 @@ def _poll_loop() -> None:
 
 
 # ============================================================
-# PID Guard & Watchdog Helpers
+# Single-Instance Lock & Watchdog Helpers
 # ============================================================
 
-_PID_FILE = _SCRIPT_DIR / ".daemon.pid"
+_daemon_lock: CrossProcessFileLock | None = None
 
 
-def _write_pid() -> None:
-    """Write PID file to prevent duplicate instances."""
-    _PID_FILE.write_text(str(os.getpid()))
-
-
-def _cleanup_pid() -> None:
-    """Remove PID file on shutdown."""
-    try:
-        _PID_FILE.unlink(missing_ok=True)
-    except OSError:
-        pass
-
-
-def _check_pid() -> bool:
-    """Check if another daemon instance is running."""
-    if not _PID_FILE.exists():
+def _acquire_daemon_lock() -> bool:
+    """Acquire kernel-level single-instance lock to prevent duplicate daemons."""
+    global _daemon_lock
+    lock_file = cfg.state_dir / ".daemon.lock"
+    _daemon_lock = CrossProcessFileLock(lock_file, timeout=0.2)
+    if not _daemon_lock.acquire():
+        _daemon_lock = None
         return False
-    try:
-        pid = int(_PID_FILE.read_text().strip())
-        # Check if process exists (Windows)
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(0x1000, False, pid)
-        if handle:
-            kernel32.CloseHandle(handle)
-            return True
-    except (ValueError, OSError, AttributeError):
-        pass
-    return False
+    return True
+
+
+def _release_daemon_lock() -> None:
+    """Release kernel-level single-instance lock on shutdown."""
+    global _daemon_lock
+    if _daemon_lock is not None:
+        try:
+            _daemon_lock.release()
+        except Exception:
+            pass
+        _daemon_lock = None
 
 
 def _start_watchdog_with_retry(path: Path, handler, max_retries: int = 6):
@@ -465,11 +457,10 @@ def _scan_existing_files() -> None:
 
 def main() -> None:
     """Start the daemon."""
-    if _check_pid():
+    if not _acquire_daemon_lock():
         _logger.warning("Another daemon instance is already running")
         return
 
-    _write_pid()
     log("lifecycle", "Daemon v7.5 started")
     _logger.info("=" * 50)
     _logger.info("VvC Second Brain — Daemon v7.5 (Batching + Stability Guard)")
@@ -567,7 +558,7 @@ def main() -> None:
         poller.join(timeout=5)
         if worker.is_alive():
             _logger.warning("Worker thread did not finish in time — forcing exit")
-        _cleanup_pid()
+        _release_daemon_lock()
         log("lifecycle", "Daemon v7.5 stopped")
         _logger.info("Daemon stopped")
 

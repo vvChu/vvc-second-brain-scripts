@@ -11,16 +11,9 @@ Usage:
 from __future__ import annotations
 
 import logging
-import re
-from pathlib import Path
-from typing import NamedTuple, TypedDict, List, Tuple
+from typing import Any, NamedTuple, TypedDict
 
 import numpy as np
-
-try:
-    import requests
-except ImportError:
-    requests = None
 
 try:
     from rank_bm25 import BM25Okapi
@@ -28,7 +21,9 @@ except ImportError:
     BM25Okapi = None
 
 from core.config import cfg
+from core.llm.embedding_client import get_embedding
 from core.vault import scan_all_concepts
+from core.vector_store import VectorStore
 
 _logger = logging.getLogger("vvc.rag")
 
@@ -51,85 +46,24 @@ class SearchResult(NamedTuple):
 
 # --- Embedding Index ---
 
-_index_cache: IndexCache | None = None
-
 
 def _load_embedding_index() -> IndexCache | None:
-    """Load the pre-built embedding index from disk."""
-    global _index_cache
-    if _index_cache is not None:
-        return _index_cache
-
-    if not EMBEDDING_INDEX_PATH.exists():
+    """Load the pre-built embedding index from VectorStore."""
+    store = VectorStore.get_instance()
+    if len(store) == 0:
         _logger.info("No embedding index found, will use BM25 only")
         return None
 
-    try:
-        data = np.load(EMBEDDING_INDEX_PATH, allow_pickle=True)
-        
-        if "embeddings" in data:
-            embeddings = data["embeddings"]
-            texts = data["texts"].tolist()
-            sources = data["sources"].tolist()
-        elif "vectors" in data and "stems" in data:
-            embeddings = data["vectors"]
-            sources = data["stems"].tolist()
-            texts = []
-            from core.config import cfg
-            for stem in sources:
-                fpath = cfg.concepts_dir / f"{stem}.md"
-                if fpath.exists():
-                    try:
-                        texts.append(fpath.read_text(encoding="utf-8")[:2000])
-                    except Exception:
-                        texts.append("")
-                else:
-                    texts.append("")
-        else:
-            raise ValueError("Unknown embedding index format")
-
-        # Pre-normalize for O(1) cosine similarity later
-        norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
-        norms = np.where(norms == 0, 1, norms)
-        normalized_embeddings = embeddings / norms
-        
-        _index_cache = {
-            "embeddings": normalized_embeddings,      # (N, 3072)
-            "texts": texts,                           # list[str]
-            "sources": sources,                       # list[str]
-        }
-        _logger.info(f"Embedding index loaded: {len(_index_cache['texts'])} entries")
-        return _index_cache
-    except Exception as e:
-        _logger.warning(f"Failed to load embedding index: {e}")
-        return None
+    return {
+        "embeddings": store.embeddings,
+        "texts": store.texts,
+        "sources": store.sources,
+    }
 
 
 def _get_query_embedding(query: str) -> np.ndarray | None:
-    """Get embedding for a query string via AI Gateway (gemini-embed)."""
-    if not cfg.gateway_url or not cfg.gateway_api_key or requests is None:
-        return None
-
-    try:
-        url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
-        headers = {
-            "Authorization": f"Bearer {cfg.gateway_api_key}",
-            "Content-Type": "application/json",
-        }
-        payload = {
-            "model": "gemini-embed",
-            "input": [query],
-        }
-        resp = requests.post(url, json=payload, headers=headers, timeout=30)
-        resp.raise_for_status()
-        values = resp.json()["data"][0]["embedding"]
-        emb = np.array(values, dtype=np.float32)
-        # Pre-normalize the query embedding
-        norm = np.linalg.norm(emb)
-        return emb / norm if norm > 0 else emb
-    except Exception as e:
-        _logger.warning(f"Embedding AI Gateway error: {e}")
-        return None
+    """Get embedding for a query string via AI Gateway."""
+    return get_embedding(query)
 
 
 # --- BM25 Search ---
@@ -161,18 +95,15 @@ def _bm25_search(
 
 def _embedding_search(
     query_emb: np.ndarray | None,
-    embeddings: np.ndarray,
+    embeddings: np.ndarray | None = None,
     top_k: int = 10,
+    threshold: float = 0.3,
 ) -> list[tuple[int, float]]:
-    """Semantic embedding search on pre-normalized vectors. Returns (index, score) pairs."""
+    """Semantic embedding search on pre-normalized vectors using VectorStore. Returns (index, score) pairs."""
     if query_emb is None:
         return []
-
-    # Fast dot product (equivalent to cosine similarity due to pre-normalization)
-    similarities = np.dot(embeddings, query_emb)
-
-    indexed = sorted(enumerate(similarities), key=lambda x: x[1], reverse=True)
-    return [(i, float(s)) for i, s in indexed[:top_k] if s > 0.3]
+    store = VectorStore.get_instance()
+    return store.search_indices(query_emb, top_k=top_k, threshold=threshold)
 
 
 # --- Reciprocal Rank Fusion ---

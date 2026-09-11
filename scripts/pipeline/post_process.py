@@ -15,8 +15,15 @@ from datetime import date
 from pathlib import Path
 
 from core.config import cfg
+from core.file_lock import CrossProcessFileLock  # noqa: F401
 from core.frontmatter import parse_frontmatter, normalize_stem
 from core.log import log
+from core.vector_store import VectorStore
+from pipeline.book_assets import (
+    find_book_md_dir,
+    is_decorative_image,
+    align_book_diagrams,
+)
 from pipeline.semantic_merger import (
     SUBSUME_SENTINEL,
     find_semantic_overlap,
@@ -24,6 +31,11 @@ from pipeline.semantic_merger import (
     execute_cross_linking,
     log_subsume,
 )
+
+# Backward-compatible aliases for internal callers & tests
+_find_md_dir = find_book_md_dir
+_is_decorative_image = is_decorative_image
+_align_jit_images = align_book_diagrams
 
 _logger = logging.getLogger("vvc.postproc")
 
@@ -73,8 +85,10 @@ def _validate_quality(content: str, stem: str) -> list[str]:
     title_m  = re.search(r"^title:\s*[^\n]+", content, re.MULTILINE)
     core_m   = re.search(r"## Core Idea\n+> (.+)", content)
     if title_m and core_m:
-        clean = lambda s: re.sub(r"[^\w ]", "", s.lower())[:40]
-        if clean(title_m.group(0))[:30] == clean(core_m.group(1))[:30]:
+        def _clean_title(s: str) -> str:
+            return re.sub(r"[^\w ]", "", s.lower())[:40]
+
+        if _clean_title(title_m.group(0))[:30] == _clean_title(core_m.group(1))[:30]:
             failures.append("Core Idea blockquote is a copy of the title — no real analysis")
 
     # 4. Body too short (< 300 chars after frontmatter)
@@ -92,9 +106,11 @@ def _validate_quality(content: str, stem: str) -> list[str]:
     summary_m = re.search(r"^summary:\s*['\"]?(.+?)['\"]?\s*$", content, re.MULTILINE)
     hook_m = re.search(r"^>\s*\"([^\"]+)\"", content, re.MULTILINE)
     if summary_m and hook_m:
-        clean = lambda s: re.sub(r"[^\w ]", "", s.lower()).strip()
-        sum_clean = clean(summary_m.group(1))
-        hook_clean = clean(hook_m.group(1))
+        def _clean_text(s: str) -> str:
+            return re.sub(r"[^\w ]", "", s.lower()).strip()
+
+        sum_clean = _clean_text(summary_m.group(1))
+        hook_clean = _clean_text(hook_m.group(1))
         if sum_clean and hook_clean:
             if sum_clean in hook_clean or hook_clean in sum_clean:
                 failures.append("YAML summary duplicates or overlaps with the Evidence Hook blockquote")
@@ -108,175 +124,6 @@ def _validate_quality(content: str, stem: str) -> list[str]:
                         failures.append("YAML summary duplicates or overlaps with the Evidence Hook blockquote")
 
     return failures
-
-
-def _is_decorative_image(name: str, path: Path) -> bool:
-    """Check if an image is decorative based on filename keywords or small file size."""
-    name_lower = name.lower()
-    decorative_keywords = {"cover", "logo", "credit", "title_page", "icon", "decorative"}
-    if any(k in name_lower for k in decorative_keywords):
-        return True
-    try:
-        if path.exists() and path.stat().st_size < 5120:  # 5 KB
-            return True
-    except Exception:
-        pass
-    return False
-
-
-def _find_md_dir(book_name: str) -> Path | None:
-    """Find the extracted markdown corpus directory for the given book name."""
-    books_dir = cfg.resources_books_dir
-    if not books_dir.exists():
-        return None
-    try:
-        return next(
-            (d for d in books_dir.iterdir()
-             if d.is_dir() and d.name.endswith("_MD") and book_name.lower() in d.name.lower()),
-            None,
-        )
-    except OSError:
-        return None
-
-
-def _align_jit_images(content: str, book_name: str) -> str:
-    """Scan original book corpus MD files to find and align crisp publisher diagrams."""
-    if not book_name:
-        return content
-
-    # 1. Parse frontmatter
-    fm = parse_frontmatter(content)
-    gt_ch = fm.get("ground_truth_chapter")
-    if not gt_ch:
-        return content
-
-    # Extract clean chapter stem from wiki-link
-    chapter_stem = str(gt_ch).replace("[[", "").replace("]]", "").strip()
-    if not chapter_stem:
-        return content
-
-    # OCR page and ground truth page for metadata resolution
-    page = str(fm.get("source_page", "")).strip()
-    if not page:
-        page = str(fm.get("ground_truth_page", "")).strip()
-
-    # 2. Find book MD corpus folder
-    md_dir = _find_md_dir(book_name)
-
-    if not md_dir or not md_dir.exists():
-        _logger.debug(f"[JIT Image] MD directory not found for book: {book_name}")
-        return content
-
-    # 3. Locate chapter file
-    chapter_file = md_dir / f"{chapter_stem}.md"
-    if not chapter_file.exists():
-        _logger.debug(f"[JIT Image] Chapter file '{chapter_stem}.md' not found in {md_dir}")
-        return content
-
-    try:
-        chapter_text = chapter_file.read_text(encoding="utf-8")
-    except OSError as e:
-        _logger.warning(f"[JIT Image] Failed to read chapter file: {e}")
-        return content
-
-    # 4. Extract Ground Truth paragraphs from note content
-    gt_section_match = re.search(
-        r"## (?:📖|Ground Truth)[^\n]*\n+(.*?)(?:\n\n---|\n\n##|\Z)",
-        content,
-        re.DOTALL
-    )
-    if not gt_section_match:
-        _logger.debug("[JIT Image] No Ground Truth section found in note content")
-        return content
-
-    gt_block = gt_section_match.group(1)
-
-    # 5. Search for images around Ground Truth in the chapter file
-    from pipeline.ground_truth import find_images_around_ground_truth
-    found_images = find_images_around_ground_truth(chapter_text, gt_block)
-
-    if not found_images:
-        _logger.debug("[JIT Image] No book images found close to Ground Truth in chapter")
-        return content
-
-    # 6. Process, copy, and compress original images
-    aligned_images: list[str] = []
-    book_slug = normalize_stem(book_name)[:30].rstrip("_")
-    short_ch = _shorten_chapter(chapter_stem)
-
-    for img_name in found_images:
-        original_img_path = md_dir / img_name
-        if not original_img_path.exists():
-            _logger.debug(f"[JIT Image] Original image file {img_name} not found in {md_dir}")
-            continue
-
-        # Filter decorative/tiny images
-        if _is_decorative_image(img_name, original_img_path):
-            _logger.debug(f"[JIT Image] Filtered decorative image: {img_name}")
-            continue
-
-        # Determine target name using Adaptive Naming Strategy
-        orig_stem = normalize_stem(original_img_path.stem)
-        book_words = [w for w in book_slug.split("_") if len(w) > 3]
-        has_book_prefix = any(w in orig_stem for w in book_words)
-
-        if has_book_prefix:
-            dest_name = f"{orig_stem}.webp"
-        else:
-            parts = [book_slug]
-            if short_ch:
-                parts.append(short_ch)
-            if page:
-                parts.append(f"p{page}")
-            parts.append(orig_stem)
-            dest_name = f"{'_'.join(parts)}.webp"
-
-        assets_dir = cfg.assets_dir / book_slug
-        dest_path = assets_dir / dest_name
-
-        # Compress to WebP or copy
-        if not dest_path.exists():
-            try:
-                from PIL import Image as PILImage
-                img = PILImage.open(original_img_path)
-                if img.mode not in ("RGB", "RGBA"):
-                    img = img.convert("RGB")
-                img.thumbnail((1536, 1536), PILImage.Resampling.LANCZOS)
-                assets_dir.mkdir(parents=True, exist_ok=True)
-                img.save(dest_path, "WEBP", quality=80)
-                _logger.info(f"[JIT Image] Compressed and saved original image: {original_img_path.name} -> {dest_path.name}")
-            except Exception as e:
-                _logger.warning(f"[JIT Image] WebP compression failed for {original_img_path.name}: {e}. Falling back to copy.")
-                dest_path_raw = dest_path.with_suffix(original_img_path.suffix)
-                try:
-                    assets_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.copy(str(original_img_path), str(dest_path_raw))
-                    _logger.info(f"[JIT Image] Copied original image (fallback): {original_img_path.name} -> {dest_path_raw.name}")
-                    dest_name = dest_path_raw.name
-                except Exception as copy_err:
-                    _logger.warning(f"[JIT Image] Copy failed completely: {copy_err}")
-                    continue
-
-        aligned_images.append(dest_name)
-
-    if not aligned_images:
-        return content
-
-    # 7. Embed aligned images right before ## 📖 Ground Truth section
-    gt_heading_match = re.search(r"## (?:📖|Ground Truth)", content)
-    if gt_heading_match:
-        idx = gt_heading_match.start()
-        embed_lines = []
-        for dest_name in aligned_images:
-            embed_syntax = f"![[{dest_name}]]"
-            if embed_syntax not in content:
-                embed_lines.append(f"\n{embed_syntax}\n")
-        if embed_lines:
-            embed_block = "".join(embed_lines)
-            content = content[:idx].rstrip() + "\n" + embed_block + "\n" + content[idx:]
-            _logger.info(f"[JIT Image] Successfully aligned {len(aligned_images)} original image(s) to concept note")
-
-    return content
 
 
 def save_concept(
@@ -615,219 +462,9 @@ def archive_image(image_path: Path, book_name: str = "") -> str:
     return _archive_image(image_path, book_name=book_name)
 
 
-class CrossProcessFileLock:
-    """Khóa tệp đa tiến trình và đa luồng sử dụng 100% thư viện chuẩn Python.
-    Hỗ trợ Windows (msvcrt) và Unix (fcntl).
-    """
-    def __init__(self, lock_path: Path, timeout: float = 15.0, delay: float = 0.05):
-        self.lock_path = Path(lock_path)
-        self.timeout = timeout
-        self.delay = delay
-        self.fd = None
-        self._thread_acquired = False
-
-    def acquire(self) -> bool:
-        import os
-        import sys
-        import time
-        import threading
-        
-        # 1. Khóa mức luồng trước để tránh xung đột nội bộ tiến trình
-        # Định nghĩa lock tĩnh để tránh đa luồng gọi đồng thời trên cùng tiến trình
-        if not hasattr(CrossProcessFileLock, "_global_lock"):
-            CrossProcessFileLock._global_lock = threading.Lock()
-            
-        if not CrossProcessFileLock._global_lock.acquire(timeout=self.timeout):
-            _logger.error(f"Thread lock acquisition timed out for {self.lock_path}")
-            return False
-        
-        self._thread_acquired = True
-        start_time = time.time()
-        
-        # 2. Khóa mức tiến trình (File lock hệ điều hành)
-        while True:
-            try:
-                # Mở tệp khóa (tạo mới nếu chưa có)
-                self.fd = os.open(str(self.lock_path), os.O_RDWR | os.O_CREAT)
-                
-                if sys.platform == "win32":
-                    import msvcrt
-                    os.lseek(self.fd, 0, os.SEEK_SET)
-                    # Thử khóa 1 byte đầu tiên (LK_NBLCK: chế độ không chặn)
-                    msvcrt.locking(self.fd, msvcrt.LK_NBLCK, 1)
-                else:
-                    import fcntl
-                    # Khóa độc quyền không chặn trên Unix
-                    fcntl.flock(self.fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                
-                # Khóa thành công!
-                return True
-                
-            except (OSError, IOError):
-                # Nếu khóa thất bại, đóng file descriptor ngay lập tức và thử lại
-                if self.fd is not None:
-                    try:
-                        os.close(self.fd)
-                    except OSError:
-                        pass
-                    self.fd = None
-                
-                # Kiểm tra quá thời gian chờ (Timeout)
-                if time.time() - start_time > self.timeout:
-                    if self._thread_acquired:
-                        CrossProcessFileLock._global_lock.release()
-                        self._thread_acquired = False
-                    _logger.error(f"File lock acquisition timed out for {self.lock_path}")
-                    return False
-                
-                time.sleep(self.delay)
-
-    def release(self):
-        import os
-        import sys
-        import threading
-        try:
-            if self.fd is not None:
-                try:
-                    if sys.platform == "win32":
-                        import msvcrt
-                        os.lseek(self.fd, 0, os.SEEK_SET)
-                        msvcrt.locking(self.fd, msvcrt.LK_UNLCK, 1)
-                    else:
-                        import fcntl
-                        fcntl.flock(self.fd, fcntl.LOCK_UN)
-                except OSError as e:
-                    _logger.warning(f"Failed to unlock file {self.lock_path}: {e}")
-                finally:
-                    try:
-                        os.close(self.fd)
-                    except OSError:
-                        pass
-                    self.fd = None
-        finally:
-            if self._thread_acquired:
-                if hasattr(CrossProcessFileLock, "_global_lock"):
-                    CrossProcessFileLock._global_lock.release()
-                self._thread_acquired = False
-
-    def __enter__(self):
-        if not self.acquire():
-            raise TimeoutError(f"Could not acquire lock on {self.lock_path} within {self.timeout}s")
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.release()
-
 
 def _hot_insert_embedding(concept_path: Path, content: str) -> None:
-    """Hot-insert/update vector embedding của một ghi chú vào _embedding_index.npz.
-
-    Đảm bảo:
-        - Đồng bộ hóa đa luồng & đa tiến trình an toàn bằng CrossProcessFileLock.
-        - Ghi đĩa nguyên tử (Atomic Write) tránh hỏng hóc chỉ mục khi tắt nguồn đột ngột.
-        - Đóng gói tài nguyên thông qua context manager `with np.load(...)` tránh PermissionError trên Windows.
-    """
-    import os
-    import sys
-    import shutil
-    import hashlib
-    import numpy as np
-    from pipeline.semantic_merger import get_embedding_via_gateway
-
-    stem = concept_path.stem
-    _logger.info(f"Hot-inserting embedding for concept: {stem}")
-
-    # 1. Fetch query embedding trước khi lấy khóa (Tránh nghẽn khóa do HTTP Network latency)
-    query_emb = get_embedding_via_gateway(content)
-    if query_emb is None:
-        _logger.warning(f"Could not fetch embedding for hot-insert of '{stem}'")
-        return
-
-    # 2. Định nghĩa các đường dẫn tệp
-    index_path = cfg.state_dir / "_embedding_index.npz"
-    bak_path = index_path.with_suffix(".npz.bak")
-    lock_path = index_path.with_suffix(".npz.lock")
-
-    # 3. Thực hiện đọc/ghi bảo vệ bởi Khóa
-    try:
-        with CrossProcessFileLock(lock_path) as lock:
-            existing_embeddings = []
-            existing_texts = []
-            existing_sources = []
-
-            loaded_path = None
-            if index_path.exists():
-                loaded_path = index_path
-            elif bak_path.exists():
-                loaded_path = bak_path
-
-            # Sử dụng context manager `with` để tự động đóng tệp ngay sau khi đọc xong!
-            if loaded_path:
-                try:
-                    with np.load(loaded_path, allow_pickle=True) as data:
-                        if "embeddings" in data and "texts" in data and "sources" in data:
-                            existing_embeddings = data["embeddings"].tolist()
-                            existing_texts = data["texts"].tolist()
-                            existing_sources = data["sources"].tolist()
-                except Exception as e:
-                    _logger.warning(f"Failed to load existing index for hot-insert: {e}")
-
-            # 4. Chuẩn bị mã băm dữ liệu để kiểm tra thay đổi
-            content_hash = f"hash:{hashlib.md5(content.encode('utf-8')).hexdigest()}"
-
-            # 5. Insert hoặc Update bản ghi
-            if stem in existing_sources:
-                idx = existing_sources.index(stem)
-                existing_embeddings[idx] = query_emb
-                existing_texts[idx] = content_hash
-                _logger.info(f"Updated existing entry in index for '{stem}'")
-            else:
-                existing_embeddings.append(query_emb)
-                existing_texts.append(content_hash)
-                existing_sources.append(stem)
-                _logger.info(f"Appended new entry to index for '{stem}'")
-
-            # 6. Ghi đĩa NGUYÊN TỬ (Atomic Write) qua tệp tạm kết thúc bằng .npz để tránh NumPy tự động append
-            tmp_path = index_path.parent / f"{index_path.stem}_tmp.npz"
-            try:
-                np.savez_compressed(
-                    tmp_path,
-                    embeddings=np.array(existing_embeddings, dtype=np.float32),
-                    texts=np.array(existing_texts, dtype=object),
-                    sources=np.array(existing_sources, dtype=object),
-                )
-                # Hoán đổi tệp tạm thời sang tệp chính thức một cách nguyên tử
-                os.replace(tmp_path, index_path)
-                _logger.info(f"Hot-insert successful: Index size is now {len(existing_sources)}")
-            except Exception as save_err:
-                _logger.error(f"Failed to save hot-inserted embedding index atomically: {save_err}")
-                return
-            finally:
-                # Cleanup tệp tạm nếu có lỗi xảy ra giữa chừng
-                if tmp_path.exists():
-                    try:
-                        tmp_path.unlink()
-                    except OSError:
-                        pass
-
-            # 7. Đồng bộ hóa tệp backup (.npz.bak) một cách nguyên tử
-            bak_tmp_path = bak_path.with_suffix(".npz.bak.tmp")
-            try:
-                shutil.copy2(index_path, bak_tmp_path)
-                os.replace(bak_tmp_path, bak_path)
-                _logger.info("Atomic backup index sync successful.")
-            except Exception as bak_err:
-                _logger.warning(f"Failed to sync backup index atomically during hot-insert: {bak_err}")
-            finally:
-                if bak_tmp_path.exists():
-                    try:
-                        bak_tmp_path.unlink()
-                    except OSError:
-                        pass
-
-    except TimeoutError as te:
-        _logger.error(f"Could not perform hot-insert for '{stem}' due to lock timeout: {te}")
-    except Exception as e:
-        _logger.error(f"Unexpected error in _hot_insert_embedding for '{stem}': {e}")
+    """Hot-insert/update vector embedding of a concept note into VectorStore."""
+    VectorStore.get_instance().hot_insert(concept_path.stem, content)
 
 
