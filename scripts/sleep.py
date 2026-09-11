@@ -217,7 +217,7 @@ def _write_weekly_synthesis(concepts: list[dict] | None = None) -> None:
         lines.append("\n")
 
     # Read and append domain suggestions if any
-    suggestion_file = Path(__file__).parent / ".domain_suggestions.json"
+    suggestion_file = cfg.state_dir / ".domain_suggestions.json"
     if suggestion_file.exists():
         try:
             suggestions = json.loads(suggestion_file.read_text(encoding="utf-8"))

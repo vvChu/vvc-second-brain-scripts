@@ -71,6 +71,7 @@ CANONICAL_DOMAINS = [
 ]
 
 _LINK_PATTERN = re.compile(r"\[\[([^\]|]+)")
+MEDIA_EXTENSIONS = {".webp", ".png", ".jpg", ".jpeg", ".svg", ".gif", ".pdf", ".mp3", ".mp4"}
 
 # ============================================================
 # Core Classes
@@ -82,13 +83,14 @@ class VaultLinter:
     def __init__(self):
         self.concepts = scan_all_concepts()
         
-        # Parse links since they are needed for linting
+        # Ensure _links is populated (cached by scan_all_concepts)
         for c in self.concepts:
-            try:
-                content = c["_path"].read_text(encoding="utf-8")
-                c["_links"] = _LINK_PATTERN.findall(content)
-            except OSError:
-                c["_links"] = []
+            if "_links" not in c:
+                try:
+                    content = c["_path"].read_text(encoding="utf-8")
+                    c["_links"] = _LINK_PATTERN.findall(content)
+                except OSError:
+                    c["_links"] = []
 
         self.existing_stems = {normalize_stem(c["_stem"]) for c in self.concepts}
         for c in self.concepts:
@@ -109,10 +111,25 @@ class VaultLinter:
                         self.existing_stems.add(normalize_stem(alias))
 
         # Load MOC directory files to prevent false broken links to MOCs, Command, index, etc.
-        for f in cfg.moc_dir.iterdir():
-            if f.suffix != ".md":
-                continue
+        for f in cfg.moc_dir.rglob("*.md"):
             self.existing_stems.add(normalize_stem(f.stem))
+
+        # Load topic files to prevent false broken links to topics
+        topics_dir = cfg.vault_root / "04 - Permanent" / "topics"
+        if topics_dir.exists():
+            for f in topics_dir.iterdir():
+                if f.suffix == ".md":
+                    self.existing_stems.add(normalize_stem(f.stem))
+
+        # Load book corpus chapter files to prevent false broken links to source_chapter/ground_truth_chapter
+        if cfg.resources_books_dir.exists():
+            for f in cfg.resources_books_dir.rglob("*.md"):
+                self.existing_stems.add(normalize_stem(f.stem))
+
+        # Load fleeting notes to prevent false broken links to Brain_Dump, Command, etc.
+        for fleeting_file in [cfg.dump_file, cfg.command_file]:
+            if fleeting_file.exists():
+                self.existing_stems.add(normalize_stem(fleeting_file.stem))
 
     def _evaluate_concept_metrics(
         self, 
@@ -123,10 +140,12 @@ class VaultLinter:
     ) -> None:
         """Helper to process a single concept during linting."""
         stem = c["_stem"]
-        required_fields = ["title", "type", "source", "tags"]
         
-        # Check 1: Missing frontmatter
-        missing = [f for f in required_fields if not c.get(f)]
+        # Check 1: Missing frontmatter (support both 'source' and 'sources' from merged notes)
+        has_source = bool(c.get("source") or c.get("sources"))
+        missing = [f for f in ["title", "type", "tags"] if not c.get(f)]
+        if not has_source:
+            missing.append("source")
         if missing:
             report["missing_frontmatter"].append({"file": stem, "missing": missing})
         
@@ -135,8 +154,11 @@ class VaultLinter:
             if tag.startswith("domain/"):
                 report["tag_clusters"][tag] += 1
         
-        # Check 3: Broken links
+        # Check 3: Broken links (ignore media file attachments)
         for link in c.get("_links", []):
+            lower_link = link.lower()
+            if any(lower_link.endswith(ext) for ext in MEDIA_EXTENSIONS):
+                continue
             normalized = normalize_stem(link)
             all_linked.add(normalized)
             if normalized not in self.existing_stems:
@@ -585,7 +607,7 @@ class DomainEnricher:
 
     def _record_domain_suggestion(self, concept: dict, suggested_domain: str) -> None:
         """Record domain suggestions to a temporary JSON file for Weekly Synthesis."""
-        suggestion_file = Path(__file__).parent.parent / ".domain_suggestions.json"
+        suggestion_file = cfg.state_dir / ".domain_suggestions.json"
         suggestions = []
         if suggestion_file.exists():
             try:

@@ -31,7 +31,7 @@ from core.config import cfg
 from core.log import log
 from core.vault import scan_all_concepts, scan_all_sources
 from services.wiki_health import lint_vault, heal_broken_links, heal_orthography
-from wiki_maintain import rebuild_all
+from wiki_maintain import rebuild_all, DOMAIN_MOC_THRESHOLD
 
 # Configure Logging
 logging.basicConfig(
@@ -145,13 +145,13 @@ def _write_updated_synthesis(
     # Calculate actual counts
     total_concepts = len(concepts)
     total_sources = len(sources)
-    total_source_mocs = len(list(cfg.moc_dir.glob("MOC_*.md")))
-    total_domain_mocs = len(list(cfg.moc_dir.glob("Domain_*.md")))
+    total_source_mocs = len(list(cfg.moc_dir.rglob("MOC_*.md")))
+    total_domain_mocs = len(list(cfg.moc_dir.rglob("Domain_*.md")))
     total_orphans = len(report["orphans"])
     total_broken = len(report["broken_links"])
     total_fm_issues = len(report["missing_frontmatter"])
     total_duplicates = len(report["duplicates"])
-    total_domain_clusters = len([d for d, count in report["tag_clusters"].items() if count >= 8])
+    total_domain_clusters = len([d for d, count in report["tag_clusters"].items() if count >= DOMAIN_MOC_THRESHOLD])
 
     # Classify broken links into chapter references vs concept references
     chapter_refs = []
@@ -215,8 +215,16 @@ def _write_updated_synthesis(
         orphans_by_source = defaultdict(list)
         for stem in report["orphans"]:
             c = next((x for x in concepts if x["_stem"] == stem), None)
-            src = c.get("source", "unknown") if c else "unknown"
-            if src.endswith(".md"):
+            src_val = c.get("source") or c.get("sources", "unknown") if c else "unknown"
+            if isinstance(src_val, list):
+                src_elem = src_val[0] if src_val else "unknown"
+            else:
+                src_elem = src_val
+            if isinstance(src_elem, dict):
+                src = src_elem.get("title") or src_elem.get("name") or "unknown"
+            else:
+                src = str(src_elem) if src_elem else "unknown"
+            if isinstance(src, str) and src.endswith(".md"):
                 src = src[:-3]
             orphans_by_source[src].append(stem)
 
@@ -267,8 +275,8 @@ def _print_beautiful_terminal_summary(report: dict, healed_links: int, healed_ty
 
     total_concepts = len(concepts)
     total_sources = len(sources)
-    total_source_mocs = len(list(cfg.moc_dir.glob("MOC_*.md")))
-    total_domain_mocs = len(list(cfg.moc_dir.glob("Domain_*.md")))
+    total_source_mocs = len(list(cfg.moc_dir.rglob("MOC_*.md")))
+    total_domain_mocs = len(list(cfg.moc_dir.rglob("Domain_*.md")))
     total_orphans = len(report["orphans"])
     total_broken = len(report["broken_links"])
 
