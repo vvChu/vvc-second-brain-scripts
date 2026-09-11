@@ -242,7 +242,7 @@ def _save_transcript(text: str, original_url: str = "") -> str:
     if filepath.exists():
         try:
             from core.frontmatter import parse_frontmatter
-            old_fm, _ = parse_frontmatter(filepath.read_text(encoding="utf-8"))
+            old_fm = parse_frontmatter(filepath.read_text(encoding="utf-8"))
             date_created = old_fm.get("date_created", date_created)
         except Exception:
             pass

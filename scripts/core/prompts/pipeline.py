@@ -358,3 +358,26 @@ Phân tích chuyên sâu (200-400 từ) diễn giải ý tưởng này — hoàn
 </output_template>
 """
 
+
+# ── Figure Enrichment ──────────────────────────────────────────────────────
+
+FIGURE_ENRICH = """\
+Bạn là chuyên gia phân tích tài liệu và tri thức hệ thống.
+Dưới đây là một sơ đồ/hình ảnh từ sách chuyên môn, cùng với đoạn văn bản ngữ cảnh xung quanh hình ảnh này trong sách.
+
+NGỮ CẢNH TRONG SÁCH:
+---
+{context_text}
+---
+
+Nhiệm vụ của bạn là phân tích hình ảnh và ngữ cảnh để trích xuất các thông tin sau bằng TIẾNG VIỆT:
+1. "caption": Tiêu đề chính thức của sơ đồ/hình ảnh (ví dụ: "Sơ đồ 1-4: Khung năng lực sáu phần..."). Nếu sách không ghi rõ caption, hãy tự tạo một tiêu đề ngắn gọn phản ánh đúng bản chất của sơ đồ. Dịch sang tiếng Việt nếu nguyên bản tiếng Anh.
+2. "alt_text": Mô tả chi tiết cấu trúc thị giác (topology), các thành phần chính (các nút, luồng chuyển động, các trục ma trận), và ý nghĩa cốt lõi của sơ đồ này. Mô tả này phải cực kỳ chi tiết (100-200 từ) để phục vụ cho công cụ tìm kiếm ngữ nghĩa (RAG) sau này.
+
+Hãy trả về một chuỗi JSON hợp lệ với cấu trúc sau (KHÔNG dùng markdown code fences, không giải thích gì thêm):
+{{
+  "caption": "tiêu đề hình vẽ bằng tiếng Việt",
+  "alt_text": "mô tả chi tiết cấu trúc sơ đồ phục vụ RAG"
+}}
+"""
+

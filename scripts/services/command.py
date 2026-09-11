@@ -1,7 +1,7 @@
 """VvC Second Brain — Command.md Interactive Handler (v7.0).
 
 Monitors Command.md for @AI: queries, processes them with RAG + LLM,
-writes responses back. Supports 8 writing styles via /prefix.
+writes responses back. Supports 9 writing styles via /prefix.
 
 Usage:
     from services.command import handle_command
@@ -73,16 +73,31 @@ WRITING_STYLES: dict[str, dict] = {
         "emoji": "⚖️",
         "system": "Multi-perspective debate: trình bày ≥2 quan điểm đối lập, steelmanning mỗi bên, rồi tổng hợp.",
     },
+    "sparring": {
+        "prefix": "/phan-bien",
+        "aliases": ["/sparring", "/phản-biện"],
+        "emoji": "🥊",
+        "system": (
+            "Bỏ qua xu nịnh hoàn toàn. Đóng vai đối tác đấu tập (sparring partner) và nhà phê bình khắt khe, không khoan nhượng.\n"
+            "QUY TẮC BẮT BUỘC:\n"
+            "1. Phê bình trước (Critique-first): Liệt kê ít nhất 3 lỗ hổng logic, giả định sai hoặc rủi ro tiềm ẩn TRƯỚC KHI đưa ra bất kỳ nhận xét tích cực nào.\n"
+            "2. Dựa trên bằng chứng (Evidence-based): Mọi phê bình phải trích dẫn cụ thể từ văn bản, dữ liệu hoặc phát biểu trong ngữ cảnh được cung cấp. Tuyệt đối không nhận xét chung chung.\n"
+            "3. Quét điểm mù (Blind-spot query): Chỉ ra ít nhất 1 điểm mù tư duy người dùng có thể đang bảo vệ vô thức và 1 giả định cốt lõi có nguy cơ trở nên lỗi thời (irrelevance risk).\n"
+            "4. Tính xây dựng: Mỗi điểm phê bình phải đi kèm câu hỏi gợi mở hoặc phương án kiểm chứng thực tế, không tiêu cực vô căn cứ."
+        ),
+    },
 }
 
 
 def _parse_style(query: str) -> tuple[str, str]:
     """Parse style prefix from query. Returns (style_name, clean_query)."""
     for name, style in WRITING_STYLES.items():
-        prefix = style["prefix"]
-        if prefix and query.strip().startswith(prefix):
-            clean = query.strip()[len(prefix):].strip()
-            return name, clean
+        prefixes = [style["prefix"]] if isinstance(style["prefix"], str) else list(style["prefix"])
+        prefixes.extend(style.get("aliases", []))
+        for pfx in prefixes:
+            if pfx and query.strip().startswith(pfx):
+                clean = query.strip()[len(pfx):].strip()
+                return name, clean
     return "professional", query
 
 

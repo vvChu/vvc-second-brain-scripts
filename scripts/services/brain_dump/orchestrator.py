@@ -297,5 +297,15 @@ def handle_brain_dump() -> None:
                     }
             _save_url_registry(registry)
             
+        if saved_stems:
+            try:
+                from wiki_maintain import rebuild_incremental
+                for stem, _ in saved_stems:
+                    c_file = cfg.concepts_dir / f"{stem}.md"
+                    if c_file.exists():
+                        rebuild_incremental(c_file)
+            except Exception as e:
+                _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
+
         log("dump", f"Completed: {len(saved_stems)} concepts created")
         _logger.info(f"Brain Dump: {len(saved_stems)} concepts created")

@@ -57,7 +57,12 @@ def _find_pending_dump(content: str) -> str | None:
     return None
 
 
-def _commit_inbox_changes(dump_text_to_replace: str, new_inbox_content: str, links_to_append: list[str]) -> None:
+def _commit_inbox_changes(
+    dump_text_to_replace: str,
+    new_inbox_content: str,
+    links_to_append: list[str],
+    rebuild: bool = False,
+) -> None:
     """Ghi tất cả thay đổi đối với Brain_Dump.md trong một giao dịch duy nhất (Single-Write Commit)."""
     try:
         current_content = cfg.dump_file.read_text(encoding="utf-8")
@@ -101,7 +106,7 @@ def _commit_inbox_changes(dump_text_to_replace: str, new_inbox_content: str, lin
         except OSError as e:
             _logger.warning(f"Không thể ghi Brain_Dump.md: {e}")
             
-    if _rebuild_all is not None:
+    if rebuild and _rebuild_all is not None:
         try:
             _rebuild_all()
         except Exception:

@@ -25,6 +25,14 @@ def test_parse_style():
     assert style == "eli5"
     assert query == "Quantum computing"
 
+    style, query = _parse_style("/phan-bien Kế hoạch mới")
+    assert style == "sparring"
+    assert query == "Kế hoạch mới"
+
+    style, query = _parse_style("/sparring New strategy")
+    assert style == "sparring"
+    assert query == "New strategy"
+
 
 def test_find_pending_query():
     """Should find unanswered @AI queries inside the correct Input section."""
@@ -50,13 +58,14 @@ def test_find_pending_query_answered():
 
 
 def test_writing_styles_count():
-    """Should have exactly 8 writing styles."""
+    """Should have exactly 9 writing styles."""
     from services.command import WRITING_STYLES
 
-    assert len(WRITING_STYLES) == 8
+    assert len(WRITING_STYLES) == 9
     assert "professional" in WRITING_STYLES
     assert "tim-urban" in WRITING_STYLES
     assert "eli5" in WRITING_STYLES
+    assert "sparring" in WRITING_STYLES
 
 
 # --- Brain Dump Tests ---

@@ -111,7 +111,8 @@ def test_commit_inbox_changes(tmp_path):
         _commit_inbox_changes(
             dump_text_to_replace="Line to replace.",
             new_inbox_content="New inbox append",
-            links_to_append=["- [[new_link]]"]
+            links_to_append=["- [[new_link]]"],
+            rebuild=True,
         )
         mock_rebuild.assert_called_once()
         
