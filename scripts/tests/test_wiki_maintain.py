@@ -140,3 +140,228 @@ def test_mermaid_flat_overview():
     assert "Node B" in graph
     assert "Node C" in graph
     assert "Node D" in graph
+
+
+def test_safe_write_text(tmp_path):
+    """Test _safe_write_text avoids redundant writes when content is unchanged."""
+    from wiki_maintain import _safe_write_text
+
+    target = tmp_path / "test_moc.md"
+    content = "# Test MOC Content\n"
+
+    # First write: creates file
+    assert _safe_write_text(target, content) is True
+    assert target.exists()
+    assert target.read_text(encoding="utf-8") == content
+
+    # Second write with identical content: should skip write
+    assert _safe_write_text(target, content) is False
+
+    # Third write with modified content: should write
+    new_content = "# Updated MOC Content\n"
+    assert _safe_write_text(target, new_content) is True
+    assert target.read_text(encoding="utf-8") == new_content
+
+
+def test_clean_source_reference():
+    """Test clean_source_reference extracts clean stems from various wikilink formats."""
+    from services.moc_mermaid import clean_source_reference, flatten_source_list
+
+    assert clean_source_reference("[[2024-01-01_Book_Title|Custom Title]]") == "2024-01-01_Book_Title"
+    assert clean_source_reference("[[2024-01-01_Book_Title]]") == "2024-01-01_Book_Title"
+    assert clean_source_reference("2024-01-01_Book_Title.md") == "2024-01-01_Book_Title"
+    assert clean_source_reference("2024-01-01_Book_Title") == "2024-01-01_Book_Title"
+
+    nested = ["[[source_a|Title A]]", ["source_b.md", "[[source_c]]"]]
+    flattened = flatten_source_list(nested)
+    assert flattened == ["source_a", "source_b", "source_c"]
+
+
+def test_domain_aliases_and_grand_domains():
+    """Test DOMAIN_ALIASES mapping and GRAND_DOMAINS taxonomy coverage."""
+    from wiki_maintain import DOMAIN_ALIASES, GRAND_DOMAINS
+
+    assert DOMAIN_ALIASES["ai"] == "artificial_intelligence"
+    assert DOMAIN_ALIASES["hr"] == "human_resources"
+    assert DOMAIN_ALIASES["phat_trien_ban_than"] == "personal_development"
+
+    # Ensure Grand Domains contain all expected top-level highways
+    assert "tech" in GRAND_DOMAINS
+    assert "cognition" in GRAND_DOMAINS
+    assert "business" in GRAND_DOMAINS
+    assert "management" in GRAND_DOMAINS
+    assert "society_science" in GRAND_DOMAINS
+
+
+def test_vault_mtime_cache_helpers(tmp_path, monkeypatch):
+    """Test scan_all_concepts and update_concept_cache with persistent caching."""
+    import dataclasses
+    from core.config import cfg
+    from core.vault import scan_all_concepts, update_concept_cache
+
+    concepts_dir = tmp_path / "concepts"
+    concepts_dir.mkdir(parents=True)
+    state_dir = tmp_path / ".state"
+    state_dir.mkdir(parents=True)
+
+    mock_cfg = dataclasses.replace(cfg, concepts_dir=concepts_dir, state_dir=state_dir)
+    monkeypatch.setattr("core.vault.cfg", mock_cfg)
+    monkeypatch.setattr("core.vault._CONCEPTS_CACHE_FILE", state_dir / "_vault_concepts_cache.json")
+
+    # Create a test concept file
+    note1 = concepts_dir / "test_note_1.md"
+    note1.write_text(
+        "---\n"
+        "title: 'Test Note 1'\n"
+        "tags: ['domain/ai']\n"
+        "source: '[[book_one|Book One]]'\n"
+        "---\n\n"
+        "Evidence Hook.\n"
+        "Reference to [[other_note]].\n",
+        encoding="utf-8"
+    )
+
+    # First scan: populates cache
+    res1 = scan_all_concepts()
+    assert len(res1) == 1
+    assert res1[0]["_stem"] == "test_note_1"
+    assert "other_note" in res1[0]["_links"]
+
+    # Second scan: loads from cache
+    res2 = scan_all_concepts()
+    assert len(res2) == 1
+    assert res2[0]["_stem"] == "test_note_1"
+    assert "other_note" in res2[0]["_links"]
+    assert "book_one" in res2[0]["_links"]
+
+    # Test update_concept_cache
+    updated = update_concept_cache(note1)
+    assert updated is not None
+    assert updated["_stem"] == "test_note_1"
+
+
+def test_rebuild_incremental(tmp_path, monkeypatch):
+    """Test rebuild_incremental updates source MOC and Master Index."""
+    import dataclasses
+    from core.config import cfg
+    from wiki_maintain import rebuild_incremental
+
+    concepts_dir = tmp_path / "concepts"
+    concepts_dir.mkdir(parents=True)
+    sources_dir = tmp_path / "sources"
+    sources_dir.mkdir(parents=True)
+    moc_dir = tmp_path / "moc"
+    moc_dir.mkdir(parents=True)
+    state_dir = tmp_path / ".state"
+    state_dir.mkdir(parents=True)
+    index_file = moc_dir / "index.md"
+
+    mock_cfg = dataclasses.replace(
+        cfg,
+        concepts_dir=concepts_dir,
+        sources_dir=sources_dir,
+        moc_dir=moc_dir,
+        state_dir=state_dir,
+        index_file=index_file,
+    )
+    monkeypatch.setattr("core.vault.cfg", mock_cfg)
+    monkeypatch.setattr("wiki_maintain.cfg", mock_cfg)
+    monkeypatch.setattr("core.vault._CONCEPTS_CACHE_FILE", state_dir / "_vault_concepts_cache.json")
+    monkeypatch.setattr("core.vault._SOURCES_CACHE_FILE", state_dir / "_vault_sources_cache.json")
+
+    # Create source note
+    src_file = sources_dir / "2026-01-01_Book_One.md"
+    src_file.write_text(
+        "---\n"
+        "title: 'Book One'\n"
+        "aliases: ['Book One']\n"
+        "---\n\n"
+        "# Book One\n",
+        encoding="utf-8",
+    )
+
+    # Create concept note
+    note_file = concepts_dir / "my_concept.md"
+    note_file.write_text(
+        "---\n"
+        "title: 'My Concept'\n"
+        "tags: ['domain/ai']\n"
+        "source: '2026-01-01_Book_One.md'\n"
+        "---\n\n"
+        "> Evidence hook.\n\n"
+        "## Core Idea\nExplanation.\n",
+        encoding="utf-8",
+    )
+
+    rebuild_incremental(note_file)
+
+    # Verify Source MOC was created
+    moc_file = moc_dir / "sources" / "MOC_Book_One.md"
+    assert moc_file.exists()
+    moc_content = moc_file.read_text(encoding="utf-8")
+    assert "My Concept" in moc_content
+    assert "[[my_concept|My Concept]]" in moc_content
+
+    # Verify Master Index was created
+    assert index_file.exists()
+    index_content = index_file.read_text(encoding="utf-8")
+    assert "My Concept" in index_content
+
+
+def test_rebuild_incremental_domain_moc(tmp_path, monkeypatch):
+    """Test incremental rebuild triggers Domain MOC generation when threshold is met."""
+    import dataclasses
+    from core.config import cfg
+    from wiki_maintain import rebuild_incremental
+
+    moc_dir = tmp_path / "00 - Maps of Content"
+    moc_dir.mkdir(parents=True, exist_ok=True)
+    concepts_dir = tmp_path / "04 - Permanent" / "concepts"
+    concepts_dir.mkdir(parents=True, exist_ok=True)
+    sources_dir = tmp_path / "04 - Permanent" / "sources"
+    sources_dir.mkdir(parents=True, exist_ok=True)
+    state_dir = tmp_path / "scripts" / ".state"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    index_file = moc_dir / "index.md"
+
+    mock_cfg = dataclasses.replace(
+        cfg,
+        concepts_dir=concepts_dir,
+        sources_dir=sources_dir,
+        moc_dir=moc_dir,
+        state_dir=state_dir,
+        index_file=index_file,
+    )
+    monkeypatch.setattr("core.vault.cfg", mock_cfg)
+    monkeypatch.setattr("wiki_maintain.cfg", mock_cfg)
+    monkeypatch.setattr("core.vault._CONCEPTS_CACHE_FILE", state_dir / "_vault_concepts_cache.json")
+    monkeypatch.setattr("core.vault._SOURCES_CACHE_FILE", state_dir / "_vault_sources_cache.json")
+
+    # Create source note
+    src_file = sources_dir / "2026-01-01_AI_Source.md"
+    src_file.write_text(
+        "---\ntitle: 'AI Source'\naliases: ['AI Source']\n---\n",
+        encoding="utf-8",
+    )
+
+    # Create 15 concepts with tag domain/ai (alias for artificial_intelligence)
+    last_note = None
+    for i in range(15):
+        c_file = concepts_dir / f"concept_{i}.md"
+        c_file.write_text(
+            f"---\ntitle: 'Concept {i}'\ntags: ['domain/ai']\nsource: '2026-01-01_AI_Source.md'\n---\n> Quote\n## Core Idea\nText\n",
+            encoding="utf-8",
+        )
+        last_note = c_file
+
+    # Rebuild incrementally with the 15th concept
+    rebuild_incremental(last_note)
+
+    # Verify Domain MOC was created with normalized alias in domains/
+    domain_moc = moc_dir / "domains" / "Domain_Artificial_Intelligence.md"
+    assert domain_moc.exists()
+    content = domain_moc.read_text(encoding="utf-8")
+    assert "Domain: Artificial Intelligence" in content
+    assert "Concept 14" in content
+
+

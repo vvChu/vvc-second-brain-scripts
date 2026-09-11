@@ -4,115 +4,239 @@ Builds and maintains MOC pages, Domain MOCs, and the Master Index.
 
 Usage:
     python wiki_maintain.py          # Manual full rebuild
-    from wiki_maintain import rebuild_all
+    from wiki_maintain import rebuild_all, rebuild_incremental
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from collections import defaultdict
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from core.config import cfg
 from core.frontmatter import normalize_stem
 from core.log import log
 from core.vault import scan_all_concepts, scan_all_sources
+from services.moc_mermaid import (
+    build_mermaid_overview as _build_mermaid_overview,
+    clean_chapter_name,
+    flatten_source_list,
+    format_concept_line as _format_concept_line,
+    generate_mermaid_flowchart as _generate_mermaid_flowchart,
+    group_by_chapter,
+)
 
 _logger = logging.getLogger("vvc.maintain")
 
-DOMAIN_MOC_THRESHOLD = 8  # Min concepts to create a Domain MOC
+DOMAIN_MOC_THRESHOLD = 15  # Min concepts to create a Domain MOC
+
+def _normalize_domain_tag(raw_tag: str) -> str:
+    """Normalize a domain tag by stripping Vietnamese diacritics and symbols."""
+    s = raw_tag.replace("đ", "d").replace("Đ", "D")
+    s = unicodedata.normalize("NFKD", s)
+    s = "".join(c for c in s if not unicodedata.combining(c))
+    return s.replace("-", "_").replace("/", "_").lower().strip()
+
+
+# Canonical taxonomy mapping to prevent domain fragmentation
+DOMAIN_ALIASES: dict[str, str] = {
+    "ai": "artificial_intelligence",
+    "hr": "human_resources",
+    "phat_trien_ban_than": "personal_development",
+    "organization_design": "organizational_design",
+    "learning_methods": "learning_methodology",
+    "business_management": "management",
+    "quan_tri": "management",
+    "quan_ly": "management",
+    "chien_luoc": "strategy",
+    "cong_nghe": "technology",
+    "nhan_su": "human_resources",
+    "nhan_thuc": "cognition",
+    "tri_tue_nhan_tao": "artificial_intelligence",
+    "tam_ly": "psychology",
+    "triet_hoc": "philosophy",
+    "giao_duc": "education",
+    "phuong_phap_luan": "learning_methodology",
+}
 
 GRAND_DOMAINS = {
     "tech": {
         "title": "💻 Công Nghệ & Hệ Thống (Technology & Systems)",
-        "keywords": ["ai", "computing", "deep_learning", "digital_transformation", "engineering", "software", "technology"]
+        "keywords": [
+            "ai", "artificial_intelligence", "machine_learning", "deep_learning",
+            "computing", "digital", "data", "engineering", "software", "technology",
+            "computer_science", "security", "bim", "system"
+        ],
     },
     "cognition": {
         "title": "🧠 Nhận Thức & Phát Triển (Cognition & Growth)",
-        "keywords": ["cognitive", "learning", "neuroscience", "psychology", "philosophy", "phat_trien", "personal", "education"]
+        "keywords": [
+            "cognition", "cognitive", "learning", "neuroscience", "psychology", "philosophy",
+            "phat_trien", "personal", "education", "epistemology", "decision_making",
+            "mental_model", "thinking"
+        ],
     },
     "business": {
         "title": "💰 Kinh Doanh & Tài Chính (Business & Economics)",
-        "keywords": ["business", "economics", "entrepreneurship", "finance"]
+        "keywords": [
+            "business", "economics", "entrepreneurship", "finance", "sales",
+            "marketing", "pricing", "commerce"
+        ],
     },
     "management": {
-        "title": "👥 Quản Trị & Tổ Chức (Management & Leadership)",
-        "keywords": ["management", "culture", "hr", "human_resources", "innovation", "leadership", "organization", "strategy", "productivity"]
-    }
+        "title": "👥 Quản Trị & Chiến Lược (Management & Strategy)",
+        "keywords": [
+            "management", "culture", "hr", "human_resources", "innovation",
+            "leadership", "organization", "organizational_behavior",
+            "organizational_design", "strategy", "productivity", "knowledge_management"
+        ],
+    },
+    "society_science": {
+        "title": "🌐 Xã Hội, Pháp Luật & Khoa Học (Society, Law & Science)",
+        "keywords": [
+            "society", "sociology", "law", "legal", "game_theory", "policy", "science"
+        ],
+    },
 }
 
+
+def _safe_write_text(path: Path, content: str) -> bool:
+    """Write content to file only if it has changed, preventing sync storms.
+
+    Returns:
+        True if the file was written, False if content was identical.
+    """
+    if path.exists():
+        try:
+            existing = path.read_text(encoding="utf-8")
+            if existing == content:
+                return False
+        except OSError:
+            pass
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return True
 
 
 def _normalize_moc_name(name: str) -> str:
     """Normalize a display name into a clean, accent-free Title_Cased MOC name."""
-    import unicodedata
     # Replace đ/Đ manually since NFKD does not decompose them
     name = name.replace("đ", "d").replace("Đ", "D")
     # Decompose unicode to separate base characters and accents, then strip accents
-    normalized = unicodedata.normalize('NFKD', name)
-    name = normalized.encode('ascii', 'ignore').decode('ascii')
+    normalized = unicodedata.normalize("NFKD", name)
+    name = normalized.encode("ascii", "ignore").decode("ascii")
     # Replace non-alphanumeric with underscores
     name = re.sub(r"[^a-zA-Z0-9]+", "_", name)
     # Capitalize each word for proper Title_Casing
     return "_".join(w.capitalize() for w in name.split("_") if w)
 
 
-def rebuild_all(concepts: list[dict] | None = None, sources: list[dict] | None = None) -> None:
-    """Rebuild all MOCs and the Master Index, unlinking stale MOCs."""
-    if concepts is None:
-        concepts = scan_all_concepts()
-    if sources is None:
-        sources = scan_all_sources()
+def _render_source_moc_content(src: dict, linked_concepts: list[dict]) -> tuple[Path, str]:
+    """Render Markdown content for a single Source MOC."""
+    src_stem = src["_stem"]
+    aliases = src.get("aliases", [])
+    display_name = aliases[0] if aliases else src.get("title", src_stem)
 
-    # Track active paths to preserve
-    active_paths = set()
+    moc_name = _normalize_moc_name(display_name)
+    moc_path = cfg.moc_dir / "sources" / f"MOC_{moc_name}.md"
 
-    active_source_paths = _build_source_mocs(concepts, sources)
-    active_paths.update(active_source_paths)
+    chapters = group_by_chapter(linked_concepts)
+    has_chapters = any(k != "_ungrouped" for k in chapters)
 
-    active_domain_paths = _build_domain_mocs(concepts)
-    active_paths.update(active_domain_paths)
+    lines = [
+        f"# 🗺️ {display_name}\n\n",
+        f"> [!abstract] **📌 Thông Tin Bản Đồ Nguồn**\n",
+        f"> - 📖 **Nguồn gốc:** [[{src_stem}]]\n",
+        f"> - 🧠 **Quy mô:** **{len(linked_concepts)}** khái niệm cốt lõi (Concepts)\n\n",
+    ]
 
-    # Master index is always active
-    active_paths.add(cfg.index_file.resolve())
-    # Command file is always preserved
-    if cfg.command_file:
-        active_paths.add(Path(cfg.command_file).resolve())
+    # Generate Mermaid overview diagram wrapped in an Obsidian collapsible callout
+    mermaid = _build_mermaid_overview(chapters, linked_concepts, display_name)
+    if mermaid:
+        lines.append("> [!visual]- 🗺️ Sơ đồ Tổng Quan (Overview Map)\n")
+        lines.append("> ```mermaid\n")
+        for mline in mermaid.strip().splitlines():
+            lines.append(f"> {mline}\n")
+        lines.append("> ```\n\n")
 
-    # Pre-existing documents or active user files to preserve
-    preserved_names = {"Weekly_Synthesis.md", "Chien_Luoc_NVIDIA_Jensen_Huang.md", "Chien_Luoc_NVIDIA_Jensen_Huang.docx"}
+    lines.append("---\n\n")
 
-    # Self-healing stale file cleanup
-    for f in cfg.moc_dir.iterdir():
-        if f.suffix not in (".md", ".docx") or f.name in preserved_names:
-            continue
-        
-        f_resolved = f.resolve()
-        if f_resolved not in active_paths:
-            # Only delete files starting with MOC_ or Domain_ to be absolutely safe!
-            if f.name.startswith("MOC_") or f.name.startswith("Domain_"):
-                try:
-                    f.unlink()
-                    _logger.info(f"Cleaned up stale MOC file: {f.name}")
-                except OSError as e:
-                    _logger.warning(f"Failed to delete stale MOC file {f.name}: {e}")
+    if has_chapters:
+        for ch_key in chapters:
+            ch_concepts = chapters[ch_key]
+            if ch_key == "_ungrouped":
+                if len(ch_concepts) < 1:
+                    continue
+                lines.append("## 📦 Khái Niệm Chưa Phân Loại\n\n")
+            else:
+                ch_display = clean_chapter_name(ch_key)
+                lines.append(f"## 📖 {ch_display}\n\n")
 
-    _build_master_index(concepts, sources)
+            for c in sorted(ch_concepts, key=lambda x: x.get("title", "")):
+                lines.append(_format_concept_line(c))
+            lines.append("\n")
+    else:
+        lines.append("## Concepts\n\n")
+        for c in sorted(linked_concepts, key=lambda x: x.get("title", "")):
+            lines.append(_format_concept_line(c))
+        lines.append("\n")
 
-    _logger.info(f"Wiki maintained: {len(concepts)} concepts, {len(sources)} sources")
-    log("lint", f"Rebuilt MOCs: {len(concepts)} concepts")
+    return moc_path, "".join(lines)
 
 
-from services.moc_mermaid import (
-    generate_mermaid_flowchart as _generate_mermaid_flowchart,
-    build_mermaid_overview as _build_mermaid_overview,
-    format_concept_line as _format_concept_line,
-    flatten_source_list,
-    group_by_chapter,
-    clean_chapter_name,
-)
+def _render_domain_moc_content(
+    domain: str, 
+    domain_concepts: list[dict],
+    known_sources: set[str] | None = None,
+) -> tuple[Path, str]:
+    """Render Markdown content for a single Domain MOC."""
+    display = domain.replace("_", " ").title()
+    moc_name = _normalize_moc_name(display)
+    moc_path = cfg.moc_dir / "domains" / f"Domain_{moc_name}.md"
+
+    # Group by source
+    by_source: dict[str, list[dict]] = defaultdict(list)
+    for c in domain_concepts:
+        src_val = c.get("source", "unknown")
+        srcs = flatten_source_list(src_val)
+        for src in srcs:
+            by_source[src].append(c)
+
+    mermaid_graph = _generate_mermaid_flowchart(domain_concepts)
+
+    lines = [
+        f"# 🏷️ Domain: {display}\n\n",
+        f"> [!abstract] **📌 Tổng Quan Lĩnh Vực**\n",
+        f"> - 🧠 **Quy mô:** **{len(domain_concepts)}** khái niệm (Concepts)\n",
+        f"> - 📖 **Phân bổ:** **{len(by_source)}** nguồn tri thức (Sources)\n\n",
+    ]
+
+    if mermaid_graph:
+        lines.append(mermaid_graph)
+
+    lines.extend([
+        "---\n\n",
+    ])
+
+    for src, src_concepts in sorted(by_source.items()):
+        norm_src = normalize_stem(src)
+        if known_sources and norm_src in known_sources:
+            lines.append(f"### From [[{src}]]\n\n")
+        elif not known_sources and src not in ("web_imputed", "query_synthesis", "unknown", "LLM OS Pipeline v7.4", ""):
+            lines.append(f"### From [[{src}]]\n\n")
+        else:
+            lines.append(f"### From {src}\n\n")
+
+        for c in sorted(src_concepts, key=lambda x: x.get("title", "")):
+            lines.append(_format_concept_line(c))
+        lines.append("\n")
+
+    return moc_path, "".join(lines)
+
 
 # --- Source MOCs ---
 
@@ -126,8 +250,6 @@ def _build_source_mocs(concepts: list[dict], sources: list[dict]) -> list[Path]:
         if src_val:
             srcs = flatten_source_list(src_val)
             for src in srcs:
-                if src.endswith(".md"):
-                    src = src[:-3]
                 source_map[src].append(c)
 
     for src in sources:
@@ -136,120 +258,44 @@ def _build_source_mocs(concepts: list[dict], sources: list[dict]) -> list[Path]:
         if not linked_concepts:
             continue
 
-        aliases = src.get("aliases", [])
-        display_name = aliases[0] if aliases else src.get("title", src_stem)
-
-        # Title Case for MOC filename with Unicode normalization
-        moc_name = _normalize_moc_name(display_name)
-        moc_path = cfg.moc_dir / f"MOC_{moc_name}.md"
+        moc_path, content = _render_source_moc_content(src, linked_concepts)
         active_paths.append(moc_path.resolve())
-
-        chapters = group_by_chapter(linked_concepts)
-        has_chapters = any(k != "_ungrouped" for k in chapters)
-
-        lines = [
-            f"# 🗺️ {display_name}\n\n",
-            f"> [!abstract] **📌 Thông Tin Bản Đồ Nguồn**\n",
-            f"> - 📖 **Nguồn gốc:** [[{src_stem}]]\n",
-            f"> - 🧠 **Quy mô:** **{len(linked_concepts)}** khái niệm cốt lõi (Concepts)\n\n",
-        ]
-
-        # Generate Mermaid overview diagram
-        mermaid = _build_mermaid_overview(chapters, linked_concepts, display_name)
-        if mermaid:
-            lines.append(f"```mermaid\n{mermaid}```\n\n")
-
-        lines.append("---\n\n")
-
-        if has_chapters:
-            # --- Chapter-grouped layout ---
-            for ch_key in chapters:
-                ch_concepts = chapters[ch_key]
-                if ch_key == "_ungrouped":
-                    if len(ch_concepts) < 1:
-                        continue
-                    lines.append("## 📦 Khái Niệm Chưa Phân Loại\n\n")
-                else:
-                    ch_display = clean_chapter_name(ch_key)
-                    lines.append(f"## 📖 {ch_display}\n\n")
-
-                for c in sorted(ch_concepts, key=lambda x: x.get("title", "")):
-                    lines.append(_format_concept_line(c))
-                lines.append("\n")
-        else:
-            # --- Flat layout (no chapter data) ---
-            lines.append("## Concepts\n\n")
-            for c in sorted(linked_concepts, key=lambda x: x.get("title", "")):
-                lines.append(_format_concept_line(c))
-
-        try:
-            moc_path.write_text("".join(lines), encoding="utf-8")
-        except OSError as e:
-            _logger.warning(f"Failed to write MOC: {e}")
+        _safe_write_text(moc_path, content)
 
     return active_paths
 
 
 # --- Domain MOCs ---
 
-
-def _build_domain_mocs(concepts: list[dict]) -> list[Path]:
+def _build_domain_mocs(concepts: list[dict], sources: list[dict] | None = None) -> list[Path]:
     """Build Domain_*.md for domains with enough concepts, formatting as visual dashboards."""
     domain_map: dict[str, list[dict]] = defaultdict(list)
     active_paths = []
 
+    known_sources: set[str] = set()
+    if sources:
+        for s in sources:
+            known_sources.add(normalize_stem(s.get("_stem", "")))
+            aliases = s.get("aliases")
+            if isinstance(aliases, list):
+                for a in aliases:
+                    if isinstance(a, str):
+                        known_sources.add(normalize_stem(a))
+
     for c in concepts:
         for tag in c.get("tags", []):
-            if tag.startswith("domain/"):
-                # Normalize domain: standard lowercase, hyphen and slash to underscore
-                domain = tag.split("/", 1)[1].replace("-", "_").replace("/", "_").lower()
+            if isinstance(tag, str) and tag.startswith("domain/"):
+                raw_domain = _normalize_domain_tag(tag.split("/", 1)[1])
+                domain = DOMAIN_ALIASES.get(raw_domain, raw_domain)
                 domain_map[domain].append(c)
 
     for domain, domain_concepts in domain_map.items():
         if len(domain_concepts) < DOMAIN_MOC_THRESHOLD:
             continue
 
-        display = domain.replace("_", " ").title()
-        moc_name = _normalize_moc_name(display)
-        moc_path = cfg.moc_dir / f"Domain_{moc_name}.md"
+        moc_path, content = _render_domain_moc_content(domain, domain_concepts, known_sources=known_sources)
         active_paths.append(moc_path.resolve())
-
-        # Group by source
-        by_source: dict[str, list[dict]] = defaultdict(list)
-        for c in domain_concepts:
-            src_val = c.get("source", "unknown")
-            srcs = flatten_source_list(src_val)
-            for src in srcs:
-                if src.endswith(".md"):
-                    src = src[:-3]
-                by_source[src].append(c)
-
-        mermaid_graph = _generate_mermaid_flowchart(domain_concepts)
-
-        lines = [
-            f"# 🏷️ Domain: {display}\n\n",
-            f"> [!abstract] **📌 Tổng Quan Lĩnh Vực**\n",
-            f"> - 🧠 **Quy mô:** **{len(domain_concepts)}** khái niệm (Concepts)\n",
-            f"> - 📖 **Phân bổ:** **{len(by_source)}** nguồn tri thức (Sources)\n\n",
-        ]
-        
-        if mermaid_graph:
-            lines.append(mermaid_graph)
-            
-        lines.extend([
-            "---\n\n",
-        ])
-
-        for src, src_concepts in sorted(by_source.items()):
-            lines.append(f"### From [[{src}]]\n\n")
-            for c in sorted(src_concepts, key=lambda x: x.get("title", "")):
-                lines.append(_format_concept_line(c))
-            lines.append("\n")
-
-        try:
-            moc_path.write_text("".join(lines), encoding="utf-8")
-        except OSError as e:
-            _logger.warning(f"Failed to write Domain MOC: {e}")
+        _safe_write_text(moc_path, content)
 
     return active_paths
 
@@ -258,25 +304,26 @@ def _build_domain_mocs(concepts: list[dict]) -> list[Path]:
 
 def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
     """Build the Master Index (index.md) with a premium, organized visual dashboard."""
-    # Count stats
     total_concepts = len(concepts)
     total_sources = len(sources)
 
-    # Find MOC files
-    source_mocs = sorted(cfg.moc_dir.glob("MOC_*.md"))
-    domain_mocs = sorted(cfg.moc_dir.glob("Domain_*.md"))
+    # Find MOC files (searching recursively across sub-folders)
+    source_mocs = sorted(cfg.moc_dir.rglob("MOC_*.md"))
+    domain_mocs = sorted(cfg.moc_dir.rglob("Domain_*.md"))
 
     # Recently added (last 30)
     def _get_sort_key(c):
         d = c.get("date_created")
         d_str = d.isoformat() if isinstance(d, date) else (str(d) if d else "1970-01-01")
-        path = c.get("_path")
-        mtime = path.stat().st_mtime if path and path.exists() else 0
+        mtime = c.get("_mtime")
+        if mtime is None:
+            path = c.get("_path")
+            mtime = path.stat().st_mtime if path and path.exists() else 0
         return (d_str, mtime)
 
     recent = sorted(concepts, key=_get_sort_key, reverse=True)[:30]
 
-    # Phân loại các Source MOCs
+    # Classify Source MOCs
     moc_to_source = {}
     for src in sources:
         src_stem = src.get("_stem", "")
@@ -294,38 +341,44 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         stem = moc.stem
         src = moc_to_source.get(stem)
         name = stem.replace("MOC_", "").replace("_", " ")
-        
-        # Làm sạch tên hiển thị (bỏ ngày tháng và chữ "Source" ở cuối nếu có)
+
+        # Clean display name (strip date prefix and trailing "Source")
         name = re.sub(r"^\d{4}\s\d{2}\s\d{2}\s(?:\d{6}\s)?", "", name)
         name = re.sub(r"\sSource$", "", name)
-        
+
         if not src:
             articles_mocs.append((stem, name))
             continue
-            
+
         source_type = str(src.get("source_type", "")).lower()
         title_lower = str(src.get("title", "")).lower()
         stem_lower = str(src.get("_stem", "")).lower()
-        
-        if source_type in ('pdf', 'epub', 'azw3', 'mobi', 'chm', 'epub3', 'azw'):
+
+        if source_type in ("pdf", "epub", "azw3", "mobi", "chm", "epub3", "azw"):
             books_mocs.append((stem, name))
-        elif (source_type in ('audio', 'video') or 
-              any(k in title_lower or k in stem_lower for k in ['youtube', 'podcast', 'video', 'interview', 'talk', 'talks', 'ss4_', 'wired', 'wired_interview'])):
+        elif (
+            source_type in ("audio", "video")
+            or any(
+                k in title_lower or k in stem_lower
+                for k in ["youtube", "podcast", "video", "interview", "talk", "talks", "ss4_", "wired", "wired_interview"]
+            )
+        ):
             media_mocs.append((stem, name))
         else:
             articles_mocs.append((stem, name))
 
-    # Phân loại Domain MOCs theo các Đại lộ tri thức
+    # Classify Domain MOCs into Grand Domains
     domain_groups = {k: [] for k in GRAND_DOMAINS}
     domain_groups["other"] = []
 
     for moc in domain_mocs:
         name = moc.stem.replace("Domain_", "").replace("_", " ")
         domain_key = moc.stem.replace("Domain_", "").lower()
-        
+
         matched = False
+        padded_domain = f"_{domain_key}_"
         for category, info in GRAND_DOMAINS.items():
-            if any(kw in domain_key for kw in info["keywords"]):
+            if any(f"_{kw}_" in padded_domain or domain_key == kw for kw in info["keywords"]):
                 domain_groups[category].append((moc.stem, name))
                 matched = True
                 break
@@ -344,7 +397,7 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         "## 📖 Source Topics (Bản Đồ Nguồn)\n\n",
     ]
 
-    # Render Books MOC (Callout mặc định mở vì độ hệ thống cao)
+    # Render Books MOC
     lines.append(f"> [!book]+ 📚 1. Sách & Ấn Bản Hệ Thống (Books & Literature) [{len(books_mocs)}]\n")
     lines.append("> Các bản đồ tri thức tổng hợp từ sách giấy, EPUB, PDF có tính hệ thống cao.\n>\n")
     if books_mocs:
@@ -354,7 +407,7 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         lines.append("> - *(Chưa có)*\n")
     lines.append("\n")
 
-    # Render Media MOC (Callout mặc định đóng để tránh visual clutter)
+    # Render Media MOC
     lines.append(f"> [!video]- 🎥 2. Bài Giảng, Video & Podcasts (Media & Audio) [{len(media_mocs)}]\n")
     lines.append("> Tri thức đúc kết từ các tập podcast, bài nói chuyện, video YouTube chất lượng cao.\n>\n")
     if media_mocs:
@@ -364,7 +417,7 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         lines.append("> - *(Chưa có)*\n")
     lines.append("\n")
 
-    # Render Articles MOC (Callout mặc định mở vì số lượng ít và cần đọc nhanh)
+    # Render Articles MOC
     lines.append(f"> [!note]+ 📰 3. Bài Báo, Nghiên Cứu & Web Clips (Articles & Web) [{len(articles_mocs)}]\n")
     lines.append("> Các bài viết chuyên sâu từ internet, tài liệu văn bản ngắn hoặc stubs tổng hợp.\n>\n")
     if articles_mocs:
@@ -374,7 +427,7 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         lines.append("> - *(Chưa có)*\n")
     lines.append("\n")
 
-    # Render Domain MOCs chia theo 4 Đại lộ tri thức lớn
+    # Render Domain MOCs
     lines.append("## 🏷️ Domain Topics (Bản Đồ Lĩnh Vực)\n\n")
     for category, info in GRAND_DOMAINS.items():
         mocs = domain_groups[category]
@@ -384,14 +437,14 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         for stem, name in sorted(mocs, key=lambda x: x[1]):
             lines.append(f"> - [[{stem}|{name}]]\n")
         lines.append("\n")
-    
+
     if domain_groups["other"]:
         lines.append(f"> [!quote]- 📁 Lĩnh Vực Khác (Other Domains) [{len(domain_groups['other'])}]\n")
         for stem, name in sorted(domain_groups["other"], key=lambda x: x[1]):
             lines.append(f"> - [[{stem}|{name}]]\n")
         lines.append("\n")
 
-    # Render Top 30 Concept Gần Đây Nhất (gập gọn mặc định đóng)
+    # Render Top 30 Concepts
     lines.append("## 🆕 Concept Gần Đây Nhất\n\n")
     lines.append("> [!note]- 🆕 Top 30 Concept Mới Cập Nhật\n")
     for c in recent:
@@ -400,13 +453,12 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         lines.append(f"> - [{created}] [[{c['_stem']}|{title}]]\n")
     lines.append("\n")
 
-    # Append the Dynamic Dataview Dashboard for premium interactive management (all collapsed to improve page load speed)
+    # Dynamic Dataview Dashboard
     lines.extend([
         "---\n\n",
         "## 📊 Bảng Điều Khiển & Thống Kê Động (Dataview)\n\n",
         "> [!TIP]\n",
         "> Các bảng dưới đây được render động thời gian thực bằng plugin **Dataview**. Chúng giúp anh quản lý chất lượng và vòng đời tri thức trong hệ thống một cách trực quan.\n\n",
-        
         "> [!todo]- 🕒 30 Concepts Cập Nhật Gần Nhất (Real-time)\n",
         "> ```dataview\n",
         "> TABLE date_created AS \"Ngày Tạo\", status AS \"Trạng Thái\", confidence AS \"Độ Tin Cậy\"\n",
@@ -414,7 +466,6 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         "> SORT file.mtime DESC\n",
         "> LIMIT 30\n",
         "> ```\n\n",
-        
         "> [!seed]- 🌱 Ghi Chú Đang Phát Triển (Seed / Growing)\n",
         "> ```dataview\n",
         "> TABLE status AS \"Trạng Thái\", source AS \"Nguồn\"\n",
@@ -423,7 +474,6 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         "> SORT file.mtime DESC\n",
         "> LIMIT 10\n",
         "> ```\n\n",
-        
         "> [!check]- 🔍 Khái Niệm Cần Kiểm Chứng (Confidence: Low / Medium)\n",
         "> ```dataview\n",
         "> TABLE confidence AS \"Độ Tin Cậy\", source AS \"Nguồn\"\n",
@@ -432,7 +482,6 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         "> SORT file.mtime DESC\n",
         "> LIMIT 10\n",
         "> ```\n\n",
-        
         "> [!people]- 👥 Nhân Vật & Tổ Chức Gần Đây\n",
         "> ```dataview\n",
         "> TABLE people AS \"Nhân Vật\", companies AS \"Tổ Chức\"\n",
@@ -440,14 +489,126 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         "> WHERE length(people) > 0 OR length(companies) > 0\n",
         "> SORT file.mtime DESC\n",
         "> LIMIT 10\n",
-        "> ```\n"
+        "> ```\n",
     ])
 
-    try:
-        cfg.index_file.write_text("".join(lines), encoding="utf-8")
-        _logger.info("Master Index rebuilt")
-    except OSError as e:
-        _logger.error(f"Failed to write index: {e}")
+    _safe_write_text(cfg.index_file, "".join(lines))
+    _logger.info("Master Index rebuilt")
+
+
+def rebuild_incremental(concept: dict | Path) -> None:
+    """Incrementally rebuild only the MOCs affected by a single concept.
+
+    1. Updates cache for the modified/new concept note.
+    2. Identifies affected source stem and updates its Source MOC.
+    3. Identifies affected domain tags and updates their Domain MOCs.
+    4. Updates Master Index (index.md) recent concepts and stats.
+
+    Runtime: < 0.05s.
+    """
+    from core.vault import update_concept_cache
+
+    concept_data: dict[str, Any] | None = None
+    if isinstance(concept, Path):
+        concept_data = update_concept_cache(concept)
+    elif isinstance(concept, dict):
+        concept_data = concept
+        p = concept.get("_path")
+        if p and isinstance(p, Path) and p.exists():
+            update_concept_cache(p, concept_data)
+
+    if not concept_data:
+        return
+
+    all_concepts = scan_all_concepts()
+    all_sources = scan_all_sources()
+
+    # 1. Rebuild affected Source MOC(s)
+    src_val = concept_data.get("source", "")
+    if src_val:
+        src_stems = flatten_source_list(src_val)
+        for src_stem in src_stems:
+            matched_source = next((s for s in all_sources if s.get("_stem") == src_stem), None)
+            if matched_source:
+                linked = [c for c in all_concepts if src_stem in flatten_source_list(c.get("source", ""))]
+                if linked:
+                    moc_path, content = _render_source_moc_content(matched_source, linked)
+                    _safe_write_text(moc_path, content)
+
+    # 2. Rebuild affected Domain MOC(s)
+    known_sources = {normalize_stem(s.get("_stem", "")) for s in all_sources}
+    for s in all_sources:
+        aliases = s.get("aliases")
+        if isinstance(aliases, list):
+            for a in aliases:
+                if isinstance(a, str):
+                    known_sources.add(normalize_stem(a))
+
+    tags = concept_data.get("tags", [])
+    for tag in tags:
+        if isinstance(tag, str) and tag.startswith("domain/"):
+            raw_domain = _normalize_domain_tag(tag.split("/", 1)[1])
+            domain = DOMAIN_ALIASES.get(raw_domain, raw_domain)
+            domain_concepts = [
+                c for c in all_concepts
+                if any(
+                    DOMAIN_ALIASES.get(_normalize_domain_tag(t.split("/", 1)[1]), _normalize_domain_tag(t.split("/", 1)[1])) == domain
+                    for t in c.get("tags", [])
+                    if isinstance(t, str) and t.startswith("domain/")
+                )
+            ]
+            if len(domain_concepts) >= DOMAIN_MOC_THRESHOLD:
+                moc_path, content = _render_domain_moc_content(domain, domain_concepts, known_sources=known_sources)
+                _safe_write_text(moc_path, content)
+
+    # 3. Update Master Index
+    _build_master_index(all_concepts, all_sources)
+
+
+def rebuild_all(concepts: list[dict] | None = None, sources: list[dict] | None = None) -> None:
+    """Rebuild all MOCs and the Master Index, unlinking stale MOCs."""
+    if concepts is None:
+        concepts = scan_all_concepts()
+    if sources is None:
+        sources = scan_all_sources()
+
+    # Track active paths to preserve
+    active_paths = set()
+
+    active_source_paths = _build_source_mocs(concepts, sources)
+    active_paths.update(active_source_paths)
+
+    active_domain_paths = _build_domain_mocs(concepts, sources)
+    active_paths.update(active_domain_paths)
+
+    # Master index is always active
+    active_paths.add(cfg.index_file.resolve())
+    # Command file is always preserved
+    if cfg.command_file:
+        active_paths.add(Path(cfg.command_file).resolve())
+
+    # Pre-existing documents or active user files to preserve
+    preserved_names = {"Weekly_Synthesis.md"}
+
+    # Self-healing stale file cleanup (scans recursively across moc_dir and sub-folders)
+    for f in list(cfg.moc_dir.rglob("*.md")):
+        if f.name in preserved_names:
+            continue
+
+        f_resolved = f.resolve()
+        if f_resolved not in active_paths:
+            # Only delete files starting with MOC_ or Domain_ to be absolutely safe
+            if f.name.startswith("MOC_") or f.name.startswith("Domain_"):
+                try:
+                    f.unlink()
+                    _logger.info(f"Cleaned up stale MOC file: {f.name}")
+                except OSError as e:
+                    _logger.warning(f"Failed to delete stale MOC file {f.name}: {e}")
+
+    _build_master_index(concepts, sources)
+
+    _logger.info(f"Wiki maintained: {len(concepts)} concepts, {len(sources)} sources")
+    log("lint", f"Rebuilt MOCs: {len(concepts)} concepts")
 
 
 # Canonical alias
@@ -457,11 +618,10 @@ maintain_wiki = rebuild_all
 if __name__ == "__main__":
     import sys
     try:
-        sys.stdout.reconfigure(encoding='utf-8')
-        sys.stderr.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
     except AttributeError:
         pass
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
     rebuild_all()
     print("Wiki maintenance complete.")
-

@@ -15,6 +15,11 @@ from typing import Any
 
 import yaml
 
+try:
+    from yaml import CSafeLoader as _SafeLoader
+except ImportError:
+    from yaml import SafeLoader as _SafeLoader
+
 # Regex to match YAML frontmatter block
 _FM_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
 
@@ -32,7 +37,7 @@ def parse_frontmatter(content: str) -> dict[str, Any]:
     if not match:
         return {}
     try:
-        return yaml.safe_load(match.group(1)) or {}
+        return yaml.load(match.group(1), Loader=_SafeLoader) or {}
     except yaml.YAMLError:
         return {}
 

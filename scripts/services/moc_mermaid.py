@@ -324,7 +324,7 @@ def build_mermaid_overview(
     if has_chapters:
         return _mermaid_chapter_overview(real_chapters, all_concepts, source_title)
     elif len(all_concepts) >= 3:
-        return _mermaid_flat_overview(all_concepts)
+        return _mermaid_flat_overview(all_concepts, source_title)
     return ""
 
 
@@ -387,14 +387,18 @@ def _mermaid_chapter_overview(
     return "\n".join(lines) + "\n"
 
 
-def _mermaid_flat_overview(all_concepts: list[dict]) -> str:
+def _mermaid_flat_overview(all_concepts: list[dict], source_title: str = "") -> str:
     """Build flat concept-level Mermaid graph for sources without chapters.
+
+    Supports both interconnected graphs (when cross-links exist) and
+    Hub-and-Spoke mind maps (when concepts are independent).
 
     Args:
         all_concepts: All linked concepts for this source.
+        source_title: Display title for the hub node in Hub-and-Spoke mode.
 
     Returns:
-        Mermaid diagram string, or empty string if no edges.
+        Mermaid diagram string, or empty string if not enough data.
     """
     stems = {c["_stem"] for c in all_concepts}
     raw_edges: list[tuple[str, str]] = []
@@ -418,46 +422,60 @@ def _mermaid_flat_overview(all_concepts: list[dict]) -> str:
                             edge_count[stem] += 1
                             edge_count[rel_stem] += 1
 
-    if not raw_edges:
-        return ""
-
-    # Calculate dynamic caps based on density ratio
-    max_nodes, max_edges = _calculate_dynamic_caps(raw_edges, stems)
-
-    # Keep top max_nodes most-connected
-    top_stems = sorted(edge_count, key=lambda s: edge_count[s], reverse=True)[:max_nodes]
-    top_set = set(top_stems)
-    filtered_edges = [(s, t) for s, t in raw_edges if s in top_set and t in top_set]
-    
-    # Limit edges
-    final_edges = filtered_edges[:max_edges]
-    if not final_edges:
-        return ""
-
     # Map from stem to concept dict for quick lookup of status/confidence
     stem_to_concept = {c["_stem"]: c for c in all_concepts}
 
-    # Collect active stems from edges (prevents orphan nodes)
-    active: set[str] = set()
-    for s, t in final_edges:
-        active.add(s)
-        active.add(t)
+    # Case 1: Internal cross-links exist -> Interconnected graph
+    if raw_edges:
+        max_nodes, max_edges = _calculate_dynamic_caps(raw_edges, stems)
+        top_stems = sorted(edge_count, key=lambda s: edge_count[s], reverse=True)[:max_nodes]
+        top_set = set(top_stems)
+        filtered_edges = [(s, t) for s, t in raw_edges if s in top_set and t in top_set]
+        final_edges = filtered_edges[:max_edges]
+        if final_edges:
+            active: set[str] = set()
+            for s, t in final_edges:
+                active.add(s)
+                active.add(t)
 
-    lines = ["flowchart LR"]
-    id_map: dict[str, str] = {}
-    for idx, stem in enumerate(sorted(active)):
-        nid = f"N{idx}"
-        id_map[stem] = nid
-        concept_dict = stem_to_concept.get(stem, {"_stem": stem})
-        label = _get_node_label_and_indicator(concept_dict, max_title_len=30)
-        lines.append(f'    {nid}["{label}"]')
-        lines.append(f"    style {nid} fill:#f5f5f5,stroke:#334155,stroke-width:1px,color:#000")
+            lines = ["flowchart LR"]
+            id_map: dict[str, str] = {}
+            for idx, stem in enumerate(sorted(active)):
+                nid = f"N{idx}"
+                id_map[stem] = nid
+                concept_dict = stem_to_concept.get(stem, {"_stem": stem})
+                label = _get_node_label_and_indicator(concept_dict, max_title_len=30)
+                lines.append(f'    {nid}["{label}"]')
+                lines.append(f"    style {nid} fill:#f5f5f5,stroke:#334155,stroke-width:1px,color:#000")
 
-    for s, t in final_edges:
-        if s in id_map and t in id_map:
-            lines.append(f"    {id_map[s]} --- {id_map[t]}")
+            for s, t in final_edges:
+                if s in id_map and t in id_map:
+                    lines.append(f"    {id_map[s]} --- {id_map[t]}")
 
-    return "\n".join(lines) + "\n"
+            return "\n".join(lines) + "\n"
+
+    # Case 2: No internal cross-links but >= 3 concepts -> Hub-and-Spoke Mind Map
+    if len(all_concepts) >= 3:
+        lines = ["flowchart TD"]
+        safe_hub_title = sanitize_mermaid(source_title[:45] if source_title else "Nguồn Tri Thức")
+        lines.append(f'    HUB["📖 {safe_hub_title}"]')
+        lines.append("    style HUB fill:#fef3c7,stroke:#92400e,stroke-width:2px,color:#000")
+
+        # Select top concepts (up to 15) to keep diagram clean and readable
+        selected_concepts = sorted(all_concepts, key=lambda x: x.get("title", ""))[:15]
+        id_map: dict[str, str] = {}
+        for idx, c in enumerate(selected_concepts):
+            nid = f"N{idx}"
+            stem = c["_stem"]
+            id_map[stem] = nid
+            label = _get_node_label_and_indicator(c, max_title_len=32)
+            lines.append(f'    {nid}["{label}"]')
+            lines.append(f"    style {nid} fill:#f8fafc,stroke:#475569,stroke-width:1px,color:#000")
+            lines.append(f"    HUB --- {nid}")
+
+        return "\n".join(lines) + "\n"
+
+    return ""
 
 
 def format_concept_line(c: dict) -> str:
@@ -478,18 +496,37 @@ def format_concept_line(c: dict) -> str:
     return f"- {status_icon} [[{c['_stem']}|{title}]]{conf_indicator}{' — ' + summary if summary else ''}\n"
 
 
+def clean_source_reference(src: str) -> str:
+    """Extract clean source stem from raw string, filename, or Obsidian wikilink.
+
+    Handles:
+        - "[[2024-01-01_Book_Title|Custom Title]]" -> "2024-01-01_Book_Title"
+        - "[[2024-01-01_Book_Title]]" -> "2024-01-01_Book_Title"
+        - "2024-01-01_Book_Title.md" -> "2024-01-01_Book_Title"
+        - "2024-01-01_Book_Title" -> "2024-01-01_Book_Title"
+    """
+    s = src.strip()
+    if s.startswith("[[") and "]]" in s:
+        s = s[2:s.find("]]")].split("|")[0].strip()
+    if s.endswith(".md"):
+        s = s[:-3]
+    return s
+
+
 def flatten_source_list(src_val) -> list[str]:
-    """Recursively flatten a potentially nested source list.
+    """Recursively flatten and normalize a potentially nested source list.
 
     Args:
         src_val: Source value — string, list, or nested list.
 
     Returns:
-        Flat list of source strings.
+        Flat list of clean source stem strings.
     """
     result: list[str] = []
     if isinstance(src_val, str):
-        result.append(src_val)
+        cleaned = clean_source_reference(src_val)
+        if cleaned:
+            result.append(cleaned)
     elif isinstance(src_val, list):
         for item in src_val:
             result.extend(flatten_source_list(item))

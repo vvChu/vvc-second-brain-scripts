@@ -62,6 +62,7 @@ def process_markdown_file(file_path: Path) -> bool:
 
     concepts = result.split("===CONCEPT_SEPARATOR===")
     saved_count = 0
+    saved_paths: list[Path] = []
 
     for concept in concepts:
         concept = concept.strip()
@@ -78,16 +79,18 @@ def process_markdown_file(file_path: Path) -> bool:
         saved_path = save_concept(concept)
         if saved_path:
             saved_count += 1
+            saved_paths.append(saved_path)
 
     log("synth", f"Created {saved_count} concepts from {file_path.name}")
     _logger.info(f"Created {saved_count} concepts from {file_path.name}")
 
     if saved_count > 0:
         _archive_file(file_path)
-        # Trigger MOC rebuild
+        # Trigger MOC rebuild incrementally
         try:
-            from wiki_maintain import rebuild_all
-            rebuild_all()
+            from wiki_maintain import rebuild_incremental
+            for sp in saved_paths:
+                rebuild_incremental(sp)
         except ImportError:
             pass
         return True
