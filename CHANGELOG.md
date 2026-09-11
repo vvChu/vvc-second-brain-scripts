@@ -4,13 +4,22 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.12.6 — Maps of Content Hierarchical Restructure & Domain Quality Gate
+Tái cấu trúc kiến trúc thông tin và thẩm mỹ thị giác cho thư mục `00 - Maps of Content/`:
+- **Sub-folder Hierarchy (`sources/` & `domains/`)**: Di dời 174 Source MOCs vào `00 - Maps of Content/sources/` và 27 Domain MOCs vào `00 - Maps of Content/domains/`. Giữ thư mục gốc `00` tinh gọn tuyệt đối với đúng 3 tệp điều hành (`index.md`, `Command.md`, `Weekly_Synthesis.md`).
+- **Domain MOC Quality Gate (`DOMAIN_MOC_THRESHOLD = 15`)**: Nâng ngưỡng tạo Domain MOC từ 8 lên 15 concepts, giảm từ 52 domain vụn vặt xuống còn 27 Đại Lĩnh Vực chất lượng cao, phân loại 100% vào 4 Grand Domains (0 domain rơi vào nhóm "Other").
+- **Recursive Stale Cleanup & Linter Alignment**: Nâng cấp `wiki_maintain.py` (`rglob`), `wiki_health.py` và `close_session.py` hỗ trợ đệ quy sub-folders, tự động dọn dẹp các tệp MOC cũ/rác và đảm bảo 0 broken links ảo. Di dời tài liệu NVIDIA về `topics/` và `attachments/`.
+- **Test Suite**: Đồng bộ 100% test suite với 301/301 tests passed trong ~53s.
+
 ## v8.12.5 — Podcast Ingestion Pipeline & Codebase Architecture Deepening
 Tái cấu trúc kiến trúc mã nguồn theo chuẩn `ccba-codebase-design` và tích hợp engine bóc tách Podcast tự hành:
 - **Podcast Ingestion Engine (`services/podcast.py`)**: Tự động nhận diện nguồn Apple Podcasts, Spotify và link audio trực tiếp; phân giải JSON-LD metadata, tải và transcode âm thanh về chuẩn 16kHz mono 32kbps MP3 và chuyển tiếp sang Faster-Whisper trên Server Spark với tự động phát hiện ngôn ngữ và mốc thời gian `[MM:SS]`.
 - **Media Utility Seam (`core/media.py`)**: Thiết lập Seam SSOT hạ tầng nhị phân ngoại vi duy nhất cho hệ thống (`find_ffmpeg_bin`, `find_ffprobe_bin`, `transcode_audio_to_mp3`), tự động tìm kiếm qua WinGet và dọn dẹp file tạm khi gặp sự cố, loại bỏ hoàn toàn mã nguồn trùng lặp giữa YouTube và Podcast.
 - **Eliminate Legacy Shims**: Áp dụng triệt để *Deletion Test*, xóa sạch 2 tệp shim nông (`services/youtube_transcript.py` và `services/moc_diagram.py`), repoint 100% callers trực tiếp về `services.youtube` và `services.moc_mermaid`.
-- **Artifact Engine & Strategy Registry (`worker_dispatcher.py`)**: Chuyển đổi module điều phối thành Seam sâu theo mẫu Strategy & Adapter Registry, hỗ trợ đăng ký định dạng artifact động (`register_artifact_adapter`), cách ly lỗi độc lập từng worker và trả về telemetry chính xác.
-- **Suite Hardening**: Bổ sung `test_podcast.py`, `test_media.py`, `test_dispatcher.py`, nâng tổng số unit tests lên 266/266 tests passed (100%).
+- **Vector Store & File Lock Seams (`core/file_lock.py`, `core/vector_store.py`)**: Tách tiện ích khóa tiến trình hệ điều hành `CrossProcessFileLock` (msvcrt / fcntl) và đóng gói vòng đời chỉ mục vector trong `VectorStore` với khóa file và ghi tệp tạm nguyên tử (`os.replace`).
+- **Publisher Diagram SSOT (`pipeline/book_assets.py`)**: Tập trung hóa toàn bộ logic trích xuất sơ đồ sách, nhận diện ảnh trang trí và danh mục JIT diagrams, loại bỏ code trùng lặp trên 4 tệp pipeline.
+- **Incremental MOC Rebuild & Caching (`wiki_maintain.py`, `core/vault.py`)**: Áp dụng mtime/size cache và LibYAML `CSafeLoader`, xây dựng `rebuild_incremental(concept)` rút ngắn thời gian cập nhật MOC từ 1.8s-3.2s xuống <0.05s-0.5s.
+- **Graph Health & Zero False-Alarm Linter (`services/wiki_health.py`)**: Triệt tiêu 1,421 broken links và 107 missing frontmatter notes nhờ lọc media attachments, nạp đầy đủ 6 bề mặt tra cứu, áp dụng nguyên tắc *Alias-First Resolution*, và mở rộng bộ test lên 300/300 passed tests (100%).
 
 ## v8.12.4 — YouTube Visual Extractor v12.0: Dynamic Storyboard & 1-Pass Multimodal Judge
 Nâng cấp toàn diện cơ chế trích xuất hình ảnh video YouTube (`visual_extractor.py`) lên v12.0:

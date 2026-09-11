@@ -79,6 +79,7 @@ fix_co_cau_diagram.py
 !templates/
 !AGENTS.md
 !GEMINI.md
+!CLAUDE.md
 !.gitignore
 
 # Hub auto-generated editable links & Spoke Leakage Guard (ADR 0045)
@@ -87,3 +88,14 @@ requirements-hub.txt
 .md/scratch/
 .tmp/
 .out-of-scope/
+
+# External CLI tools & local junctions
+.claude/
+.opencode/
+pwsh.cmd
+scripts/pwsh.cmd
+.agents/skills/copilot-*
+.agents/skills/json-canvas/
+.agents/skills/obsidian-*
+.agents/skills/openartifacts-publish/
+

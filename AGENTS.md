@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.12.5)
+# 🧠 VvC Second Brain — Agent Constitution (v8.12.6)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -23,9 +23,8 @@
 > | `CHANGELOG.md` | New version entry (2-3 lines) | Version History |
 > | `scripts/GEMINI.md` | Architecture Reference version header | Pipeline Override |
 > | `scripts/README.md` | Version header + changelog line | Developer Docs |
-> | `templates/concept.md` | Obsidian template body structure | User Template |
-> | `scripts/pipeline/synthesize.py` | LLM prompt `<rules>` + `<output_template>` | Book Pipeline Code |
-> | `scripts/services/brain_dump.py` | LLM prompt `<rules>` + `<output_template>` in `_REDUCE_PROMPT` | Brain Dump Code |
+> | `scripts/core/prompts/pipeline.py` | LLM prompt `<rules>` + `<output_template>` | Book Pipeline Code |
+> | `scripts/core/prompts/services.py` | LLM prompt `<rules>` + `<output_template>` in `BRAIN_DUMP_REDUCE` | Brain Dump Code |
 > | `scripts/pipeline/process_markdown.py` | `_MARKDOWN_PROMPT` concept format template | Markdown Pipeline Code |
 > | `scripts/services/legal_sync_worker.py` | `_LEGAL_PROMPT` concept format template | Legal Sync Code |
 >
@@ -74,7 +73,9 @@ When your prompt begins with `[PIPELINE]` or you are invoked by the daemon scrip
 ```text
 D:\VvC_Notes\                       ← Vault Root (Obsidian)
 ├── AGENTS.md                       ← THIS FILE — do NOT modify unless explicitly asked
-├── 00 - Maps of Content/           ← 🗺️ Hub pages and Master Index (`index.md`)
+├── 00 - Maps of Content/           ← 🗺️ Hub pages, Master Index (`index.md`), and AI Cockpit
+│   ├── sources/                    ←    📚 Source MOCs (1 file per book/source)
+│   └── domains/                    ←    🏷️ Domain MOCs (grouped by topic)
 ├── 03 - Resources/                 
 │   ├── books/                      ← 📥 Human drops new books (EPUB/PDF) here
 │   └── attachments/                ← 🖼️ Output folder for Excalidraw & Mermaid diagrams
@@ -183,14 +184,14 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
 - Contains: metadata about the source and full summary.
 - **Important**: Must contain an `aliases` array (e.g., `aliases: ["Book Title"]`) so the wiki maintainer can extract a clean MOC name.
 
-### 4.3 Maps of Content (`00 - Maps of Content/MOC_*.md`)
+### 4.3 Maps of Content (`00 - Maps of Content/sources/MOC_*.md`)
 - Auto-generated overview pages that link together all concepts belonging to a specific source.
-- Filename dynamically generated based on the Source Note's alias (Title Cased).
+- Filename dynamically generated based on the Source Note's alias (Title Cased), stored neatly in `sources/`.
 - **Zero-Concept Filtering**: MOC pages are only generated for sources that have at least 1 linked concept. Stale empty MOCs are automatically purged by the self-healing routine.
 
-### 4.4 Domain MOCs (`00 - Maps of Content/Domain_*.md`)
-- Auto-generated cross-source topic maps that group concepts by `domain/` tag.
-- Created automatically when ≥8 concepts share the same domain tag.
+### 4.4 Domain MOCs (`00 - Maps of Content/domains/Domain_*.md`)
+- Auto-generated cross-source topic maps that group concepts by `domain/` tag, stored neatly in `domains/`.
+- Created automatically when ≥15 concepts share the same domain tag (eliminates fragmented sub-domains).
 - Structure: stats header → concepts grouped by source book.
 
 ### 4.5 Master Index (`00 - Maps of Content/index.md`)
@@ -211,6 +212,13 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
   - Hình ảnh minh họa phải được nhúng trực tiếp bằng cú pháp wiki-link tiêu chuẩn `![[filename.webp]]` ngay dưới các đoạn văn bản chứa ngữ cảnh phân tích tương ứng của bài viết (không dồn ảnh thô kệch xuống cuối trang).
 - **Đối với AI (Bảo toàn Ngữ cảnh & RAG)**:
   - Tuyệt đối không xóa hoặc lược bỏ siêu dữ liệu bối cảnh (như tên tệp ảnh và `alt-text` mô tả chi tiết nội dung thị giác). Khối Callout ẩn mặc định co lại đối với con người nhưng text thô bên trong vẫn được LLM đọc trọn vẹn khi parse tệp markdown, giúp AI Agent dễ dàng nắm bắt "bản đồ tri thức" và tự động phân phối, liên kết hình vẽ vào các Concept Notes mới một cách chính xác trong pha Map-Reduce tiếp theo.
+
+### 4.8 Graph Health & Link Healing Invariants (v8.12.5)
+Để duy trì độ toàn vẹn và sạch sẽ của đồ thị tri thức Zettelkasten (>2,200 notes), hệ thống tuân thủ 2 quy tắc bất biến:
+- **Nguyên tắc "Alias-First Resolution" khi xử lý Broken Links**:
+  Khi phát hiện liên kết gãy do lệch slug, viết tắt, hoặc gõ nhầm trích dẫn nguồn (ví dụ: `[[BigBIM_Source]]`, `[[shared_service_platform]]`...), **TUYỆT ĐỐI KHÔNG** sửa đổi hàng loạt hàng chục concept notes nguồn. Thay vào đó, bổ sung tên gọi biến thể hoặc slug bị gọi vào trường `aliases` của **duy nhất tệp mục tiêu (Target Note)**. Sửa 1 file giải quyết hàng chục liên kết gãy mà không làm thay đổi nội dung học thuật gốc.
+- **Bề Mặt Tra Cứu Toàn Diện của Vault Linter (Zero False Alarms)**:
+  Mọi công cụ linter/health check kiểm tra wiki-links **bắt buộc** phải nạp đầy đủ toàn bộ 6 bề mặt tri thức: `concepts` (+ aliases), `sources` (+ transcripts + aliases), `topics`, `book chapters` (`resources/books/*_MD/`), `fleeting notes` (`Brain_Dump.md`, `Command.md`), và `MOCs`. Mọi tệp có phần mở rộng media (`.webp`, `.png`, `.jpg`, `.svg`, `.mp3`...) phải được lọc bỏ khỏi kiểm tra broken links. Concept sau khi gộp học thuật (Academic Merge) hợp lệ với cả trường `source` hoặc `sources`.
 
 ---
 
@@ -253,7 +261,7 @@ scripts/
 │   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
 ├── services/                  ← Interactive services & Micro-modules (~20 files)
-│   ├── command.py             ← Command.md Facade (8 writing styles)
+│   ├── command.py             ← Command.md Facade (9 writing styles)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
@@ -296,7 +304,7 @@ scripts/
   - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (combining and pruning Evidence Hooks bilingual v8.9.9, and deep rewriting of `## Core Idea`). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** — source image is archived, event is logged to `.state/.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
 
 ### 3. Interactive Services
-- **Command.md** (`services/command.py`): 8 writing styles via `/prefix`, RAG-enhanced responses, forces `|100%` on embedded diagrams.
+- **Command.md** (`services/command.py`): 9 writing styles via `/prefix` (kèm `🥊 /phan-bien` sparring), RAG-enhanced responses, forces `|100%` on embedded diagrams.
 - **Brain Dump** (`services/brain_dump.py`): Extracts pending ideas from native `## Inbox` markdown header, appends output to `## Processed`. Upgraded to **Map-Reduce Architecture (v7.4.2)** for processing long inputs and URLs:
   - **No Truncation Limits (v8.9.1)**: `url_fetcher.py` returns full extracted text without any character truncation. Articles and YouTube transcripts are passed through at their natural length. Long text is handled downstream by `text_chunker.py` (semantic chunking at 25K chars/chunk) and LLM clients (CLI tiers auto-skip at 30K chars, HTTP tiers have no limit). Gateway primary model (1M token context) and Copilot/Gemini fallbacks (128K+ token context) accommodate any realistic web article.
   - **Image Pipeline (v8.9.10)**: Article images are automatically extracted using `services/article_images.py` via `url_fetcher.py`. Extractor parses both standard `<img>` tags and Next.js/React custom `<ThemeImage>` components (prioritizing the `dark` mode URL) using Regex. Filter excludes noise (logos, icons, navigation, sidebar). Standard images are compressed concurrently to WebP (max 1536px, Q=80), while vector SVG (`.svg`) files are downloaded natively as raw bytes to bypass Pillow and size constraints, preserving crispness inside Obsidian. All are saved to `04 - Permanent/sources/assets/<domain>/` and registered as `[IMG:filename|alt=...]` markers in metadata callouts.
