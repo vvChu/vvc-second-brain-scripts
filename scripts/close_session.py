@@ -30,7 +30,12 @@ if str(_SCRIPT_DIR) not in sys.path:
 from core.config import cfg
 from core.log import log
 from core.vault import scan_all_concepts, scan_all_sources
-from services.wiki_health import lint_vault, heal_broken_links, heal_orthography
+from services.wiki_health import (
+    lint_vault, 
+    heal_broken_links, 
+    heal_orthography,
+    generate_weekly_synthesis
+)
 from wiki_maintain import rebuild_all, DOMAIN_MOC_THRESHOLD
 
 # Configure Logging
@@ -135,135 +140,13 @@ def _write_updated_synthesis(
     healed_typos: int, 
     academic_advice: str
 ) -> None:
-    """Compiles and writes the updated comprehensive Weekly_Synthesis.md."""
-    today_str = date.today().isoformat()
-    concepts = scan_all_concepts()
-    sources = scan_all_sources()
-
-    report_path = cfg.moc_dir / "Weekly_Synthesis.md"
-
-    # Calculate actual counts
-    total_concepts = len(concepts)
-    total_sources = len(sources)
-    total_source_mocs = len(list(cfg.moc_dir.rglob("MOC_*.md")))
-    total_domain_mocs = len(list(cfg.moc_dir.rglob("Domain_*.md")))
-    total_orphans = len(report["orphans"])
-    total_broken = len(report["broken_links"])
-    total_fm_issues = len(report["missing_frontmatter"])
-    total_duplicates = len(report["duplicates"])
-    total_domain_clusters = len([d for d, count in report["tag_clusters"].items() if count >= DOMAIN_MOC_THRESHOLD])
-
-    # Classify broken links into chapter references vs concept references
-    chapter_refs = []
-    concept_refs = []
-    for entry in report["broken_links"]:
-        to_link = entry["to"]
-        if re.search(r"(chuong|chương|\d+_ch\d+|p\d+_ch\d+)", to_link, re.IGNORECASE):
-            chapter_refs.append(entry)
-        else:
-            concept_refs.append(entry)
-
-    # Group concept references for display
-    concept_counts: dict[str, list[str]] = defaultdict(list)
-    for entry in concept_refs:
-        concept_counts[entry["to"]].append(entry["from"])
-
-    sorted_concepts = sorted(concept_counts.items(), key=lambda item: len(item[1]), reverse=True)
-
-    # Prepare markdown file content
-    lines = [
-        "---\n",
-        f'title: "🌙 Weekly Synthesis — {today_str}"\n',
-        "tags: [meta/synthesis, meta/lint]\n",
-        "type: topic\n",
-        f"date_created: {today_str}\n",
-        f"date_modified: {today_str}\n",
-        'summary: "Báo cáo tổng hợp đóng phiên và chẩn đoán sức khỏe hệ thống."\n',
-        "---\n\n",
-        f"# 🌙 Weekly Synthesis — {today_str}\n\n",
-        f"> Báo cáo này được tạo tự động bởi **Close Session Workflow** tại cuối phiên làm việc.\n",
-        f"> Bao gồm: Wiki Lint, Wiki Healing, Semantic Deduplication, và Knowledge Gaps.\n\n",
-        "## 📊 Tổng quan Vault thực tế\n\n",
-        "| Metric           | Count       |\n",
-        "| ---------------- | ----------- |\n",
-        f"| Total Concepts   | {total_concepts} |\n",
-        f"| Total Sources    | {total_sources} |\n",
-        f"| Source MOCs      | {total_source_mocs} |\n",
-        f"| Domain MOCs      | {total_domain_mocs} |\n",
-        f"| Orphan Notes     | {total_orphans} |\n",
-        f"| Broken Links     | {total_broken} |\n",
-        f"| Healed (this run)| {healed_links} |\n",
-        f"| Typos Healed     | {healed_typos} |\n\n",
-        "---\n\n",
-        "## 🔍 Wiki Lint Report\n\n",
-        "| Check | Count |\n",
-        "|---|---|\n",
-        f"| Orphans | {total_orphans} |\n",
-        f"| Broken Links | {total_broken} |\n",
-        f"| Frontmatter Issues | {total_fm_issues} |\n",
-        f"| Duplicate Candidates | {total_duplicates} |\n",
-        f"| Domain Clusters (≥8) | {total_domain_clusters} |\n\n",
-        "---\n\n",
-        "## 🔗 Orphan Notes (Ghi chú mồ côi thực tế)\n\n",
-        "Các concept notes không được liên kết bởi bất kỳ note nào khác trong vault:\n\n"
-    ]
-
-    # Render Orphans grouped by source
-    if not report["orphans"]:
-        lines.append("_Không phát hiện ghi chú mồ côi nào._ ✅\n\n")
-    else:
-        orphans_by_source = defaultdict(list)
-        for stem in report["orphans"]:
-            c = next((x for x in concepts if x["_stem"] == stem), None)
-            src_val = c.get("source") or c.get("sources", "unknown") if c else "unknown"
-            if isinstance(src_val, list):
-                src_elem = src_val[0] if src_val else "unknown"
-            else:
-                src_elem = src_val
-            if isinstance(src_elem, dict):
-                src = src_elem.get("title") or src_elem.get("name") or "unknown"
-            else:
-                src = str(src_elem) if src_elem else "unknown"
-            if isinstance(src, str) and src.endswith(".md"):
-                src = src[:-3]
-            orphans_by_source[src].append(stem)
-
-        for src, stems in sorted(orphans_by_source.items()):
-            lines.append(f"### Nguồn: `{src}`\n")
-            for stem in stems:
-                lines.append(f"- [[{stem}]]\n")
-            lines.append("\n")
-
-    lines.append("---\n\n## 💔 Broken Links\n\n")
-    lines.append(f"**Tổng:** {total_broken} broken links\n")
-    lines.append(f"- 📚 Chapter references: {len(chapter_refs)} _(tham chiếu chương sách — không cần heal)_\n")
-    lines.append(f"- 🧠 Concept references: {len(concept_refs)} _(khái niệm chưa có note)_\n\n")
-
-    lines.append("### Concept References (cần tạo note)\n")
-    lines.append("| Status | Broken Link | Referenced By | Count |\n")
-    lines.append("|---|---|---|---|\n")
-
-    if not concept_refs:
-        lines.append("| ✅ | _Không có link hỏng_ | _N/A_ | 0 |\n\n")
-    else:
-        for target, sources in sorted_concepts:
-            ref_by = ", ".join(sources[:4])
-            if len(sources) > 4:
-                ref_by += f" (+{len(sources) - 4} khác)"
-            lines.append(f"| ❌ | [[{target}]] | {ref_by} | {len(sources)} |\n")
-        lines.append("\n")
-
-    lines.append("### Chapter References (informational)\n")
-    lines.append(f"_{len(chapter_refs)} links tham chiếu tới chapters sách — Obsidian resolve được qua vault search._\n\n")
-
-    if healed_links > 0:
-        lines.append("## 🩹 Wiki Healer (Auto-Fixed in this run)\n\n")
-        lines.append(f"- Đã tự động tạo thành công **{healed_links}** ghi chú stub cho các liên kết hỏng hợp lệ.\n\n")
-
-    lines.append(academic_advice)
-
-    # Write out to file
-    report_path.write_text("".join(lines), encoding="utf-8")
+    """Compiles and writes the updated comprehensive Weekly_Synthesis.md via SSOT generator."""
+    generate_weekly_synthesis(
+        report=report,
+        healed_links=healed_links,
+        healed_typos=healed_typos,
+        academic_advice=academic_advice,
+    )
 
 
 def _print_beautiful_terminal_summary(report: dict, healed_links: int, healed_typos: int) -> None:
@@ -277,8 +160,10 @@ def _print_beautiful_terminal_summary(report: dict, healed_links: int, healed_ty
     total_sources = len(sources)
     total_source_mocs = len(list(cfg.moc_dir.rglob("MOC_*.md")))
     total_domain_mocs = len(list(cfg.moc_dir.rglob("Domain_*.md")))
-    total_orphans = len(report["orphans"])
-    total_broken = len(report["broken_links"])
+    total_orphans = len(report.get("orphans", []))
+    total_broken = len(report.get("broken_links", []))
+    broken_body = len(report.get("broken_body_links", []))
+    prospective_seeds = len(report.get("prospective_related_seeds", []))
 
     # Safe terminal print bypasses emoji to avoid cp1252 Windows encoding errors
     print("\n" + "=" * 65)
@@ -288,8 +173,10 @@ def _print_beautiful_terminal_summary(report: dict, healed_links: int, healed_ty
     print(f" [o] Book MOCs:     {total_source_mocs:<5}  | [o] Domain MOCs: {total_domain_mocs:<5}")
     print("-" * 65)
     print(" > Chan doan Linter Suc khoe He thong:")
-    print(f" > Orphan Notes (Mo coi):     {total_orphans:<5}")
-    print(f" > Broken Links (Lien ket loi): {total_broken:<5}")
+    print(f" > True Orphan Notes:          {total_orphans:<5}")
+    print(f" > Broken Citations in Body:    {broken_body:<5}")
+    print(f" > Prospective Related Seeds:   {prospective_seeds:<5}")
+    print(f" > Total Broken Occurrences:    {total_broken:<5}")
     print(f" > Link Healed (Da va stub):    {healed_links:<5}")
     print(f" > Typos Fixed (Sua chinh ta): {healed_typos:<5}")
     print("-" * 65)

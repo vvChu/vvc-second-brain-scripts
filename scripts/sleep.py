@@ -34,7 +34,7 @@ from core.vault import scan_all_concepts, scan_all_sources
 try:
     from services.wiki_health import (
         lint_vault, heal_broken_links, heal_orthography,
-        standardize_titles, enrich_domains,
+        standardize_titles, enrich_domains, generate_weekly_synthesis,
     )
     _HAS_HEALTH = True
 except ImportError:
@@ -134,10 +134,10 @@ def run_sleep_consolidation() -> None:
         except Exception as e:
             _logger.error(f"MOC rebuild failed: {e}")
 
-    # 6. Write weekly synthesis (uses shared concepts)
+    # 6. Write weekly synthesis (uses shared concepts + report)
     _logger.info("[6/7] Weekly synthesis...")
     try:
-        _write_weekly_synthesis(concepts=concepts)
+        _write_weekly_synthesis(concepts=concepts, sources=sources, report=report)
     except Exception as e:
         _logger.error(f"Weekly synthesis failed: {e}")
 
@@ -153,159 +153,21 @@ def run_sleep_consolidation() -> None:
     _logger.info("Sleep Consolidation complete")
 
 
-def _write_weekly_synthesis(concepts: list[dict] | None = None) -> None:
-    """Generate a weekly synthesis report."""
-    from datetime import timedelta
-    import json
-
-    today = date.today()
-    week_ago = (today - timedelta(days=7)).isoformat()
-
-    # Count recent concepts
-    if concepts is None:
-        concepts = scan_all_concepts()
-
-    recent = []
-    for fm in concepts:
-        created = fm.get("date_created", "")
-        if isinstance(created, (date, datetime)):
-            created = created.isoformat()
-        else:
-            created = str(created)
-        if created >= week_ago:
-            recent.append(fm.get("title", fm["_stem"]))
-
-    # Count weekly events from log.md (simple line matching)
-    merges = quality_rejects = subsumes = dumps = 0
-    try:
-        for line in cfg.log_file.read_text(encoding="utf-8").splitlines():
-            if line[3:13] < week_ago:
-                continue
-            if "**merge**" in line:
-                merges += 1
-            elif "**quality**" in line:
-                quality_rejects += 1
-            elif "**subsume**" in line:
-                subsumes += 1
-            elif "**dump**" in line and "detected" in line:
-                dumps += 1
-    except Exception:
-        pass
-
-    # Safe count of total concepts and sources to prevent crash if unmounted
-    total_concepts = sum(1 for f in cfg.concepts_dir.iterdir() if f.suffix == '.md') if cfg.concepts_dir.exists() else 0
-    total_sources = sum(1 for f in cfg.sources_dir.rglob("*.md")) if cfg.sources_dir.exists() else 0
-
-    # Write report
-    report_path = cfg.moc_dir / "Weekly_Synthesis.md"
-    lines = [
-        f"# 📊 Weekly Synthesis — {today.isoformat()}\n\n",
-        f"## Stats\n\n",
-        f"- **New concepts this week:** {len(recent)}\n",
-        f"- **Merges:** {merges}\n",
-        f"- **Quality rejections:** {quality_rejects}\n",
-        f"- **Subsumed (trùng lặp):** {subsumes}\n",
-        f"- **Brain Dumps:** {dumps}\n",
-        f"- **Total concepts:** {total_concepts}\n",
-        f"- **Total sources:** {total_sources}\n\n",
-    ]
-
-    if recent:
-        lines.append("## New Concepts\n\n")
-        for title in recent[:20]:
-            lines.append(f"- {title}\n")
-        lines.append("\n")
-
-    # Read and append domain suggestions if any
-    suggestion_file = cfg.state_dir / ".domain_suggestions.json"
-    if suggestion_file.exists():
-        try:
-            suggestions = json.loads(suggestion_file.read_text(encoding="utf-8"))
-            if suggestions:
-                lines.append("## 💡 Đề Xuất Mở Rộng Lĩnh Vực (Domain Suggestions)\n\n")
-                lines.append(
-                    "Phát hiện các khái niệm có xu hướng thuộc lĩnh vực mới chưa nằm trong danh mục chuẩn hóa. "
-                    "Hãy xem xét bổ sung các từ khóa này vào `CANONICAL_DOMAINS` trong `wiki_health.py` nếu cần thiết:\n\n"
-                )
-                for s in suggestions:
-                    stem = s.get("concept_stem")
-                    title = s.get("concept_title", stem)
-                    domain = s.get("suggested_domain")
-                    summary = s.get("summary", "")
-                    summary_part = f" — *{summary}*" if summary else ""
-                    lines.append(f"- **domain/{domain}**: Gợi ý từ [[{stem}|{title}]]{summary_part}\n")
-                lines.append("\n")
-                
-                # Delete suggestion file so it starts fresh next week
-                suggestion_file.unlink(missing_ok=True)
-                _logger.info(f"Appended {len(suggestions)} domain suggestions to Weekly Synthesis and cleared cache.")
-        except Exception as e:
-            _logger.error(f"Failed to read or process domain suggestions: {e}")
-
-    # Read and append SUBSUME journal for weekly review
-    subsume_journal = cfg.state_dir / ".subsume_journal.jsonl"
-    if subsume_journal.exists():
-        try:
-            entries = []
-            for raw_line in subsume_journal.read_text(encoding="utf-8").splitlines():
-                raw_line = raw_line.strip()
-                if raw_line:
-                    entries.append(json.loads(raw_line))
-            if entries:
-                lines.append("## 🔄 SUBSUME Review (Concepts bị bỏ qua do trùng lặp)\n\n")
-                lines.append(
-                    "> Các concept dưới đây đã bị Arbitrator đánh giá là **tập con hoàn toàn** của concept hiện có. "
-                    "Chúng không được tạo mới. Hãy review nếu cần bổ sung thông tin bị bỏ sót.\n\n"
-                )
-                lines.append("| Ngày | Concept mới (bị bỏ) | Đã có trong | Score |\n")
-                lines.append("|---|---|---|---|\n")
-                for e in entries:
-                    ts = e.get("timestamp", "")[:10]
-                    new_title = e.get("new_title", "?")
-                    existing = e.get("existing_concept", "?").replace(".md", "")
-                    score = e.get("similarity_score", 0)
-                    lines.append(f"| {ts} | {new_title} | [[{existing}]] | {score:.3f} |\n")
-                lines.append("\n")
-                
-                # Clear journal after processing
-                subsume_journal.unlink(missing_ok=True)
-                _logger.info(f"Appended {len(entries)} SUBSUME events to Weekly Synthesis and cleared journal.")
-        except Exception as e:
-            _logger.error(f"Failed to read subsume journal: {e}")
-
-    # Read and append stale stubs warning if any
-    stale_file = cfg.state_dir / ".stale_stubs.json"
-    if stale_file.exists():
-        try:
-            stale_entries = json.loads(stale_file.read_text(encoding="utf-8"))
-            if stale_entries:
-                lines.append("## ⚠️ Cảnh Báo Ghi Chú Stub Quá Hạn (Stale Stubs Warning)\n\n")
-                lines.append(
-                    "> Các ghi chú stub dưới đây đã tồn tại quá 30 ngày nhưng chưa được bồi đắp thành khái niệm hoàn chỉnh. "
-                    "Hãy xem xét bổ sung nội dung hoặc tích hợp chúng vào các bài viết chủ đề:\n\n"
-                )
-                lines.append("| Tên Stub | Ngày tạo | Tuổi (ngày) | Liên kết từ |\n")
-                lines.append("|---|---|---|---|\n")
-                for s in stale_entries:
-                    stem = s.get("stem")
-                    title = s.get("title", stem)
-                    age = s.get("age_days", 30)
-                    created = s.get("date_created", "")
-                    linked = ", ".join([f"[[{link}]]" for link in s.get("linked_from", [])])
-                    lines.append(f"| [[{stem}|{title}]] | {created} | {age} | {linked} |\n")
-                lines.append("\n")
-                
-                # Delete stale file so it starts fresh next week
-                stale_file.unlink(missing_ok=True)
-                _logger.info(f"Appended {len(stale_entries)} stale stubs warning to Weekly Synthesis and cleared cache.")
-        except Exception as e:
-            _logger.error(f"Failed to read or process stale stubs warning: {e}")
-
-    try:
-        report_path.write_text("".join(lines), encoding="utf-8")
-        _logger.info(f"Weekly synthesis: {len(recent)} new concepts")
-    except OSError as e:
-        _logger.error(f"Failed to write synthesis: {e}")
+def _write_weekly_synthesis(
+    concepts: list[dict] | None = None,
+    sources: list[dict] | None = None,
+    report: dict | None = None,
+) -> None:
+    """Generate a weekly synthesis report via SSOT generator."""
+    if _HAS_HEALTH:
+        generate_weekly_synthesis(
+            report=report,
+            concepts=concepts,
+            sources=sources,
+        )
+        _logger.info("Weekly synthesis generated successfully via SSOT generator.")
+    else:
+        _logger.warning("wiki_health module not available, skipping Weekly_Synthesis generation")
 
 
 if __name__ == "__main__":

@@ -213,12 +213,18 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
 - **Đối với AI (Bảo toàn Ngữ cảnh & RAG)**:
   - Tuyệt đối không xóa hoặc lược bỏ siêu dữ liệu bối cảnh (như tên tệp ảnh và `alt-text` mô tả chi tiết nội dung thị giác). Khối Callout ẩn mặc định co lại đối với con người nhưng text thô bên trong vẫn được LLM đọc trọn vẹn khi parse tệp markdown, giúp AI Agent dễ dàng nắm bắt "bản đồ tri thức" và tự động phân phối, liên kết hình vẽ vào các Concept Notes mới một cách chính xác trong pha Map-Reduce tiếp theo.
 
-### 4.8 Graph Health & Link Healing Invariants (v8.12.5)
-Để duy trì độ toàn vẹn và sạch sẽ của đồ thị tri thức Zettelkasten (>2,200 notes), hệ thống tuân thủ 2 quy tắc bất biến:
+### 4.8 Graph Health & Link Healing Invariants (v8.12.6)
+Để duy trì độ toàn vẹn và sạch sẽ của đồ thị tri thức Zettelkasten (>2,200 notes), hệ thống tuân thủ 5 quy tắc bất biến:
 - **Nguyên tắc "Alias-First Resolution" khi xử lý Broken Links**:
   Khi phát hiện liên kết gãy do lệch slug, viết tắt, hoặc gõ nhầm trích dẫn nguồn (ví dụ: `[[BigBIM_Source]]`, `[[shared_service_platform]]`...), **TUYỆT ĐỐI KHÔNG** sửa đổi hàng loạt hàng chục concept notes nguồn. Thay vào đó, bổ sung tên gọi biến thể hoặc slug bị gọi vào trường `aliases` của **duy nhất tệp mục tiêu (Target Note)**. Sửa 1 file giải quyết hàng chục liên kết gãy mà không làm thay đổi nội dung học thuật gốc.
 - **Bề Mặt Tra Cứu Toàn Diện của Vault Linter (Zero False Alarms)**:
   Mọi công cụ linter/health check kiểm tra wiki-links **bắt buộc** phải nạp đầy đủ toàn bộ 6 bề mặt tri thức: `concepts` (+ aliases), `sources` (+ transcripts + aliases), `topics`, `book chapters` (`resources/books/*_MD/`), `fleeting notes` (`Brain_Dump.md`, `Command.md`), và `MOCs`. Mọi tệp có phần mở rộng media (`.webp`, `.png`, `.jpg`, `.svg`, `.mp3`...) phải được lọc bỏ khỏi kiểm tra broken links. Concept sau khi gộp học thuật (Academic Merge) hợp lệ với cả trường `source` hoặc `sources`.
+- **Nguyên tắc "Zero-Graph Contamination" trong Báo cáo Meta & Linter (Diagnostic Report Hygiene)**:
+  Mọi tệp báo cáo tổng hợp, kiểm tra sức khỏe hệ thống (như `Weekly_Synthesis.md`, lint logs, error reports) **tuyệt đối không được chứa live wikilinks `[[target]]` trỏ tới các liên kết gãy hoặc ghi chú mồ côi**. Tất cả tên tệp/slug lỗi phải được bọc trong inline code backticks `` `target` ``. Chỉ các ghi chú gốc làm ngữ cảnh tham chiếu (`from`) mới được liên kết `[[from]]`. Điều này ngăn chặn việc biến file báo cáo thành một Mega-Hub giả mạo làm méo mó đồ thị tri thức Obsidian.
+- **Bóc Tách Tường Minh giữa Broken Body Citations và Prospective YAML Seeds**:
+  Linter phải phân biệt rõ ràng giữa liên kết gãy thực sự trong phần thân Markdown (`broken_body_links` - mức độ khẩn cấp, cần chữa lành ngay) và các hạt giống tri thức do AI gợi mở trong trường YAML `related:` (`prospective_related_seeds` - ý tưởng mở rộng tương lai). Không gộp chung làm sai lệch chỉ số sức khỏe của Vault.
+- **Tính Toàn Diện Của Mạng Lưới Đi Tới Khi Phát Hiện Orphan Notes**:
+  Khi xác định Ghi chú mồ côi (Orphans), linter bắt buộc phải nạp toàn bộ liên kết đi ra (outgoing links) từ cả 3 tầng: MOCs (`00 - Maps of Content/`), Sources (`04 - Permanent/sources/`), và Topics (`04 - Permanent/topics/`). Việc chỉ quét liên kết giữa các concepts nội bộ sẽ tạo ra hàng nghìn báo động giả (False Orphans).
 
 ---
 
