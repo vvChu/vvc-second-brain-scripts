@@ -205,7 +205,7 @@ def extract_image_prompt(response: str) -> str:
     return _clean_candidate(response[:500])
 
 
-def generate_hero_image(prompt: str, output_path: Path) -> bool:
+def generate_hero_image(prompt: str, output_path: Path, active_cfg: Any = None) -> bool:
     """Generate hero image from prompt and save to output_path.
 
     Tries custom generator hook first, then AI Gateway /images/generations endpoint.
@@ -213,6 +213,7 @@ def generate_hero_image(prompt: str, output_path: Path) -> bool:
     Args:
         prompt: Visual metaphor prompt.
         output_path: Destination path (03 - Resources/attachments/{slug}_hero.jpg).
+        active_cfg: Optional configuration override (defaults to core cfg).
 
     Returns:
         True if generated and saved, False otherwise.
@@ -224,7 +225,8 @@ def generate_hero_image(prompt: str, output_path: Path) -> bool:
             _logger.warning(f"Custom image generator failed: {e}")
             return False
 
-    if not cfg.gateway_url or not cfg.gateway_api_key:
+    target_cfg = active_cfg if active_cfg is not None else cfg
+    if not target_cfg.gateway_url or not target_cfg.gateway_api_key:
         _logger.debug("No gateway image generation endpoint configured")
         return False
 
@@ -232,7 +234,7 @@ def generate_hero_image(prompt: str, output_path: Path) -> bool:
         from core.llm.utils import http_session
 
         headers = {
-            "Authorization": f"Bearer {cfg.gateway_api_key}",
+            "Authorization": f"Bearer {target_cfg.gateway_api_key}",
             "Content-Type": "application/json",
         }
         payload: dict[str, Any] = {
@@ -241,11 +243,11 @@ def generate_hero_image(prompt: str, output_path: Path) -> bool:
             "size": "1792x1024",  # 16:9 cinematic
             "response_format": "b64_json",
         }
-        image_model = os.environ.get("IMAGE_MODEL") or getattr(cfg, "gateway_image_model", None)
+        image_model = os.environ.get("IMAGE_MODEL") or getattr(target_cfg, "gateway_image_model", None)
         if image_model:
             payload["model"] = image_model
         resp = http_session.post(
-            f"{cfg.gateway_url}/images/generations",
+            f"{target_cfg.gateway_url}/images/generations",
             headers=headers,
             json=payload,
             timeout=60,
@@ -321,7 +323,7 @@ def process_hero_image(
     image_path = attachments_dir / image_name
 
     image_prompt = extract_image_prompt(response)
-    image_generated = generate_hero_image(image_prompt, image_path)
+    image_generated = generate_hero_image(image_prompt, image_path, active_cfg=active_cfg)
 
     if image_generated:
         log("image", f"Hero image generated: {image_name}")

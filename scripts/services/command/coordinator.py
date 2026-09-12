@@ -17,7 +17,7 @@ from core.log import log
 from core.prompts.services import COMMAND_RESPONSE as _RESPONSE_PROMPT
 
 from services.worker_dispatcher import trigger_workers
-from services.chat_history import auto_archive_command, MAX_COMMAND_LEN
+from services.command.inbox import auto_archive_command, MAX_COMMAND_LEN
 from services.rag_builder import build_rag_context
 
 import services.command as _pkg
@@ -159,105 +159,121 @@ def write_response(
     return False
 
 
-def handle_command(command_file: Path | None = None) -> None:
-    """Process pending queries in Command.md.
+def handle_command(command_file: Path | None = None, max_queries: int = 10) -> int:
+    """Process pending queries in Command.md until inbox is clear.
 
     Args:
         command_file: Optional path override for Command.md.
+        max_queries: Safety cap on consecutive queries to prevent infinite loop.
+
+    Returns:
+        Total count of queries successfully processed.
     """
     active_cfg = _get_active_cfg()
     cmd_file = command_file if command_file is not None else active_cfg.command_file
     if not cmd_file.exists():
-        return
-    try:
-        original_content = cmd_file.read_text(encoding="utf-8")
-    except OSError:
-        return
+        return 0
 
-    content = ensure_format(original_content)
-    if content != original_content:
+    processed_count = 0
+    while processed_count < max_queries:
         try:
-            _safe_write_command_file(cmd_file, content)
-            _logger.info("Migrated Command.md to Inbox format")
+            original_content = cmd_file.read_text(encoding="utf-8")
         except OSError:
-            pass
+            break
 
-    # Auto-archive if file is too large
-    if len(content) > MAX_COMMAND_LEN:
-        new_content = auto_archive_command(content)
-        if new_content != content:
-            content = new_content
+        content = ensure_format(original_content)
+        if content != original_content:
             try:
                 _safe_write_command_file(cmd_file, content)
+                _logger.info("Migrated Command.md to Inbox format")
             except OSError:
                 pass
 
-    query = find_pending_query(content)
-    if not query:
-        return
+        # Auto-archive if file is too large
+        if len(content) > MAX_COMMAND_LEN:
+            new_content = auto_archive_command(content, vault_root=active_cfg.vault_root)
+            if new_content != content:
+                content = new_content
+                try:
+                    _safe_write_command_file(cmd_file, content)
+                except OSError:
+                    pass
 
-    _logger.info(f"Processing query: {query[:80]}...")
-    log("query", f"Command query: {query[:100]}")
+        query = find_pending_query(content)
+        if not query:
+            break
 
-    # Intercept /legal_sync command
-    if query.strip().startswith("/legal_sync"):
-        if trigger_legal_sync:
-            trigger_legal_sync()
-            write_response(
-                content,
-                query,
-                "> Đang tiến hành đồng bộ dữ liệu Pháp luật Xây dựng trên Cloud. Vui lòng kiểm tra mục **Permanent/concepts** sau vài phút.",
-                "professional",
-                WRITING_STYLES["professional"],
-                target_file=cmd_file,
+        _logger.info(f"Processing query ({processed_count + 1}): {query[:80]}...")
+        log("query", f"Command query: {query[:100]}")
+
+        # Intercept /legal_sync command
+        if query.strip().startswith("/legal_sync"):
+            if trigger_legal_sync:
+                trigger_legal_sync()
+                write_response(
+                    content,
+                    query,
+                    "> Đang tiến hành đồng bộ dữ liệu Pháp luật Xây dựng trên Cloud. Vui lòng kiểm tra mục **Permanent/concepts** sau vài phút.",
+                    "professional",
+                    WRITING_STYLES["professional"],
+                    target_file=cmd_file,
+                )
+            else:
+                write_response(
+                    content,
+                    query,
+                    "> Không tìm thấy legal_sync_worker.",
+                    "professional",
+                    WRITING_STYLES["professional"],
+                    target_file=cmd_file,
+                )
+            processed_count += 1
+            continue
+
+        style_name, clean_query = parse_style(query)
+        style = WRITING_STYLES[style_name]
+
+        if style_name == "hero-image":
+            response, topic_path, image_path = process_hero_image(
+                clean_query,
+                active_cfg=active_cfg,
+                call_llm_fn=_get_active_call_llm(),
             )
-        else:
-            write_response(
-                content,
-                query,
-                "> Không tìm thấy legal_sync_worker.",
-                "professional",
-                WRITING_STYLES["professional"],
-                target_file=cmd_file,
-            )
-        return
+            if not response:
+                log("error", "Hero-image response generation failed")
+                break
+            if write_response(content, query, response, style_name, style, target_file=cmd_file):
+                trigger_workers(response, clean_query)
+                check_file_back(response, clean_query)
+                processed_count += 1
+            else:
+                break
+            continue
 
-    style_name, clean_query = parse_style(query)
-    style = WRITING_STYLES[style_name]
+        rag_context, rag_refs = build_rag_context(clean_query)
 
-    if style_name == "hero-image":
-        response, topic_path, image_path = process_hero_image(
-            clean_query,
-            active_cfg=active_cfg,
-            call_llm_fn=_get_active_call_llm(),
-        )
+        response = generate_response(clean_query, style_name, rag_context)
         if not response:
-            log("error", "Hero-image response generation failed")
-            return
+            log("error", "Command response generation failed")
+            break
+
+        # Clean up accidental quotes inside wikilinks generated by LLM: ![["filename.md"]] -> ![[filename.md]]
+        response = clean_wikilink_quotes(response)
+
+        # Programmatically append reference list based on used IDs
+        if rag_refs:
+            response = reindex_citations(response, rag_refs)
+
+        # Auto-save topic if response meets threshold (>= 2500 chars)
+        topic_file = auto_save_topic(clean_query, response, style_name, base_dir=active_cfg.vault_root)
+        if topic_file:
+            response += f"\n\n---\n\n📑 **Đã lưu trữ thành Topic Note:** [[{topic_file.stem}]]\n"
+
         if write_response(content, query, response, style_name, style, target_file=cmd_file):
             trigger_workers(response, clean_query)
             check_file_back(response, clean_query)
-        return
+            processed_count += 1
+        else:
+            break
 
-    rag_context, rag_refs = build_rag_context(clean_query)
-
-    response = generate_response(clean_query, style_name, rag_context)
-    if not response:
-        log("error", "Command response generation failed")
-        return
-
-    # Clean up accidental quotes inside wikilinks generated by LLM: ![["filename.md"]] -> ![[filename.md]]
-    response = clean_wikilink_quotes(response)
-
-    # Programmatically append reference list based on used IDs
-    if rag_refs:
-        response = reindex_citations(response, rag_refs)
-
-    # Auto-save topic if response meets threshold (>= 2500 chars)
-    topic_file = auto_save_topic(clean_query, response, style_name, base_dir=active_cfg.vault_root)
-    if topic_file:
-        response += f"\n\n---\n\n📑 **Đã lưu trữ thành Topic Note:** [[{topic_file.stem}]]\n"
-
-    if write_response(content, query, response, style_name, style, target_file=cmd_file):
-        trigger_workers(response, clean_query)
-        check_file_back(response, clean_query)
+    return processed_count

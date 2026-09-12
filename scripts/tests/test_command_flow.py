@@ -858,5 +858,122 @@ def test_handle_command_hero_image_offline_fallback(tmp_path, monkeypatch):
         set_custom_image_generator(None)
 
 
+# ── Refactoring Deepening Tests (v8.13.2) ──────────────────────────────────────
+
+def test_chat_history_backward_compatibility_shim():
+    """Verify chat_history shim re-exports exact objects from services.command.inbox."""
+    import services.chat_history as ch
+    import services.command.inbox as inbox
+
+    assert ch.MAX_COMMAND_LEN == inbox.MAX_COMMAND_LEN
+    assert ch.INPUT_MARKER == inbox.INPUT_MARKER
+    assert ch.HISTORY_MARKER == inbox.HISTORY_MARKER
+    assert ch.QUERY_PATTERN == inbox.QUERY_PATTERN
+    assert ch.extract_sections is inbox.extract_sections
+    assert ch.auto_archive_command is inbox.auto_archive_command
 
 
+def test_handle_command_multi_query_drainage_loop(tmp_path, monkeypatch):
+    """handle_command must process all pending queries in a single invocation (drainage loop)."""
+    import dataclasses
+    from core.config import cfg
+    from services.command import handle_command, INPUT_MARKER, HISTORY_MARKER
+
+    cmd_file = tmp_path / "Command.md"
+    content = (
+        f"{INPUT_MARKER}\n\n"
+        "@AI: Query One ---\n\n"
+        "Draft note: ghi chú quan trọng ở giữa.\n\n"
+        "@AI: /fast Query Two ---\n\n"
+        "@AI: Query Three ---\n\n"
+        f"{HISTORY_MARKER}\n"
+    )
+    cmd_file.write_text(content, encoding="utf-8")
+
+    mock_cfg = dataclasses.replace(cfg, command_file=cmd_file, vault_root=tmp_path)
+    monkeypatch.setattr("services.command.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.coordinator.cfg", mock_cfg)
+
+    # Track queries received by LLM
+    llm_queries = []
+
+    def mock_call_llm(prompt: str, task: str = "default") -> str:
+        for q in ["Query One", "Query Two", "Query Three"]:
+            if q in prompt:
+                llm_queries.append(q)
+                return f"Answer for {q}"
+        return "Generic answer"
+
+    monkeypatch.setattr("services.command.call_llm", mock_call_llm)
+    monkeypatch.setattr("services.command.coordinator.call_llm", mock_call_llm)
+
+    # Run handle_command: should drain all 3 queries
+    processed = handle_command(command_file=cmd_file)
+
+    assert processed == 3
+    assert len(llm_queries) == 3
+    assert "Query One" in llm_queries
+    assert "Query Two" in llm_queries
+    assert "Query Three" in llm_queries
+
+    final_text = cmd_file.read_text(encoding="utf-8")
+    from services.command.inbox import extract_sections
+    before, inbox, after = extract_sections(final_text)
+
+    # All 3 queries should have been cleared from Inbox
+    assert "@AI: Query One ---" not in inbox
+    assert "@AI: /fast Query Two ---" not in inbox
+    assert "@AI: Query Three ---" not in inbox
+
+    # User draft note must be preserved intact in inbox
+    assert "Draft note: ghi chú quan trọng ở giữa." in inbox
+
+    # All 3 answers and query logs must be recorded in History (after)
+    assert "@AI: Query One ---" in after
+    assert "@AI: /fast Query Two ---" in after
+    assert "@AI: Query Three ---" in after
+    assert "Answer for Query One" in after
+    assert "Answer for Query Two" in after
+    assert "Answer for Query Three" in after
+
+
+def test_handle_command_max_queries_cap(tmp_path, monkeypatch):
+    """handle_command should respect max_queries safety cap to prevent infinite loops."""
+    import dataclasses
+    from core.config import cfg
+    from services.command import handle_command, INPUT_MARKER, HISTORY_MARKER
+
+    cmd_file = tmp_path / "Command.md"
+    content = (
+        f"{INPUT_MARKER}\n\n"
+        "@AI: Q1 ---\n\n"
+        "@AI: Q2 ---\n\n"
+        "@AI: Q3 ---\n\n"
+        "@AI: Q4 ---\n\n"
+        f"{HISTORY_MARKER}\n"
+    )
+    cmd_file.write_text(content, encoding="utf-8")
+
+    mock_cfg = dataclasses.replace(cfg, command_file=cmd_file, vault_root=tmp_path)
+    monkeypatch.setattr("services.command.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.coordinator.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.call_llm", lambda p, task="default": "Answer")
+    monkeypatch.setattr("services.command.coordinator.call_llm", lambda p, task="default": "Answer")
+
+    # Set safety cap to 2
+    processed = handle_command(command_file=cmd_file, max_queries=2)
+    assert processed == 2
+
+
+def test_hero_image_generator_respects_active_cfg(tmp_path, monkeypatch):
+    """generate_hero_image must use active_cfg instead of bypassing it."""
+    import dataclasses
+    from core.config import cfg
+    from services.command.hero_image import generate_hero_image
+
+    output_path = tmp_path / "test_hero.jpg"
+
+    # Config with no gateway endpoint
+    mock_cfg_no_gw = dataclasses.replace(cfg, gateway_url=None, gateway_api_key=None)
+    res = generate_hero_image("prompt", output_path, active_cfg=mock_cfg_no_gw)
+    assert res is False

@@ -1,6 +1,7 @@
-# VvC Second Brain — Pipeline Scripts (v8.13.1 - Dual-Rendering Diagram Standards & Layout Hardening)
+# VvC Second Brain — Pipeline Scripts (v8.13.2 - Command Deep Module & Multi-Query Drainage)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
+*Upgraded in v8.13.2: Command Deep Module Package Hardening & Multi-Query Drainage Loop (ccba-codebase-design): absorbed services/chat_history.py into services/command/inbox.py to restore 100% format locality (with chat_history.py preserved as backward-compatibility shim), implemented multi-query drainage loop in handle_command() to eliminate asynchronous starvation at the daemon.py poller seam, unified active_cfg dependency passing in generate_hero_image, and expanded test suite to 393/393 passed tests.*
 *Upgraded in v8.13.1: Dual-Rendering Diagram Standards & Layout Pipeline Hardening: implemented shared layout seams (sync_bound_text_translation, compute_safe_arrow_endpoints) across all 7 layout engines, added wheel_layout.py and #layout:wheel auto-routing, standardized Obsidian Excalidraw 2.x wrapper, protected Mermaid from non-flowchart classDef injection, formalized D2 vector diagram worker with Kroki HTTP fallback, integrated /hero-image command flow in Command Center, and expanded test suite to 389/389 passed tests.*
 *Upgraded in v8.13.0: Command Service Deep Module Package Refactoring (ccba-codebase-design): decomposed services/command.py (469 lines) into services/command/ package (coordinator, inbox, styles, citations, topic_saver), strictly isolating Zero I/O string transformations from stateful LLM/disk I/O, hardened against query data loss and false positive triggering, implemented Dynamic Module Aliasing for test monkeypatching, and expanded test suite to 337/337 passed tests.*
 *Upgraded in v8.12.7: Interactive Command Center Hardening & JIT Dynamic Model Resolver: fixed empty before boundary check, implemented in-place surgical patching for Command Inbox notes preservation, made daemon polling asynchronous with _command_lock, added Fast Mode (/fast, /quick, /nhanh), automated Topic Note Auto-Save (>= 2500 chars) to 04 - Permanent/topics/ per AGENTS.md §4.6, standardized on Gemini 3.8 Flash, and built JIT Dynamic Model Resolver (core/llm/model_resolver.py) with 24h caching and static fallback, expanding test suite to 331/331 passed tests.*
@@ -65,13 +66,13 @@ scripts/
 │   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
 ├── services/                  ← Interactive & Batch Services (~20 files)
-│   ├── command.py             ← Command.md Facade handler
+│   ├── command/               ← Interactive Command Deep Module Package (Zero I/O inbox, coordinator, styles)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
 │   ├── article_images.py      ← Web article image downloader & WebP compressor
 │   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
-│   ├── chat_history.py        ← Command.md Auto-Archive logic
+│   ├── chat_history.py        ← Backward-compat shim (absorbed into command/inbox.py)
 │   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Web scraping & garbage detection
 │   ├── text_chunker.py        ← Semantic chunking & AI correction

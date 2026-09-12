@@ -4,6 +4,13 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.13.2 — Command Deep Module Consolidation & Multi-Query Drainage Loop (ccba-codebase-design)
+Tái cấu trúc làm sâu module `services.command` theo 3 khuyến nghị từ đợt khảo sát kiến trúc:
+- **Hấp thụ `chat_history.py` vào `services/command/inbox.py`**: Khôi phục tính Locality tuyệt đối cho định dạng và vòng đời của `Command.md`. Chuyển `services/chat_history.py` thành thin backward-compatibility shim.
+- **Multi-Query Drainage Loop trong `handle_command()`**: Triệt tiêu hoàn toàn lỗi Starvation bất đồng bộ tại Seam Poller (`daemon.py`). Hỗ trợ vét cạn toàn bộ truy vấn trong Inbox trong một chu trình worker với safety cap `max_queries=10`.
+- **Chuẩn hóa Dependency Seam cho `hero_image.py`**: Khắc phục hiện tượng bypass cấu hình toàn cục trong `generate_hero_image`, nhận diện `active_cfg` tường minh và giảm thiểu monkeypatching phân mảnh trong test suite.
+- **Test Suite**: Mở rộng lên **393/393 passed tests** (thêm 4 unit tests mới, 0 regressions).
+
 ## v8.13.1 — Dual-Rendering Diagram Standards & Layout Pipeline Hardening
 Nâng cấp toàn diện kiến trúc sinh sơ đồ và chuẩn hóa hiển thị đa tầng (Excalidraw + Mermaid) theo AGENTS.md §4.9:
 - **Shared Layout Seams & Robust Geometry (`services/diagram_base.py`, `core/layouts/`)**:

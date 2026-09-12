@@ -25,6 +25,12 @@ from services.command.inbox import (
     format_response_callout,
     patch_inbox,
     apply_command_patch,
+    INPUT_MARKER,
+    HISTORY_MARKER,
+    MAX_COMMAND_LEN,
+    QUERY_PATTERN,
+    extract_sections,
+    auto_archive_command,
 )
 from services.command.topic_saver import (
     TOPIC_AUTO_SAVE_THRESHOLD,
@@ -56,6 +62,12 @@ __all__ = [
     "embed_hero_image_in_topic",
     "generate_hero_image",
     "process_hero_image",
+    "INPUT_MARKER",
+    "HISTORY_MARKER",
+    "MAX_COMMAND_LEN",
+    "QUERY_PATTERN",
+    "extract_sections",
+    "auto_archive_command",
 ]
 
 # Shims / Re-exports for backward compatibility & test monkeypatching

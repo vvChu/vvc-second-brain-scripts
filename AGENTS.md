@@ -284,13 +284,13 @@ scripts/
 │   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
 ├── services/                  ← Interactive services & Micro-modules (~20 files)
-│   ├── command/               ← Interactive Command Deep Module Package (10 writing styles, Zero I/O inbox)
+│   ├── command/               ← Interactive Command Deep Module Package (10 writing styles, Zero I/O inbox, Multi-Query Drainage Loop)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
 │   ├── article_images.py      ← Web article image downloader & WebP compressor
 │   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
-│   ├── chat_history.py        ← Command.md Auto-Archive logic
+│   ├── chat_history.py        ← Backward-compat shim (absorbed into command/inbox.py)
 │   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Trafilatura & BeautifulSoup web scraping (no truncation limits)
 │   ├── text_chunker.py        ← Semantic chunking (25K/chunk) & AI orthographic correction
