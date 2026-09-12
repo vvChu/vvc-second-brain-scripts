@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.13.1)
+# 🧠 VvC Second Brain — Agent Constitution (v8.13.2)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -284,7 +284,7 @@ scripts/
 │   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
 ├── services/                  ← Interactive services & Micro-modules (~20 files)
-│   ├── command/               ← Interactive Command Deep Module Package (10 writing styles, Zero I/O inbox, Multi-Query Drainage Loop)
+│   ├── command/               ← Interactive Command Deep Module Package (11 writing styles, Zero I/O inbox, Multi-Query Drainage Loop)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
@@ -300,9 +300,10 @@ scripts/
 │   ├── diagram_base.py        ← Shared diagram infrastructure
 │   ├── excalidraw_worker.py   ← Excalidraw JSON via Copilot CLI (claude-sonnet) (w/ Text Auto-Sync)
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
+│   ├── d2_worker.py           ← D2 vector diagram worker (local CLI + Kroki fallback)
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 337 unit tests (pytest) — coverage ≥ 50%
+└── tests/                     ← 393 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ### 1. Setup & Ingestion (`book_ingest.py` & `epub_convert.py`)
@@ -327,12 +328,12 @@ scripts/
   - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (combining and pruning Evidence Hooks bilingual v8.9.9, and deep rewriting of `## Core Idea`). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** — source image is archived, event is logged to `.state/.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
 
 ### 3. Interactive Services
-- **Command.md** (`services/command.py`): 9 writing styles via `/prefix` (kèm `🥊 /phan-bien` sparring), RAG-enhanced responses, forces `|100%` on embedded diagrams.
-- **Brain Dump** (`services/brain_dump.py`): Extracts pending ideas from native `## Inbox` markdown header, appends output to `## Processed`. Upgraded to **Map-Reduce Architecture (v7.4.2)** for processing long inputs and URLs:
-  - **No Truncation Limits (v8.9.1)**: `url_fetcher.py` returns full extracted text without any character truncation. Articles and YouTube transcripts are passed through at their natural length. Long text is handled downstream by `text_chunker.py` (semantic chunking at 25K chars/chunk) and LLM clients (CLI tiers auto-skip at 30K chars, HTTP tiers have no limit). Gateway primary model (1M token context) and Copilot/Gemini fallbacks (128K+ token context) accommodate any realistic web article.
-  - **Image Pipeline (v8.9.10)**: Article images are automatically extracted using `services/article_images.py` via `url_fetcher.py`. Extractor parses both standard `<img>` tags and Next.js/React custom `<ThemeImage>` components (prioritizing the `dark` mode URL) using Regex. Filter excludes noise (logos, icons, navigation, sidebar). Standard images are compressed concurrently to WebP (max 1536px, Q=80), while vector SVG (`.svg`) files are downloaded natively as raw bytes to bypass Pillow and size constraints, preserving crispness inside Obsidian. All are saved to `04 - Permanent/sources/assets/<domain>/` and registered as `[IMG:filename|alt=...]` markers in metadata callouts.
-  - **Map Step**: Uses `task="reasoning"` to extract Atomic Concepts into a JSON array via Semantic Arbitrator. Employs a **Proportional Dynamic Limit (v8.5)** calculated dynamically based on raw text volume (from `1-3` concepts for small inputs <5k characters, up to `8-18` concepts for inputs >50k characters) to prevent information loss on large transcripts while strictly filtering out noise.
-  - **Reduce Step**: Uses `task="synthesis"` with 4096 tokens limit to build strictly-formatted Concept Notes (avoids token exhaustion). Instructed by Rule 6 to embed `![[filename]]` in the `## Core Idea` section (maximum 3 images per concept).
+- **Command.md** (`services/command/`): Deep Module Package với 11 writing styles qua `/prefix` (kèm `🥊 /phan-bien` sparring, `fast`, `hero-image`), Multi-Query Drainage Loop (vét cạn toàn bộ truy vấn trong chu kỳ poller), RAG-enhanced responses, tự động lưu bài viết sâu $\ge 2500$ ký tự vào `04 - Permanent/topics/`, forces `|100%` on embedded diagrams.
+- **Brain Dump** (`services/brain_dump/`): Bóc tách ý tưởng từ native `## Inbox` markdown header, ghi kết quả vào `## Processed`. Vận hành theo kiến trúc Map-Reduce:
+  - **No Truncation Limits**: `url_fetcher.py` trích xuất toàn bộ văn bản gốc không cắt cụt; bài viết dài được phân đoạn ngữ nghĩa qua `text_chunker.py` (25K ký tự/chunk).
+  - **Image Pipeline**: `article_images.py` tự động tải và nén ảnh WebP song song (max 1536px, Q=80), hỗ trợ tải nguyên bản vector SVG (`.svg`), đóng gói vào `04 - Permanent/sources/assets/<domain>/` và nhúng markers vào callout ẩn.
+  - **Map Step**: Phân tích ngữ nghĩa trích xuất Atomic Concepts theo **Proportional Dynamic Limit** (1-3 concepts cho bài ngắn <5k ký tự, 8-18 concepts cho bài dài >50k ký tự).
+  - **Reduce Step**: Tổng hợp Concept Notes chuẩn chỉnh với giới hạn 4096 tokens, tự động nhúng tối đa 3 hình minh họa `![[filename.webp]]` vào `## Core Idea`.
 - **Hybrid RAG** (`services/rag_search.py`): BM25 + Gemini Embeddings + RRF fusion.
 
 ### 4. Wiki Health (`services/wiki_health.py`) — OOP Architecture (v7.4)
@@ -343,13 +344,12 @@ scripts/
 - **API Protection**: Enforces 20 RPM via 3.0s throttling, 30s backoff for failures, and a 3-consecutive-error Circuit Breaker.
 - Runs weekly via `sleep.py` (Task Scheduler).
 
-### 5. Diagram Generation (v7.2.1 Typesetting Engine & Text Sync)
-- **Excalidraw** (`services/excalidraw_worker.py`): Copilot CLI (claude-sonnet) for spatial reasoning.
-  - **Topology Router** (`scripts/core/layout_router.py`): Central brain that analyzes graph topology or layout metadata tags to auto-select engines.
-  - **Deterministic Layout Engines**: Sugiyama (Hierarchy), Radial (Hub-Spoke), Cycle (Loops), Matrix (2x2/Scatter), Concentric (Concentric circles), Value Chain (Michael Porter horizontal flow), and Tree (Top-Down or Left-to-Right tree charts).
-  - **Academic Book Theme**: 100% grayscale aesthetics, centralized color palette in `config.yaml`, and automatic Python text-wrapping for nodes.
-  - **Text Element Auto-Sync**: Automatically extracts text elements bound to shapes and populates them into the `# Text Elements` markdown section with block IDs (`^id_txt`) to completely eliminate Obsidian text lumping bugs.
-- **Mermaid** (`services/mermaid_worker.py`): LLM-generated, native Obsidian rendering (Synchronized to Grayscale Academic Theme).
+### 5. Diagram Generation
+Hệ thống hỗ trợ sinh sơ đồ song song (Excalidraw, Mermaid, D2 Vector) tuân thủ tiêu chuẩn học thuật Academic Grayscale — xem quy tắc kiến trúc chi tiết tại **§4.9 Dual-Rendering Diagram Standards**.
+- **Topology Router** (`core/layout_router.py`): Tự động phân tích đồ thị hoặc nhận diện thẻ `#layout:` để điều phối 7 deterministic layout engines (`sugiyama`, `radial`, `cycle`, `matrix`, `concentric`, `value_chain`, `tree`, `wheel`).
+- **Excalidraw** (`services/excalidraw_worker.py`): Copilot CLI sinh mã JSON bao đóng Obsidian Excalidraw 2.x, tích hợp Text Element Auto-Sync (`# Text Elements`) và `compute_safe_arrow_endpoints`.
+- **Mermaid** (`services/mermaid_worker.py`): Sinh Mermaid tự động với Academic Theme hygiene, ngắt dòng nhãn và khử ký tự đặc biệt.
+- **D2 Worker** (`services/d2_worker.py`): Biên dịch D2 sang SVG vector qua local CLI hoặc Kroki HTTP fallback (zero-dependency).
 
 ---
 
@@ -365,27 +365,10 @@ scripts/
 
 ## 7. Research & Proposal Discipline — Double-Pass Adversarial Review
 
-Trước khi đề xuất bất kỳ thay đổi kỹ thuật nào đối với pipeline, codebase, hoặc kiến trúc vault, Agent **PHẢI** thực hiện **2 vòng kiểm chứng** tuần tự. Không được trình bày đề xuất nếu chưa hoàn thành cả 2 vòng.
-
-> [!IMPORTANT]
-> Quy tắc này ra đời từ bài học thực tế trong phiên v8.7: 4/6 đề xuất tối ưu ban đầu đều SAI — bao gồm cả đề xuất tính năng đã tồn tại sẵn trong codebase (`encode_image()` đã resize ảnh), ước lượng hiệu suất lạc quan gấp 20 lần, và giả định phá hủy tính năng highlight detection.
-
-### Vòng 1 — Code-First Research (Đọc code trước khi đề xuất)
-- **KHÔNG BAO GIỜ** đề xuất tính năng "mới" mà chưa `grep`/search codebase để xác nhận nó chưa tồn tại.
-- Đọc **implementation thực tế** của các hàm liên quan — không suy đoán hành vi từ tên hàm hay docstring.
-- Kiểm tra data flow thực tế end-to-end: input format → transform logic → output format.
-- Nếu đề xuất liên quan đến hiệu suất: **đo lường thực tế** hoặc phân tích log — KHÔNG đưa ra con số ước lượng lý thuyết như kết luận.
-
-### Vòng 2 — Self-Adversarial Review (Tự phản biện trước khi trình bày)
-- Sau khi hình thành đề xuất, **tự hỏi**: "Đề xuất này có thể SAI ở đâu? Những giả định nào chưa được kiểm chứng?"
-- Xác định và kiểm tra **ít nhất 3 giả định cốt lõi** bằng dữ liệu thực (code, logs, file system).
-- Nếu đề xuất ảnh hưởng đến pipeline hiện có: kiểm tra xem nó có vi phạm các design constraints đã ghi nhận trong `AGENTS.md` hoặc `GEMINI.md` không.
-- Phân loại rõ ràng mỗi đề xuất: **"đã tồn tại"** vs **"cần triển khai mới"** vs **"cần thay đổi code hiện có"**.
-
-### Quy tắc trình bày kết quả
-- Mọi con số (tốc độ, dung lượng, thời gian) PHẢI kèm **nguồn**: `[đo thực tế]`, `[phân tích log]`, hoặc `[ước lượng lý thuyết — chưa kiểm chứng]`.
-- Khi so sánh giải pháp: đánh giá theo ma trận **Giá trị × Độ phức tạp × Rủi ro × KISS** thay vì chỉ liệt kê ưu điểm.
-- Nếu phát hiện đề xuất ban đầu sai trong quá trình kiểm chứng → **thẳng thắn ghi nhận và loại bỏ**, không cố biện minh.
+Mọi đề xuất kỹ thuật (tối ưu hiệu suất, refactor, tính năng mới, thay đổi kiến trúc) bắt buộc phải tuân thủ nghiêm ngặt quy trình **Double-Pass Adversarial Review** đã được chuẩn hóa tại **Global Memory & Context (§8)**:
+1. **Vòng 1 — Code-First Research**: Đọc implementation thực tế, grep codebase để xác nhận chưa tồn tại, kiểm tra end-to-end data flow, đo lường số liệu thực tế thay vì ước lượng.
+2. **Vòng 2 — Self-Adversarial Review**: Tự phản biện ít nhất 3 giả định cốt lõi, kiểm tra ràng buộc thiết kế trong `AGENTS.md`, phân loại rõ "đã tồn tại" vs "cần triển khai mới" vs "cần thay đổi code hiện có".
+3. **Quy tắc số liệu & Trình bày**: Mọi con số phải kèm nguồn (`[đo thực tế]`, `[phân tích log]`). Đánh giá theo ma trận Giá trị × Độ phức tạp × Rủi ro × KISS. Loại bỏ ngay đề xuất nếu kiểm chứng thấy sai.
 
 ---
 
