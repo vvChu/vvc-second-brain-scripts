@@ -4,6 +4,34 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.13.0 — Command Service Deep Module Package Refactoring (ccba-codebase-design)
+Tái cấu trúc toàn diện tệp monolith `services/command.py` (469 dòng) thành Deep Module Package `services/command/` theo chuẩn `ccba-codebase-design`:
+- **Deep Module Architecture (`services/command/`)**:
+  - `__init__.py`: Public Seam tối giản (`__all__ = ["handle_command", "WRITING_STYLES", "reindex_citations"]`) che giấu toàn bộ chi tiết xử lý nội bộ, kết hợp Dynamic Shims bảo toàn tương thích ngược 100%.
+  - `coordinator.py`: Điều phối luồng xử lý, LLM dispatch, Dynamic Module Aliasing cho test monkeypatching (`_get_active_cfg()`), và resilient I/O retry (3 lần, 150ms backoff) chống file locking trên Windows.
+  - `inbox.py`: Đóng gói toàn bộ logic biến đổi chuỗi thuần túy (Zero I/O, Zero state) gồm bóc tách span an toàn, in-place patching bảo toàn draft notes người dùng, và định dạng Markdown callout.
+  - `styles.py`: Taxonomy thuần túy định nghĩa 10 phong cách viết và bộ phân giải tiền tố lệnh `/style`.
+  - `citations.py`: Xử lý thuần túy đánh lại chỉ số trích dẫn `[14] -> [1]` và làm sạch dấu nháy kép/đơn trong wikilinks.
+  - `topic_saver.py`: Tách biệt logic sinh cấu trúc Topic Note (RAM) và ghi tệp đĩa nguyên tử khi phản hồi $\ge 2,500$ ký tự.
+- **Adversarial Hardening & Bug Fixes**:
+  - Khắc phục lỗi regex tham lam nuốt chửng draft notes khi câu hỏi có nhiều dòng chứa `---`.
+  - Triệt tiêu false positive query triggering bằng cách kiểm tra neo đầu dòng và tính chẵn lẻ của Markdown code fences.
+- **Test Suite**: Bổ sung 6 unit tests mới vào `test_command_flow.py`, mở rộng toàn bộ test suite lên **337/337 tests passed** (100% pass, 0 regressions).
+
+## v8.12.7 — Interactive Command Center Hardening & JIT Dynamic Model Resolver
+Nâng cấp toàn diện giao diện dòng lệnh tương tác và tự động hóa phân giải mô hình ngôn ngữ:
+- **Interactive Command Center Hardening (`services/command.py`, `services/chat_history.py`, `daemon.py`)**:
+  - Triệt tiêu lỗi vòng lặp đốt token khi `Command.md` bắt đầu bằng `## 📥 Input`.
+  - In-Place Surgical Patching: Chỉ thay thế khối query `@AI: {query} ---` đã xử lý thành `@AI:  ---`, bảo toàn 100% ghi chú nháp trong Inbox.
+  - Asynchronous Daemon Polling: Tách worker thread riêng biệt (`command-worker`) có khóa `_command_lock`, giải phóng main loop khỏi việc bị block 90s khi LLM suy luận.
+  - Bổ sung Fast Mode (`/fast`, `/quick`, `/nhanh`) định tuyến sang `task="synthesis"` phản hồi tức thì (~15s) thay vì deep reasoning (~90s).
+  - Tự động lưu trữ Topic Note: Các phản hồi dài $\ge 2,500$ ký tự tự động xuất thành tệp `04 - Permanent/topics/{slug}.md` kèm liên kết điều hướng theo đúng AGENTS.md §4.6.
+- **JIT Dynamic Model Resolver (`core/llm/model_resolver.py`)**:
+  - Chuẩn hóa toàn bộ cấu hình hệ thống lên Gemini 3.8 Flash (`gemini-3.8-flash-high` cho synthesis và `gemini-3.8-flash-low` cho vision/fast).
+  - Tích hợp hàm `resolve_model()` tự động phát hiện version Gemini mới nhất từ Gateway hoặc Google API (phân tích số học `3.8 > 3.7 > 3.5`), hỗ trợ alias `latest`, `auto`, `gemini-latest`.
+  - Tích hợp bộ đệm 24h (`.state/.models_cache.json`) và hằng số tĩnh an toàn `STATIC_LATEST_GEMINI_FLASH = "gemini-3.8-flash-high"`.
+- **Test Suite**: Mở rộng bộ kiểm thử lên **331/331 tests passed** (100% pass, 0 regressions).
+
 ## v8.12.6 — Maps of Content Hierarchical Restructure & Domain Quality Gate
 Tái cấu trúc kiến trúc thông tin và thẩm mỹ thị giác cho thư mục `00 - Maps of Content/`:
 - **Sub-folder Hierarchy (`sources/` & `domains/`)**: Di dời 174 Source MOCs vào `00 - Maps of Content/sources/` và 27 Domain MOCs vào `00 - Maps of Content/domains/`. Giữ thư mục gốc `00` tinh gọn tuyệt đối với đúng 3 tệp điều hành (`index.md`, `Command.md`, `Weekly_Synthesis.md`).

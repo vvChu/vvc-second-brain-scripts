@@ -38,7 +38,7 @@ In this mode, enforce these rules with maximum strictness:
 - Single-shot response (no follow-ups)
 - Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML frontmatter, etc.)
 
-## Architecture Reference (v8.12.5 — Vector Store Seams, Incremental MOC, & Zero False-Alarm Graph Linter)
+## Architecture Reference (v8.13.0 — Command Service Deep Module & JIT Model Resolver)
 
 ### LLM Routing (3-Tier)
 - **Tier 1 (Primary)**: AI Gateway (ccba-ai SDK) — 22 models via LiteLLM on Server Spark

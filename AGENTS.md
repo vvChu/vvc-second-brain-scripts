@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.12.6)
+# 🧠 VvC Second Brain — Agent Constitution (v8.13.0)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -251,7 +251,7 @@ scripts/
 │   ├── daemon_utils.py        ← Watchdog helper & file stability guards
 │   ├── media.py               ← Media utility seam (FFmpeg/FFprobe locator & transcode SSOT)
 │   ├── prompts/               ← Prompts Registry (modularized text templates)
-│   ├── llm/                   ← 3-tier LLM Modular Package (Gateway, Copilot, Gemini, Vision, Audio)
+│   ├── llm/                   ← 3-tier LLM Modular Package + JIT Dynamic Model Resolver (Gemini 3.8)
 │   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
 │   ├── layout_router.py       ← Topology auto-detection → engine dispatch
 │   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
@@ -267,7 +267,7 @@ scripts/
 │   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
 │
 ├── services/                  ← Interactive services & Micro-modules (~20 files)
-│   ├── command.py             ← Command.md Facade (9 writing styles)
+│   ├── command/               ← Interactive Command Deep Module Package (10 writing styles, Zero I/O inbox)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
@@ -285,7 +285,7 @@ scripts/
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 266 unit tests (pytest) — coverage ≥ 50%
+└── tests/                     ← 337 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ### 1. Setup & Ingestion (`book_ingest.py` & `epub_convert.py`)
