@@ -4,6 +4,23 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.13.1 — Dual-Rendering Diagram Standards & Layout Pipeline Hardening
+Nâng cấp toàn diện kiến trúc sinh sơ đồ và chuẩn hóa hiển thị đa tầng (Excalidraw + Mermaid) theo AGENTS.md §4.9:
+- **Shared Layout Seams & Robust Geometry (`services/diagram_base.py`, `core/layouts/`)**:
+  - `sync_bound_text_translation`: Đồng bộ dịch chuyển text hai chiều (`boundElements` và `containerId == sid`), lọc bỏ các ID rỗng/None.
+  - `compute_safe_arrow_endpoints`: Tính toán giao điểm đường biên chuẩn xác (`get_shape_boundary_point`), áp dụng khoảng cách an toàn `dot > 12.0` với adaptive padding `min(5.0, (dot - 2.0) / 2.0)` triệt tiêu đảo ngược mũi tên và arrowhead blobs trên cả 7 layout engines (`wheel`, `cycle`, `radial`, `tree`, `value_chain`, `concentric`, `matrix`).
+  - Xây dựng layout mới `wheel_layout.py` (Wheel / Star-Cycle), tích hợp tự động phát hiện `is_wheel` trong `layout_router.py`.
+  - Khắc phục `value_chain_layout.py` tự biến node cuối thành hình thoi ("Margin") và bổ sung tọa độ lưới 2x2 cho `matrix_layout.py`.
+- **Obsidian Excalidraw 2.x Wrapper & Context Matching (`services/excalidraw_worker.py`, `services/diagram_base.py`)**:
+  - Cập nhật wrapper tiêu chuẩn `# Excalidraw Data \n ## Text Elements \n %% ## Drawing %%`, chấm dứt hiện tượng nhân đôi header và rò rỉ thẻ neo `^txt_...`.
+  - Nâng cấp `find_diagram_context` hỗ trợ regex wiki-links có pipe kích thước (`![[name.excalidraw.md|100%]]`) và fallback tính điểm trùng khớp từ khóa heading.
+- **Mermaid Academic Theme Hygiene (`services/mermaid_worker.py`)**:
+  - Bảo vệ cú pháp biểu đồ phi-flowchart (`pie`, `timeline`, `mindmap`, `sequenceDiagram`, `stateDiagram`) khỏi việc tiêm `classDef` gây lỗi render.
+  - Bóc tách Subgraph bằng regex và định kiểu qua `style <sg_id>` thay vì `class`. Tích hợp `wrap_label` và `sanitize_mermaid` trên 10 loại hình khối.
+- **Thư viện mẫu & Kỹ năng (`diagram_templates.yaml`, `ccba-excalidraw-diagram`)**:
+  - Thêm template `wheel` cho Mermaid và Excalidraw; chuyển sơ đồ *EOS Model Wheel* sang `wheel`; sửa template `matrix`.
+- **Test Suite**: Mở rộng bộ kiểm thử lên **365/365 tests passed** (100% pass, 0 regressions).
+
 ## v8.13.0 — Command Service Deep Module Package Refactoring (ccba-codebase-design)
 Tái cấu trúc toàn diện tệp monolith `services/command.py` (469 dòng) thành Deep Module Package `services/command/` theo chuẩn `ccba-codebase-design`:
 - **Deep Module Architecture (`services/command/`)**:

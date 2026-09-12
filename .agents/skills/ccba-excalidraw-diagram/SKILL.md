@@ -84,6 +84,7 @@ Với mỗi khái niệm, hỏi:
 | Là trạng thái trừu tượng | **Cloud** (overlapping ellipses) |
 | Chuyển đổi input thành output | **Assembly line** (before → process → after) |
 | So sánh hai thứ | **Side-by-side** (song song với tương phản) |
+| Mô hình bánh đà, star-cycle, trục quay và các trụ cột tuần hoàn | **Wheel / Star-Cycle** (hub trung tâm + outer nodes kết nối theo vòng tròn tuần hoàn) |
 - **Tiêu chí hoàn thành:** Lựa chọn visual pattern phù hợp với ngữ nghĩa của từng khái niệm cụ thể.
 
 ### Bước 3: Đảm bảo sự đa dạng
@@ -433,11 +434,13 @@ tags: [excalidraw]
 ---
 ==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==
 
-# Text Elements
+# Excalidraw Data
+
+## Text Elements
 [text content]
 
 %%
-# Drawing
+## Drawing
 ```json
 {json content}
 ```

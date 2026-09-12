@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Project Context (v8.13.0)
+# 🧠 VvC Second Brain — Project Context (v8.13.1)
 
 > [!NOTE] Context File Hierarchy
 > | File | Role | Authority |
@@ -51,4 +51,5 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 - **Quality Gate**: 5 pre-save checks in `post_process.py`. Failed notes are rejected, never saved.
 - **Research Discipline**: Double-Pass Adversarial Review required before proposing changes. See `AGENTS.md` §7.
 - **Topic Backlog**: When asked to write new articles or brainstorm topics, always refer to the existing backlog of potential ideas at [[y_tuong_bai_viet_tiem_nang|Danh Mục Các Bài Viết Tiềm Năng]].
+- **Dual-Rendering Diagrams** (v8.13.0): See `AGENTS.md` §4.9. Standard Excalidraw 2.x wrapper, shared layout seams (`sync_bound_text_translation`, `compute_safe_arrow_endpoints`), and Academic Grayscale styling for Mermaid and Excalidraw.
 

@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.13.0)
+# 🧠 VvC Second Brain — Agent Constitution (v8.13.1)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -225,6 +225,23 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
   Linter phải phân biệt rõ ràng giữa liên kết gãy thực sự trong phần thân Markdown (`broken_body_links` - mức độ khẩn cấp, cần chữa lành ngay) và các hạt giống tri thức do AI gợi mở trong trường YAML `related:` (`prospective_related_seeds` - ý tưởng mở rộng tương lai). Không gộp chung làm sai lệch chỉ số sức khỏe của Vault.
 - **Tính Toàn Diện Của Mạng Lưới Đi Tới Khi Phát Hiện Orphan Notes**:
   Khi xác định Ghi chú mồ côi (Orphans), linter bắt buộc phải nạp toàn bộ liên kết đi ra (outgoing links) từ cả 3 tầng: MOCs (`00 - Maps of Content/`), Sources (`04 - Permanent/sources/`), và Topics (`04 - Permanent/topics/`). Việc chỉ quét liên kết giữa các concepts nội bộ sẽ tạo ra hàng nghìn báo động giả (False Orphans).
+
+### 4.9 Dual-Rendering Diagram Standards (v8.13.0)
+Hệ thống hỗ trợ cơ chế sinh và hiển thị sơ đồ song song (Excalidraw + Mermaid) đạt chuẩn thẩm mỹ học thuật Academic Grayscale (sách xuất bản):
+- **Cấu trúc bao đóng Obsidian Excalidraw 2.x**:
+  Mọi tệp `.excalidraw.md` tuân thủ nghiêm ngặt cấu trúc tiêu chuẩn plugin Excalidraw:
+  - Header `# Excalidraw Data`
+  - Section `## Text Elements` chứa danh sách nhãn dạng văn bản
+  - Section `%% \n ## Drawing \n ```json ... ``` \n %%` chứa dữ liệu đồ họa JSON
+- **Shared Layout Seams & Safe Arrow Geometry**:
+  - `sync_bound_text_translation`: Đồng bộ dịch chuyển các khối text liên kết theo cả hai cơ chế `boundElements` và `containerId == shape["id"]`, bảo toàn vị trí nhãn khi dời hình dạng.
+  - `compute_safe_arrow_endpoints`: Tính toán giao điểm đường biên chính xác qua `get_shape_boundary_point` và áp dụng khoảng cách an toàn `dot > 12.0` với adaptive padding `min(5.0, (dot - 2.0) / 2.0)`, triệt tiêu hoàn toàn lỗi đảo ngược mũi tên hoặc đè bẹp arrowhead khi hai node đặt sát nhau.
+- **Mermaid Academic Theme Hygiene**:
+  - Chỉ tiêm lớp CSS Academic Theme (`classDef principal/standard/auxiliary`) cho sơ đồ loại `flowchart` và `graph`. Các loại sơ đồ chuyên biệt (`pie`, `timeline`, `mindmap`, `sequenceDiagram`, `stateDiagram`) được giữ nguyên mã sạch để tránh xung đột cú pháp.
+  - Nhận diện `subgraph` bằng regex, loại trừ khỏi việc gán `class standard;` và áp dụng styling riêng bằng `style <sg_id> fill:#f8fafc,stroke:#334155,stroke-width:1px;`.
+  - Tự động ngắt dòng và khử ký tự phá vỡ cú pháp trên nhãn node bằng `wrap_label` và `sanitize_mermaid`.
+- **Thư viện mẫu thị giác đa dạng**:
+  Bổ sung và hỗ trợ đầy đủ các visual patterns: Wheel / Star-Cycle (`#layout:wheel`), 2x2 Matrix Quadrant Grid (`#layout:matrix`), Sugiyama Layered (`#layout:sugiyama`), Radial Hub-and-Spoke, Value Chain, Cycle, Tree, Concentric.
 
 ---
 
