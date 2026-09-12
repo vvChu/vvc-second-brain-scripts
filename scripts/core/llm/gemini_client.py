@@ -33,7 +33,11 @@ def _resolve_cli_path() -> str:
 
 
 def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
-    """Call LLM via Google Antigravity CLI (agy.exe) with native JSON bridge."""
+    """Call LLM via Google Antigravity CLI (agy.exe) with native JSON bridge.
+
+    Supports automatic streaming via stdin (stream-json) when prompt > 30,000 chars
+    to bypass Win32 CreateProcessW character limits.
+    """
     cmd = _resolve_cli_path()
     if not cmd:
         return ""
@@ -43,27 +47,38 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
     if re.match(r"^gemini-\d+(?:\.\d+)*-flash$", target_model) or target_model in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
         target_model = f"{target_model}-high"
 
-    _logger.info(f"[Antigravity CLI] Routed to: {target_model}")
-    try:
-        # Build arguments for Antigravity CLI (Headless / Print Mode with JSON output)
-        args = [
-            cmd,
-            "--model", target_model,
-            "--output-format", "json",
-            "--disable-slash-commands",
-            "-p", prompt,
-        ]
+    use_stream_json = len(prompt) > 30000
+    mode_label = "stream-json (stdin)" if use_stream_json else "print (-p)"
+    _logger.info(f"[Antigravity CLI] Routed to: {target_model} | Mode: {mode_label} ({len(prompt)} chars)")
 
+    try:
         kwargs: dict[str, Any] = {}
         if sys.platform == "win32":
             kwargs["creationflags"] = subprocess.CREATE_NO_WINDOW
-            # Windows CreateProcessW character limit guard
-            if len(prompt) > 30000:
-                _logger.warning("Prompt length exceeds CreateProcessW limits. Skipping Antigravity CLI to prevent WinError 206.")
-                return ""
+
+        if use_stream_json:
+            # Stream large prompt via stdin to bypass Windows CreateProcessW limits
+            args = [
+                cmd,
+                "--model", target_model,
+                "--input-format", "stream-json",
+                "--output-format", "stream-json",
+                "--disable-slash-commands",
+            ]
+            input_payload: str | None = json.dumps({"event": "user", "message": {"content": prompt}}) + "\n"
+        else:
+            args = [
+                cmd,
+                "--model", target_model,
+                "--output-format", "json",
+                "--disable-slash-commands",
+                "-p", prompt,
+            ]
+            input_payload = None
 
         result = subprocess.run(
             args,
+            input=input_payload,
             capture_output=True,
             text=True,
             timeout=timeout,
@@ -82,32 +97,65 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
         if not stdout:
             return ""
 
-        # Parse JSON response from agy.exe
-        try:
-            data = json.loads(stdout)
-            if isinstance(data, dict):
-                status = data.get("status", "")
-                if status and status != "SUCCESS":
-                    _logger.warning(f"[Antigravity CLI] Execution status: {status}")
-                    return ""
+        if use_stream_json:
+            # Parse NDJSON lines to find the 'result' event
+            for line in stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    data = json.loads(line)
+                    if isinstance(data, dict) and data.get("event") == "result":
+                        res = data.get("result", {})
+                        status = res.get("status", "")
+                        if status and status != "SUCCESS":
+                            _logger.warning(f"[Antigravity CLI] Execution status: {status}")
+                            return ""
 
-                resp_text = data.get("response", "")
-                duration = data.get("duration_seconds", 0)
-                usage = data.get("usage", {})
-                in_tok = usage.get("input_tokens", 0)
-                out_tok = usage.get("output_tokens", 0)
-                think_tok = usage.get("thinking_tokens", 0)
-                cached_tok = usage.get("cache_read_tokens", 0)
+                        resp_text = res.get("response", "")
+                        duration = res.get("duration_seconds", 0)
+                        usage = res.get("usage", {})
+                        in_tok = usage.get("input_tokens", 0)
+                        out_tok = usage.get("output_tokens", 0)
+                        think_tok = usage.get("thinking_tokens", 0)
+                        cached_tok = usage.get("cache_read_tokens", 0)
 
-                _logger.info(
-                    f"[Antigravity CLI] Done in {duration:.2f}s | "
-                    f"Tokens: {in_tok} in, {out_tok} out, {think_tok} think, {cached_tok} cached"
-                )
-                return strip_think_tags(resp_text.strip())
-        except json.JSONDecodeError:
-            _logger.debug("[Antigravity CLI] Output is not JSON, falling back to raw text.")
+                        _logger.info(
+                            f"[Antigravity CLI] Done in {duration:.2f}s | "
+                            f"Tokens: {in_tok} in, {out_tok} out, {think_tok} think, {cached_tok} cached"
+                        )
+                        return strip_think_tags(resp_text.strip())
+                except json.JSONDecodeError:
+                    continue
+            _logger.warning("[Antigravity CLI] No valid result event found in stream-json output")
+            return ""
+        else:
+            # Parse single JSON response from agy.exe
+            try:
+                data = json.loads(stdout)
+                if isinstance(data, dict):
+                    status = data.get("status", "")
+                    if status and status != "SUCCESS":
+                        _logger.warning(f"[Antigravity CLI] Execution status: {status}")
+                        return ""
 
-        return strip_think_tags(stdout)
+                    resp_text = data.get("response", "")
+                    duration = data.get("duration_seconds", 0)
+                    usage = data.get("usage", {})
+                    in_tok = usage.get("input_tokens", 0)
+                    out_tok = usage.get("output_tokens", 0)
+                    think_tok = usage.get("thinking_tokens", 0)
+                    cached_tok = usage.get("cache_read_tokens", 0)
+
+                    _logger.info(
+                        f"[Antigravity CLI] Done in {duration:.2f}s | "
+                        f"Tokens: {in_tok} in, {out_tok} out, {think_tok} think, {cached_tok} cached"
+                    )
+                    return strip_think_tags(resp_text.strip())
+            except json.JSONDecodeError:
+                _logger.debug("[Antigravity CLI] Output is not JSON, falling back to raw text.")
+
+            return strip_think_tags(stdout)
     except subprocess.TimeoutExpired:
         _logger.warning("Antigravity CLI timed out")
         return ""
