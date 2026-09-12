@@ -14,6 +14,9 @@ bundle: _core
 tier: kernel
 disable-model-invocation: true
 command: /ccba-update-spoke
+metadata:
+  version: "1.0.0"
+  author: "CCBA Hub"
 gpi:
   s: 3.0
   k: 2.0
@@ -30,8 +33,6 @@ triggers:
 - đồng bộ toàn bộ spoke
 - spoke status
 - kiểm tra spoke
-- ccba-sync-upstream
-- sync-upstream
 ---
 
 # Cập Nhật & Đồng Bộ Hóa CCBA Spoke Workspace (/ccba-update-spoke)
@@ -59,6 +60,9 @@ Quy trình áp dụng cơ chế **Safe-by-Default** 2 pha (Two-Phase Execution),
 3. **Tại Spoke (On-Demand):** Tải nhanh kỹ năng còn thiếu trên Hub (Lazy Loading).
 4. **Khi Cần Hoàn Tác:** Khôi phục trạng thái `.agents/` trước lần đồng bộ gần nhất (`--rollback`).
 5. **Đóng Vòng Hậu Hợp Nhất:** Khi PR đóng góp từ Spoke vừa được merge vào Hub (Bước 7 của `/ccba-contribute-to-hub`).
+
+> [!NOTE]
+> Lệnh `/ccba-update-spoke` chỉ phục vụ đồng bộ theo chiều **Downstream (Hub $\rightarrow$ Spoke)**. Nếu bạn muốn kiểm tra và đồng bộ tính năng từ các kho chứa GitHub thượng nguồn về Hub, vui lòng sử dụng lệnh độc lập `/ccba-sync-upstream`.
 
 ---
 
@@ -109,11 +113,12 @@ python [hub_path]\scripts\sync_spoke.py --spoke . --rollback
 ## 📋 Báo Cáo Kết Quả & Dọn Dẹp:
 1. **Báo cáo đồng bộ:** Báo cáo chi tiết: `🟢 NEW`, `🔄 UPDATED`, `⚪ UNCHANGED`, `🛡️ PRESERVED`.
 2. **Tổng kết tri thức pháp lý (ADR 0050):** Hiển thị số lượng gói OKF v2.4 đã đồng bộ.
-3. **Đồng bộ Pre-commit Hooks & Cleanliness Gate (ADR 0044 §7):**
-   ```powershell
-   Copy-Item "$hub\scripts\spoke\check_hub_import_depth.py" -Destination ".\scripts\check_hub_import_depth.py" -Force
-   Copy-Item "$hub\scripts\spoke\check_spoke_cleanliness.py" -Destination ".\scripts\check_spoke_cleanliness.py" -Force
-   ```
+3. **Đồng bộ Pre-commit Hooks & Cleanliness Gate (Tự động hóa 100% qua `--apply` — ADR 0044 §7):**
+   * Lệnh `sync_spoke.py --apply` tự động đồng bộ và cập nhật các kịch bản kiểm định guardrails vào thư mục `scripts/` tại Spoke:
+     - `scripts/safe_pytest.py` (Test runner an toàn)
+     - `scripts/check_hub_import_depth.py` (Kiểm soát độ sâu import)
+     - `scripts/check_spoke_cleanliness.py` (Rào chắn cleanliness & script budget)
+   * *(Không yêu cầu sao chép thủ công bằng PowerShell).*
 4. **Kiểm tra Script Budget & Cleanliness:** Chạy `python .\scripts\check_spoke_cleanliness.py`.
 5. **Kiểm định Hồi quy & Packages (Hậu Đóng Góp):** Chạy `pip install -e "[hub_path]\packages\[pkg]"` và chạy test cục bộ (ví dụ: `pytest` hoặc `python scripts\validate_legal_spoke.py` đối với Spoke Pháp điển).
 6. **Kiểm tra sức khỏe tổng thể:** Chạy `ccba-spoke status` (hoặc `python "[hub_path]\scripts\ccba_platform_cli.py" spoke-status`) xác nhận trạng thái xanh.
@@ -125,5 +130,5 @@ Khi thực thi các tác vụ chuyên sâu, Agent sử dụng công cụ `view_f
 
 | Tệp Tham Chiếu | Ngữ Cảnh Triệu Hồi & Mục Đích Sử Dụng |
 | :--- | :--- |
-| `references/upstream_sync_guide.md` | Hướng dẫn kiểm tra và kéo cập nhật tính năng mới từ Hub về dự án Spoke |
+| `references/upstream_sync_guide.md` | Tài liệu đặc tả kỹ thuật tham chiếu Upstream Radar (Phase 2 ADR-0057). Để trinh sát và kéo cập nhật từ GitHub thượng nguồn về Hub, sử dụng lệnh độc lập `/ccba-sync-upstream`. |
 

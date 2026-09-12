@@ -9,6 +9,9 @@ applies_to:
 bundle: _core
 tier: kernel
 command: /ccba-llm-pipeline-patterns
+metadata:
+  version: "1.0.0"
+  author: "CCBA Hub"
 gpi:
   s: 3.0
   k: 2.0
@@ -237,6 +240,42 @@ sys.stdout.reconfigure(encoding='utf-8')  # phải gọi TRƯỚC logging.basicC
 
 **Áp dụng cho**: Mọi script có `if __name__ == "__main__"` block chạy từ PowerShell terminal.  
 **Không áp dụng**: Daemon dùng `pythonw.exe` (headless, không có terminal).
+
+---
+
+## Pattern 9: Asynchronous Poller Drainage Loop (Anti-Starvation Seam)
+
+### Vấn đề
+Trong kiến trúc LLM OS tương tác qua tệp (như `Command.md`, `Brain_Dump.md`), background daemon liên tục thăm dò thời gian sửa đổi tệp (`mtime`) và kích hoạt worker chạy ngầm trong thread riêng (mất 5–30s cho LLM inference).
+Nếu worker chỉ xử lý 1 truy vấn duy nhất rồi cập nhật `Command.md`, đĩa sẽ mang `mtime` mới. Khi worker kết thúc, poller gán `_poller_state.command_mtime = mtime`.
+Hậu quả: Nếu người dùng nhập $\ge 2$ truy vấn liên tiếp hoặc gõ thêm câu hỏi mới trong lúc worker đang xử lý, điều kiện `mtime <= poller_mtime` luôn đúng ở các tick tiếp theo $\rightarrow$ **Các câu hỏi còn lại bị "bỏ quên vĩnh viễn" (Starvation)** cho đến khi tệp bị sửa đổi thủ công lần nữa.
+
+### Giải pháp (Drainage Loop)
+Worker seam BẮT BUỘC phải chạy vòng lặp vét cạn nội bộ (`while find_pending_item():`) kèm giới hạn an toàn (`max_queries = 10`):
+```python
+# ✅ ĐÚNG: Vét cạn toàn bộ truy vấn trong một chu trình worker
+def handle_command(command_file: Path | None = None, max_queries: int = 10) -> int:
+    processed = 0
+    while processed < max_queries:
+        content = cmd_file.read_text(encoding="utf-8")
+        query = find_pending_query(content)
+        if not query:
+            break
+        response = process_query(query)
+        write_response(content, query, response)
+        processed += 1
+    return processed
+```
+
+### Quy tắc Kiểm Thử Tệp Đa Phân Vùng (Dual-Section Assertion Invariant)
+Khi viết unit test cho các tệp vừa làm Inbox vừa lưu Lịch sử (Inbox + History):
+- ❌ **KHÔNG BAO GIỜ** assert: `assert query not in full_file_text` — vì khối lưu lịch sử cố tình ghi chép lại `@AI: {query} ---` bên trong Callout!
+- ✅ **BẮT BUỘC**: Phân rã tệp bằng `extract_sections()` và assert tách biệt:
+  ```python
+  before, inbox, after = extract_sections(final_text)
+  assert query not in inbox   # Đã dọn sạch khỏi hộp thư
+  assert query in after       # Đã lưu vết vào lịch sử
+  ```
 
 ---
 

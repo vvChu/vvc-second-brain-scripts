@@ -176,18 +176,20 @@ tags: [excalidraw]
 ---
 ==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==
 
-# Text Elements
+# Excalidraw Data
+
+## Text Elements
 [text elements listed here with ^id anchors]
 
 %%
-# Drawing
+## Drawing
 ```json
 {...excalidraw json...}
 ```
 %%
 ```
 
-**QUAN TRỌNG cho Obsidian**: Khối `# Drawing` PHẢI được bọc trong `%%...%%` để Plugin Excalidraw nhận dạng và render đúng.
+**QUAN TRỌNG cho Obsidian**: Khối `## Drawing` PHẢI được bọc trong `%%...%%` để Plugin Excalidraw nhận dạng và render đúng.
 
 ---
 

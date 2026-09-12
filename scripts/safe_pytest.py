@@ -15,11 +15,12 @@ if str(scripts_dir) not in sys.path:
 
 try:
     from ccba_harness import DetachedExecutionEngine
-except ImportError as err:
+except ImportError as exc:
     raise ImportError(
-        "ccba_harness package is not installed. Please install it via pip: "
-        "pip install -e 'D:\\GitHubProjects\\ccba-agent-platform\\packages\\ccba-harness'"
-    ) from err
+        "ccba-harness package is required by safe_pytest.py. "
+        "Please install it in your environment: pip install -e <hub_path>/packages/ccba-harness "
+        "or run 'python scripts/spoke_bootstrap.py'"
+    ) from exc
 
 # Backward compatibility function alias
 find_modified_test_files = DetachedExecutionEngine.find_modified_test_files

@@ -1,13 +1,33 @@
-# ccba-sync-upstream — Reference Guide
-
-> **Mục đích & Ngữ cảnh sử dụng:** Hướng dẫn kiểm tra và kéo cập nhật tính năng mới từ Hub về dự án Spoke
-> **Mô tả gốc:** Kiểm tra cập nhật và thẩm tra tính năng thượng nguồn (ADR-0057 Radar) kết hợp kích hoạt 1-Click Port qua /ccba-xia.
-
+---
+name: ccba-sync-upstream
+description: Kiểm tra cập nhật và thẩm tra tính năng thượng nguồn (ADR-0057 Radar)
+  kết hợp kích hoạt 1-Click Port qua /ccba-xia.
+metadata:
+  version: "1.1.0"
+  author: "CCBA Hub"
+disable-model-invocation: true
+bundle: _core
+tier: kernel
+user-invocable: true
+command: /ccba-sync-upstream
+gpi:
+  s: 4.0
+  k: 3.0
+  a: 3.0
+  p: 1.0
+triggers:
+- sync-upstream
+- ccba-sync-upstream
+- sync upstream
+- đồng bộ tri thức
+- claudekit
+- mattpocock
+- check update
 ---
 
 # Kỹ năng: Radar Thượng Nguồn & Cầu Nối Porting (Upstream Radar & Handshake)
 
-Kỹ năng này vận hành hệ thống Radar tự động giám sát các kho chứa thượng nguồn (được cấu hình linh hoạt tại [`.md/knowledge/upstream_sources.yaml`](../../../../.md/knowledge/upstream_sources.yaml)), kiểm tra bản quyền, thẩm tra tính năng mới theo **Thể chế ADR-0057 & RES-2026-ARCH-001 v1.2 (Khung Quyết Định Phân Rã Hai Giai Đoạn)** qua AI Gateway và tự động sinh lệnh **1-Click Porting** với `/ccba-xia`.
+Kỹ năng này vận hành hệ thống Radar tự động giám sát các kho chứa thượng nguồn (được cấu hình linh hoạt tại [`.md/knowledge/upstream_sources.yaml`](../../../.md/knowledge/upstream_sources.yaml)), kiểm tra bản quyền, thẩm tra tính năng mới theo **Thể chế ADR-0057 & RES-2026-ARCH-001 v1.2 (Khung Quyết Định Phân Rã Hai Giai Đoạn)** qua AI Gateway và tự động sinh lệnh **1-Click Porting** với `/ccba-xia`.
 
 ---
 
@@ -54,26 +74,26 @@ python scripts/spoke/check_claudekit_updates.py --scan-all --repo claudekit-mark
   ```
 - **Kiểm tra Bản quyền (License Audit):** Tự động phân loại giấy phép repo nguồn (PERMISSIVE, COPYLEFT, PROPRIETARY, UNKNOWN).
 - **Tiêu chí hoàn thành:** Script chạy thành công với exit code 0. Toàn bộ kho nguồn được cập nhật, in ra danh sách thay đổi và SHA tương ứng.
-- **Cơ chế tự chữa lành (Self-Healing):** Nếu gặp lỗi Git index corruption hoặc đứt kết nối mạng, Agent xóa sạch thư mục `.md/scratch/repos/<repo-name>` và tiến hành Clean Clone lại.
+- **Cơ chế tự chữa lành (Self-Healing):** Nếu gặp lỗi Git index corruption hoặc đứt kết nối mạng, Agent tự động dọn dẹp stale `index.lock` hoặc kích hoạt Clean Clone fallback an toàn.
 
 ### Nhịp 2: Thẩm tra Thể chế ADR-0057 & RES-2026-ARCH-001 v1.2 (Constitutional Evaluation)
 - Hỏi ý kiến người dùng trước khi quét sâu bằng AI: *"Tôi tìm thấy N file mới. Bạn có muốn kích hoạt AI Gateway thẩm tra theo thể chế ADR-0057 (Khung Quyết Định Phân Rã Hai Giai Đoạn & Radar GPI) để cập nhật báo cáo khuyến nghị không?"*
-- Nếu người dùng đồng ý, chạy script thẩm tra toàn diện:
+- Nếu người dùng đồng ý, chạy script thẩm tra:
   ```powershell
   python scripts/spoke/check_claudekit_updates.py
   ```
 - **Tiêu chí phân tầng của AI Gateway:**
-  * **Zero-Duplicate Check:** Đối chiếu với 100 skills hiện có trong `catalog.yaml`.
+  * **Zero-Duplicate Check:** Đối chiếu với danh mục kỹ năng hiện có trong `catalog.yaml` bằng thuật toán khử trùng lặp mờ.
   * **Khung Quyết Định Phân Rã Hai Giai Đoạn (ADR-0057):**
     - Cổng 0 (Determinism Gate): Tác vụ xác định 100% -> **Tier 1: Package Function / Deep Seam** trong `packages/*/src/`.
     - Cổng 1 (Orchestration Gate): Tác vụ đa tác tử/checkpoints/HITL -> **Tier 3: Composite Orchestrator** trong `.agents/workflows/`.
     - Giai đoạn 2 (Chỉ số GPI): $GPI < 12.0$ -> **Tier 2A: Progressive Reference** trong `references/*.md`; $GPI \ge 12.0$ -> **Tier 2B: Standalone Kernel Skill** trong `.agents/skills/ccba-<name>/`.
   * **Đánh giá tương thích:** Khả năng chuyển đổi từ TS/Node sang chuẩn Python Monorepo (`ruff`, `mypy`, `pytest`).
-- **Tiêu chí hoàn thành:** Báo cáo `.md/knowledge/port_recommendations.md` được cập nhật và bảo vệ nguyên vẹn vùng ghi chú của kỹ sư (`Parse-Protection`).
+- **Tiêu chí hoàn thành:** Báo cáo [port_recommendations.md](../../../.md/knowledge/port_recommendations.md) được cập nhật và bảo vệ nguyên vẹn vùng ghi chú của kỹ sư (`Parse-Protection`).
 
 ### Nhịp 3: Chuyển giao Kiểm soát sang `/ccba-xia` (1-Click Port Handshake)
 - Đọc nội dung cập nhật tại `port_recommendations.md` và trình bày tóm tắt cho người dùng.
-- Hiển thị cú pháp gọi lệnh `/ccba-xia` tương ứng với từng kỹ năng được khuyến nghị, ví dụ:
+- Hiển thị cú pháp gọi lệnh `/ccba-xia` trỏ trực tiếp đường dẫn cục bộ tương ứng với từng kỹ năng được khuyến nghị, ví dụ:
   ```text
   /ccba-xia .md/scratch/repos/claudekit-marketing document-skills/docx --port
   ```
