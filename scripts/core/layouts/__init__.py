@@ -8,6 +8,7 @@ Available engines:
   - concentric: Concentric circles layout
   - tree: Top-down or left-to-right tree layout
   - value_chain: Horizontal value-chain flow layout
+  - wheel: Wheel / star-cycle hub-and-cycle layout
 
 All engines share the same interface::
 
@@ -24,6 +25,7 @@ from core.layouts.matrix_layout import apply_matrix_layout
 from core.layouts.concentric_layout import apply_concentric_layout
 from core.layouts.tree_layout import apply_tree_layout
 from core.layouts.value_chain_layout import apply_value_chain_layout
+from core.layouts.wheel_layout import apply_wheel_layout
 
 __all__ = [
     "apply_sugiyama_layout",
@@ -33,4 +35,5 @@ __all__ = [
     "apply_concentric_layout",
     "apply_tree_layout",
     "apply_value_chain_layout",
+    "apply_wheel_layout",
 ]

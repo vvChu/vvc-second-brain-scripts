@@ -21,6 +21,10 @@ def apply_smart_layout(elements: list[dict]) -> None:
                 layout_hint = "cycle"
                 metadata_node_id = el.get("id")
                 break
+            elif "#layout:wheel" in txt or "#layout:star-cycle" in txt or "#layout:star_cycle" in txt:
+                layout_hint = "wheel"
+                metadata_node_id = el.get("id")
+                break
             elif "#layout:radial" in txt:
                 layout_hint = "radial"
                 metadata_node_id = el.get("id")
@@ -52,6 +56,7 @@ def apply_smart_layout(elements: list[dict]) -> None:
                 el["boundElements"] = [b for b in el["boundElements"] if isinstance(b, dict) and b.get("id") != metadata_node_id]
 
     # Build Graph for Topology Analysis (only if we need auto-detection fallback)
+    is_wheel = False
     is_radial = False
     is_cycle = False
     is_tree = False
@@ -73,21 +78,35 @@ def apply_smart_layout(elements: list[dict]) -> None:
         if G.nodes:
             degrees = dict(G.degree())
             max_deg = max(degrees.values()) if degrees else 0
+
+            # 0. Wheel graph (Hub + Outer Cycle) detection
+            if len(G.nodes) >= 4 and max_deg >= 3:
+                hub_candidate = max(degrees, key=lambda n: (degrees[n], 1 if "hub" in n.lower() else 0))
+                outer_nodes = [n for n in G.nodes if n != hub_candidate]
+                if len(outer_nodes) >= 3:
+                    try:
+                        g_outer = G.subgraph(outer_nodes)
+                        outer_cycles = nx.cycle_basis(g_outer)
+                        if outer_cycles and len(max(outer_cycles, key=len)) >= 3:
+                            is_wheel = True
+                    except Exception:
+                        pass
             
             # 1. Star graph (Hub and Spoke) detection
-            if max_deg >= len(G.nodes) - 2 and len(G.nodes) > 3:
+            if not is_wheel and max_deg >= len(G.nodes) - 2 and len(G.nodes) > 3:
                 is_radial = True
             
             # 2. Cycle detection
-            try:
-                basis = nx.cycle_basis(G)
-                if basis and len(max(basis, key=len)) == len(G.nodes):
-                    is_cycle = True
-            except Exception:
-                pass
+            if not is_wheel:
+                try:
+                    basis = nx.cycle_basis(G)
+                    if basis and len(max(basis, key=len)) == len(G.nodes):
+                        is_cycle = True
+                except Exception:
+                    pass
                 
             # 3. Spanning Tree structure detection
-            if not is_cycle and len(G.nodes) > 3:
+            if not is_wheel and not is_cycle and len(G.nodes) > 3:
                 try:
                     if nx.is_tree(G):
                         is_tree = True
@@ -95,7 +114,7 @@ def apply_smart_layout(elements: list[dict]) -> None:
                     pass
                     
             # 4. Chain detection (highly linear layout)
-            if not is_cycle and not is_tree and len(G.nodes) > 2:
+            if not is_wheel and not is_cycle and not is_tree and len(G.nodes) > 2:
                 deg_vals = list(degrees.values())
                 deg_2_count = sum(1 for d in deg_vals if d == 2)
                 deg_1_count = sum(1 for d in deg_vals if d == 1)
@@ -108,6 +127,9 @@ def apply_smart_layout(elements: list[dict]) -> None:
         if layout_hint == "matrix":
             from core.layouts.matrix_layout import apply_matrix_layout
             apply_matrix_layout(elements, style=matrix_style)
+        elif layout_hint == "wheel":
+            from core.layouts.wheel_layout import apply_wheel_layout
+            apply_wheel_layout(elements)
         elif layout_hint == "cycle":
             from core.layouts.cycle_layout import apply_cycle_layout
             apply_cycle_layout(elements)
@@ -128,7 +150,10 @@ def apply_smart_layout(elements: list[dict]) -> None:
             apply_sugiyama_layout(elements)
     else:
         # Fallback to automatic topology detection
-        if is_cycle:
+        if is_wheel:
+            from core.layouts.wheel_layout import apply_wheel_layout
+            apply_wheel_layout(elements)
+        elif is_cycle:
             from core.layouts.cycle_layout import apply_cycle_layout
             apply_cycle_layout(elements)
         elif is_radial:
