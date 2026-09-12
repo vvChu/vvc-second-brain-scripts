@@ -233,23 +233,53 @@ class _PollerState:
 _poller_state = _PollerState()
 
 
-def _poll_command() -> None:
-    """Poll Command.md for new queries."""
-    if not cfg.command_file.exists():
-        return
+_command_lock = threading.Lock()
+_command_in_progress = False
 
-    mtime = cfg.command_file.stat().st_mtime
-    if mtime <= _poller_state.command_mtime:
-        return
-    _poller_state.command_mtime = mtime
+
+def _poll_command() -> None:
+    """Poll Command.md for new queries.
+
+    Runs in a separate daemon thread to avoid blocking the main poller loop
+    during long LLM reasoning or tool execution.
+    """
+    global _command_in_progress
+    with _command_lock:
+        if _command_in_progress:
+            return
+        if not cfg.command_file.exists():
+            return
+
+        mtime = cfg.command_file.stat().st_mtime
+        if mtime <= _poller_state.command_mtime:
+            return
+        _poller_state.command_mtime = mtime
+        _command_in_progress = True
+
+    def _run_command() -> None:
+        global _command_in_progress
+        try:
+            from services.command import handle_command
+            handle_command()
+        except ImportError:
+            pass
+        except Exception as e:
+            _logger.error(f"Command handler error: {e}", exc_info=True)
+        finally:
+            with _command_lock:
+                _command_in_progress = False
+            try:
+                if cfg.command_file.exists():
+                    _poller_state.command_mtime = cfg.command_file.stat().st_mtime
+            except OSError:
+                pass
 
     try:
-        from services.command import handle_command
-        handle_command()
-    except ImportError:
-        pass
-    except Exception as e:
-        _logger.error(f"Command handler error: {e}", exc_info=True)
+        threading.Thread(target=_run_command, daemon=True, name="command-worker").start()
+    except Exception:
+        with _command_lock:
+            _command_in_progress = False
+        raise
 
 
 _dump_in_progress = False

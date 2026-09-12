@@ -16,17 +16,21 @@ MAX_COMMAND_LEN = 100_000
 INPUT_MARKER = "## 📥 Input"
 HISTORY_MARKER = "## 🕰️ Lịch sử tương tác"
 QUERY_PATTERN = re.compile(
-    r"@AI:\s*(.*?)\s*---",
-    re.DOTALL | re.IGNORECASE,
+    r"^@AI:\s*(.*?)\s*---",
+    re.MULTILINE | re.DOTALL | re.IGNORECASE,
 )
 
-def extract_sections(content: str) -> tuple[str, str, str]:
-    """Extract before_inbox, inbox, after_inbox (history)."""
-    match = re.search(fr"({INPUT_MARKER}\s*\n)(.*?)({HISTORY_MARKER}\s*\n)", content, re.DOTALL | re.IGNORECASE)
+def extract_sections(content: str) -> tuple[str | None, str | None, str | None]:
+    """Extract before_inbox, inbox, after_inbox (history).
+    
+    Returns (None, None, None) if markers are not found,
+    preserving raw inbox spacing when found.
+    """
+    match = re.search(fr"({INPUT_MARKER}\s*(?:\n|$))(.*?)({HISTORY_MARKER}(?:\s*\n|$))", content, re.DOTALL | re.IGNORECASE)
     if not match:
-        return "", "", ""
+        return None, None, None
     before = content[:match.start(1)]
-    inbox = match.group(2).strip()
+    inbox = match.group(2)
     after = content[match.end(3):]
     return before, inbox, after
 
@@ -39,7 +43,7 @@ def auto_archive_command(content: str) -> str:
         return content
         
     before, inbox, after = extract_sections(content)
-    if not after:
+    if before is None or inbox is None or after is None or not after:
         return content
         
     matches = list(QUERY_PATTERN.finditer(after))
@@ -67,4 +71,4 @@ def auto_archive_command(content: str) -> str:
             _logger.error(f"Failed to archive Command.md: {e}")
             return content  # Abort archiving if file save fails
             
-    return before + INPUT_MARKER + "\n\n" + inbox + "\n\n" + HISTORY_MARKER + "\n\n" + keep_text + "\n"
+    return before + INPUT_MARKER + "\n\n" + inbox.strip() + "\n\n" + HISTORY_MARKER + "\n\n" + keep_text + "\n"

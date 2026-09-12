@@ -14,11 +14,12 @@ if str(scripts_dir) not in sys.path:
     sys.path.insert(0, str(scripts_dir))
 
 try:
-    from scripts.eval.process_safety import DetachedExecutionEngine
-except ImportError:
-    from eval.process_safety import (
-        DetachedExecutionEngine,  # type: ignore[import-not-found,no-redef]
-    )
+    from ccba_harness import DetachedExecutionEngine
+except ImportError as err:
+    raise ImportError(
+        "ccba_harness package is not installed. Please install it via pip: "
+        "pip install -e 'D:\\GitHubProjects\\ccba-agent-platform\\packages\\ccba-harness'"
+    ) from err
 
 # Backward compatibility function alias
 find_modified_test_files = DetachedExecutionEngine.find_modified_test_files
