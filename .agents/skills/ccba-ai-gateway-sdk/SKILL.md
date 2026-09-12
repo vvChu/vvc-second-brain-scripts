@@ -8,6 +8,8 @@ applies_to:
 - Thiết kế
 - Kiểm định
 bundle: _core
+tier: kernel
+command: /ccba-ai-gateway-sdk
 gpi:
   s: 3.0
   k: 3.0
@@ -124,6 +126,8 @@ graph TD
 
 ```bash
 pip install -e "D:\GitHubProjects\ccba-agent-platform\packages\ccba-ai"
+# Tùy chọn: cài đặt thêm ccba-harness nếu cần FileMutexLock cấp cao cho Plan/Team:
+# pip install -e "D:\GitHubProjects\ccba-agent-platform\packages\ccba-harness"
 ```
 
 ```python

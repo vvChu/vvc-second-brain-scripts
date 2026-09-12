@@ -5,9 +5,11 @@ description: Master Skill quản lý và chuẩn hóa tài liệu Markdown từ 
 role: master_skill
 layer: _core
 bundle: _core
+tier: kernel
 version: 1.1.0
 invocation: model_invoked
 deep_seam: ConversionPipeline
+package_path: packages/mdconverter
 applies_to:
 - Phần mềm
 - Thẩm tra thiết kế

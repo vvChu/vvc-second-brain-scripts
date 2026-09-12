@@ -4,6 +4,7 @@ description: Thực hiện kiểm chứng mã nguồn thông qua CI Gates tự �
   lỗi (Self-Healing Loop).
 disable-model-invocation: true
 bundle: _software
+tier: kernel
 gpi:
   s: 3.0
   k: 2.0
@@ -20,6 +21,7 @@ triggers:
 - run gate
 - ccba-skills-eval
 - skills-eval
+package_path: packages/ccba-harness
 ---
 
 # 🛡️ Kỹ năng: eval-gate (Tự kiểm chứng & Sửa lỗi)

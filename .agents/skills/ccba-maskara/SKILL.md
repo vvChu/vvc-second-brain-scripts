@@ -8,6 +8,8 @@ applies_to:
 - Thiết kế
 - Kiểm định
 bundle: _core
+tier: kernel
+command: /ccba-maskara
 gpi:
   s: 3.0
   k: 3.0
@@ -20,6 +22,7 @@ triggers:
 - scan secret
 - leak
 - che giấu key
+package_path: packages/ccba-maskara
 ---
 # Maskara Privacy - Bảo mật thông tin nhạy cảm CCBA
 

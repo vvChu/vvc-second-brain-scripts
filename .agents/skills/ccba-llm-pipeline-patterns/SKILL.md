@@ -7,6 +7,8 @@ applies_to:
 - Thẩm tra thiết kế
 - Kiểm định
 bundle: _core
+tier: kernel
+command: /ccba-llm-pipeline-patterns
 gpi:
   s: 3.0
   k: 2.0
@@ -238,67 +240,6 @@ sys.stdout.reconfigure(encoding='utf-8')  # phải gọi TRƯỚC logging.basicC
 
 ---
 
-## Pattern 9: Artifact Engine & Strategy Registry Pattern (Open-Closed Extensible Workers)
-
-### Vấn đề
-Khi hệ thống hỗ trợ sinh nhiều định dạng artifact (Mermaid, Excalidraw, SVG, HTML...), việc phân phối tác vụ bằng chuỗi `if/elif` lồng nhau gây khó khăn khi mở rộng và thiếu cách ly lỗi: nếu một worker gặp ngoại lệ hoặc timeout, toàn bộ quá trình xử lý có thể bị dừng hoặc làm hỏng dữ liệu phản hồi.
-
-### Giải pháp: Registry mở - đóng với Error Isolation
-1. **Dynamic Registration**: Cung cấp hàm `register_artifact_adapter(name, adapter_func)` cho phép các plugin hoặc module độc lập đăng ký bộ xử lý mà không cần sửa lõi dispatcher.
-2. **Per-Adapter Error Isolation**: Mỗi adapter được bao bọc trong một khối `try/except` độc lập. Sự cố của adapter này không làm sập các adapter khác.
-3. **Strict Return Contract**: Trả về `list[str]` (danh sách đường dẫn artifact đã được tạo thành công) thay vì trả về cấu trúc tự do không kiểm soát.
-
-```python
-# Mẫu Registry chuẩn
-_ADAPTER_REGISTRY: dict[str, Callable[..., Optional[str]]] = {}
-
-def register_artifact_adapter(name: str, adapter_fn: Callable[..., Optional[str]]) -> None:
-    _ADAPTER_REGISTRY[name] = adapter_fn
-
-def trigger_workers(response: str, query: str = "") -> list[str]:
-    generated: list[str] = []
-    for name, adapter_fn in _ADAPTER_REGISTRY.items():
-        try:
-            artifact_path = adapter_fn(response, query)
-            if artifact_path:
-                generated.append(artifact_path)
-        except Exception as e:
-            _logger.warning(f"Adapter '{name}' failed gracefully: {e}")
-    return generated
-```
-
----
-
-## Pattern 10: Non-Blocking Background Worker cho Heavy I/O trong Watchdog Daemon
-
-### Vấn đề
-Trong các daemon chạy lặp liên tục (`daemon.py`, `book_ingest.py`), việc gọi đồng bộ các tác vụ I/O nặng (tải podcast/video, transcode âm thanh qua FFmpeg, streaming Whisper sang AI Gateway mất 10-60s) sẽ làm nghẽn (`block`) vòng lặp chính. Hệ quả: các sự kiện tương tác nhanh (như `Command.md` hoặc gom nhóm ảnh tức thời) bị đóng băng hoàn toàn.
-
-### Giải pháp: Threading với State Guard
-- Tách tác vụ nặng sang một daemon thread riêng biệt: `threading.Thread(target=worker, daemon=True).start()`.
-- Sử dụng cờ trạng thái (`_worker_in_progress = True / False`).
-- Trong vòng lặp polling chính, nếu cờ đang `True`, chỉ ghi log nhẹ và tiếp tục quét các hàng đợi khác mà không chờ đợi.
-
-```python
-_dump_in_progress = False
-
-def handle_brain_dump():
-    global _dump_in_progress
-    if _dump_in_progress:
-        logger.info("Brain dump worker is busy. Skipping cycle...")
-        return
-    _dump_in_progress = True
-    def _run():
-        global _dump_in_progress
-        try:
-            process_pending_ideas()
-        finally:
-            _dump_in_progress = False
-    threading.Thread(target=_run, daemon=True, name="brain-dump-worker").start()
-```
-
----
-
 ## Quick Reference — Model Routing cho Pipeline Tasks
 
 | Task trong pipeline | Model khuyến nghị | Lý do |
@@ -320,7 +261,4 @@ def handle_brain_dump():
 | Ground Truth Scoping | `D:\VvC_Notes\scripts\pipeline\ground_truth.py` |
 | Think-Tag Stripping | `D:\VvC_Notes\scripts\core\llm\utils.py` |
 | Semantic Duplicate Detection | `D:\VvC_Notes\scripts\pipeline\post_process.py` |
-| Artifact Engine Registry (Pattern 9) | `D:\VvC_Notes\scripts\services\worker_dispatcher.py` |
-| Non-Blocking Daemon Worker (Pattern 10) | `D:\VvC_Notes\scripts\daemon.py` |
-| Media Locator Seam (SSOT) | `D:\VvC_Notes\scripts\core\media.py` |
 | Output Sanitization | xem `ai-gateway-sdk` SKILL.md §Output Processing |
