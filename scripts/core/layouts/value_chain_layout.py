@@ -2,7 +2,29 @@ import math
 import uuid
 import networkx as nx
 from core.config import cfg
-from services.diagram_base import get_shape_boundary_point
+from services.diagram_base import (
+    compute_safe_arrow_endpoints,
+    sync_bound_text_translation,
+)
+
+def _node_has_margin_keyword(shape: dict, elements: list[dict]) -> bool:
+    """Check if a shape or its bound text contains margin-related keywords."""
+    texts = []
+    if shape.get("text"):
+        texts.append(str(shape["text"]))
+    sid = shape.get("id")
+    for bound in shape.get("boundElements", []):
+        if isinstance(bound, dict) and bound.get("type") == "text":
+            tid = bound.get("id")
+            for el in elements:
+                if el.get("id") == tid and el.get("text"):
+                    texts.append(str(el["text"]))
+    for el in elements:
+        if el.get("type") == "text" and el.get("containerId") == sid and el.get("text"):
+            texts.append(str(el["text"]))
+    combined = " ".join(texts).lower()
+    keywords = ["margin", "profit", "biên lợi nhuận"]
+    return any(kw in combined for kw in keywords)
 
 def apply_value_chain_layout(elements: list[dict]) -> bool:
     """Applies Michael Porter's Value Chain Layout to Excalidraw elements.
@@ -58,14 +80,13 @@ def apply_value_chain_layout(elements: list[dict]) -> bool:
     # 2. Support Activities (anything not in the primary chain)
     support_activities = [n for n in G.nodes if n not in primary_chain]
     
-    # Optional: Margin node detection
-    # The last node in the primary chain with zero out-degree can act as a Margin node
+    # Margin node detection:
+    # Only convert the last node to Margin if it explicitly contains margin keywords
     margin_id = None
     if primary_chain and G.out_degree(primary_chain[-1]) == 0 and len(primary_chain) > 1:
-        # Check if it has a label indicating "Margin" or similar, or just treat the last node as Margin
-        # Let's reserve the last node of primary chain as Margin if the chain is long enough (> 3)
-        if len(primary_chain) >= 3:
-            margin_id = primary_chain[-1]
+        candidate = primary_chain[-1]
+        if len(primary_chain) >= 3 and _node_has_margin_keyword(shapes[candidate], elements):
+            margin_id = candidate
             primary_chain = primary_chain[:-1]
 
     # Calculate coordinates
@@ -142,16 +163,7 @@ def apply_value_chain_layout(elements: list[dict]) -> bool:
             shape["strokeWidth"] = 1.5
             shape["strokeStyle"] = "dashed"
             
-        # Move bound text elements
-        for bound in shape.get("boundElements", []):
-            if isinstance(bound, dict) and bound.get("type") == "text":
-                tid = bound["id"]
-                for el in elements:
-                    if el.get("id") == tid and el.get("type") == "text":
-                        el["x"] = float(el.get("x", 0) + dx)
-                        el["y"] = float(el.get("y", 0) + dy)
-                        el["strokeColor"] = cfg.excalidraw_stroke_color
-                        el["fontFamily"] = cfg.excalidraw_font_family
+        sync_bound_text_translation(shape, elements, dx, dy)
 
     # 4. Update arrow geometry with clean routing
     for arr, sid, eid in edges:
@@ -174,61 +186,21 @@ def apply_value_chain_layout(elements: list[dict]) -> bool:
         
         # Case A: Support activity connecting down to Primary activity
         if s_is_support and e_is_primary:
-            # Draw vertical downward arrow
+            gap = float(e_shape["y"] - (s_shape["y"] + s_h))
+            pad = min(5.0, (gap - 2.0) / 2.0) if gap > 12.0 else 0.0
             start_x = sx
-            start_y = float(s_shape["y"] + s_h + 5)
+            start_y = float(s_shape["y"] + s_h + pad)
             end_x = sx
-            end_y = float(e_shape["y"] - 5)
-            
+            end_y = float(e_shape["y"] - pad)
+
             arr["x"] = start_x
             arr["y"] = start_y
-            
-            # Straight downward vertical arrow
             arr["points"] = [[0.0, 0.0], [0.0, float(end_y - start_y)]]
-            arr["strokeStyle"] = "dashed" # dashed for support connections
-            
-        # Case B: Primary activity sequence (horizontal sequence)
-        elif sid in primary_chain and eid in primary_chain:
-            # Draw straight horizontal arrow from right of source to left of target
-            start_x = float(s_shape["x"] + s_w + 5)
-            start_y = sy
-            end_x = float(e_shape["x"] - 5)
-            end_y = ey
-            
-            arr["x"] = start_x
-            arr["y"] = start_y
-            arr["points"] = [[0.0, 0.0], [float(end_x - start_x), 0.0]]
-            arr["strokeStyle"] = "solid"
-            
-        # Case C: Primary to Margin connection
-        elif eid == margin_id:
-            # Draw straight horizontal arrow pointing into margin diamond
-            start_x = float(s_shape["x"] + s_w + 5)
-            start_y = sy
-            end_x = float(e_shape["x"] - 5)
-            end_y = ey
-            
-            arr["x"] = start_x
-            arr["y"] = start_y
-            arr["points"] = [[0.0, 0.0], [float(end_x - start_x), float(end_y - start_y)]]
-            arr["strokeStyle"] = "solid"
-            
-        # Default fallback (Straight Ray Trimming)
+            arr["strokeStyle"] = "dashed"  # dashed for support connections
+
+        # Case B, C & Fallback: Safe ray-trimmed endpoints
         else:
-            dx = ex - sx
-            dy = ey - sy
-            dist = math.hypot(dx, dy)
-            if dist > 0:
-                # Exact boundary intersection (handles wide rectangles correctly)
-                bsx, bsy = get_shape_boundary_point(s_shape, dx, dy)
-                bex, bey = get_shape_boundary_point(e_shape, -dx, -dy)
-                start_x = bsx + (dx / dist) * 5
-                start_y = bsy + (dy / dist) * 5
-                end_x = bex - (dx / dist) * 5
-                end_y = bey - (dy / dist) * 5
-            else:
-                start_x, start_y, end_x, end_y = sx, sy, ex, ey
-                
+            start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s_shape, e_shape)
             arr["x"] = start_x
             arr["y"] = start_y
             arr["points"] = [[0.0, 0.0], [float(end_x - start_x), float(end_y - start_y)]]

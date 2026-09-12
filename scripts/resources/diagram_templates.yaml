@@ -69,17 +69,21 @@ mermaid:
     example: |
       flowchart TD
         subgraph HIGH_RIGHT["✅ Góc 4"]
-          HR["Kết quả Tốt\n+ Hành vi Đúng"]
+          HR["Kết quả Tốt<br/>+ Hành vi Đúng"]
         end
         subgraph HIGH_LEFT["⚠️ Góc 2"]
-          HL["Kết quả Kém\n+ Hành vi Đúng"]
+          HL["Kết quả Kém<br/>+ Hành vi Đúng"]
         end
         subgraph LOW_RIGHT["⚠️ Góc 3"]
-          LR["Kết quả Tốt\n+ Hành vi Sai"]
+          LR["Kết quả Tốt<br/>+ Hành vi Sai"]
         end
         subgraph LOW_LEFT["❌ Góc 1"]
-          LL["Kết quả Kém\n+ Hành vi Sai"]
+          LL["Kết quả Kém<br/>+ Hành vi Sai"]
         end
+        style HIGH_RIGHT fill:#f8fafc,stroke:#334155,stroke-width:1px;
+        style HIGH_LEFT fill:#f8fafc,stroke:#334155,stroke-width:1px;
+        style LOW_RIGHT fill:#f8fafc,stroke:#334155,stroke-width:1px;
+        style LOW_LEFT fill:#f8fafc,stroke:#334155,stroke-width:1px;
     source: "Reinventing the Org Fig 07-01 — Behavior-Outcome Matrix"
     source_figure: "Reinventing_the_Organization_H_Ch07_Figure_02-01.jpg"  # 5 matrix figures; also: Ch14_Figure_07-01, Ch11_Figure_05-03
 
@@ -158,8 +162,37 @@ mermaid:
     source: "Reinventing the Org Fig 03-01 — Strategy Evolution Staircase"
     source_figure: "Reinventing_the_Organization_H_Ch08_Figure_03-01.jpg"  # 5 timeline figures; also: Ch10_Figure_04-04, EOS_Ch11_35
 
+  wheel:
+    description: "Mô hình bánh đà, star-cycle, trục quay và các trụ cột xung quanh"
+    keywords:
+      - "bánh đà"
+      - "ngũ giác"
+      - "lục giác"
+      - "wheel"
+      - "trụ cột"
+      - "star-cycle"
+      - "hệ điều hành"
+    example: |
+      flowchart TD
+        HUB["EOS Model<br/>Hệ Điều Hành"]
+        C1["Tầm Nhìn"]
+        C2["Con Người"]
+        C3["Dữ Liệu"]
+        C4["Vấn Đề"]
+        C5["Quy Trình"]
+        C6["Lực Đẩy"]
+        HUB --- C1
+        HUB --- C2
+        HUB --- C3
+        HUB --- C4
+        HUB --- C5
+        HUB --- C6
+        C1 --> C2 --> C3 --> C4 --> C5 --> C6 --> C1
+    source: "EOS Ch04 — EOS Model Wheel (6 Key Components)"
+    source_figure: "Sieu_tang_truong_ung_dung_EOS_Ch04_1.jpg"
+
   pie:
-    description: "Phân bổ tỷ lệ, cơ cấu thành phần, breakdown phần trăm, wheel model"
+    description: "Phân bổ tỷ lệ, cơ cấu thành phần, breakdown phần trăm"
     keywords:
       - "tỷ lệ"
       - "phần trăm"
@@ -167,20 +200,17 @@ mermaid:
       - "cơ cấu"
       - "thành phần"
       - "component"
-      - "wheel"
       - "proportion"
       - "breakdown"
       - "hợp phần"
     example: |
-      pie title EOS — 6 Hợp Phần Doanh Nghiệp
-        "Tầm Nhìn" : 17
-        "Con Người" : 17
-        "Dữ Liệu" : 17
-        "Vấn Đề" : 17
-        "Quy Trình" : 16
-        "Lực Đẩy" : 16
-    source: "EOS Ch04 — EOS Model Wheel (6 Key Components)"
-    source_figure: "Sieu_tang_truong_ung_dung_EOS_Ch04_1.jpg"  # NOTE: classified as hub_spoke (wheel has 6 radial segments); pie=0 in vault
+      pie title Cơ Cấu Ngân Sách Vận Hành
+        "R&D" : 35
+        "Marketing" : 25
+        "Vận Hành" : 20
+        "Bán Hàng" : 15
+        "Dự Phòng" : 5
+    source: "Generic financial breakdown pattern"
 
   mindmap:
     description: "Bản đồ tư duy, brainstorm, phân nhánh ý tưởng từ chủ đề trung tâm"
@@ -328,3 +358,20 @@ excalidraw:
       Arrows cross between layers showing dependencies
       Minimize edge crossings (Sugiyama algorithm handles this)
       Use rectangles for main concepts, diamonds for decision points.
+
+  wheel:
+    description: "Mô hình bánh đà, star-cycle, trục quay và các trụ cột xung quanh"
+    keywords:
+      - "bánh đà"
+      - "ngũ giác"
+      - "lục giác"
+      - "wheel"
+      - "trụ cột"
+      - "star-cycle"
+      - "hệ điều hành"
+    layout_tag: "#layout:wheel"
+    example_structure: |
+      Central hub node (rectangle or ellipse, bold border) at center
+      5-6 outer pillar nodes arranged in a circle around the hub
+      Spoke connections between hub and outer nodes
+      Outer nodes connected in a clockwise cycle

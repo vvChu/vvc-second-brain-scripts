@@ -1,7 +1,10 @@
 import math
 import networkx as nx
 from core.config import cfg
-from services.diagram_base import get_shape_boundary_point
+from services.diagram_base import (
+    compute_safe_arrow_endpoints,
+    sync_bound_text_translation,
+)
 
 def apply_tree_layout(elements: list[dict], direction: str = "td") -> bool:
     """Applies a clean Hierarchical Tree Layout to Excalidraw elements.
@@ -169,16 +172,7 @@ def apply_tree_layout(elements: list[dict], direction: str = "td") -> bool:
             if shape.get("type") == "rectangle" and "roundness" not in shape:
                 shape["roundness"] = {"type": 3}
                 
-        # Move bound text elements
-        for bound in shape.get("boundElements", []):
-            if isinstance(bound, dict) and bound.get("type") == "text":
-                tid = bound["id"]
-                for el in elements:
-                    if el.get("id") == tid and el.get("type") == "text":
-                        el["x"] = float(el.get("x", 0) + dx)
-                        el["y"] = float(el.get("y", 0) + dy)
-                        el["strokeColor"] = cfg.excalidraw_stroke_color
-                        el["fontFamily"] = cfg.excalidraw_font_family
+        sync_bound_text_translation(shape, elements, dx, dy)
 
     # 6. Apply Orthogonal (Elbow) Connectors to Spanning Tree arrows
     for arr, sid, eid in edges:
@@ -240,24 +234,7 @@ def apply_tree_layout(elements: list[dict], direction: str = "td") -> bool:
             arr["roundness"] = {"type": 3} # sharp elbows
         else:
             # Non-tree relation edge: use dashed ray-trimmed straight line
-            sx = float(s_shape["x"] + s_w / 2)
-            sy = float(s_shape["y"] + s_h / 2)
-            ex = float(e_shape["x"] + e_w / 2)
-            ey = float(e_shape["y"] + e_h / 2)
-            
-            dx = ex - sx
-            dy = ey - sy
-            dist = math.hypot(dx, dy)
-            if dist > 0:
-                # Exact boundary intersection (handles wide rectangles correctly)
-                bsx, bsy = get_shape_boundary_point(s_shape, dx, dy)
-                bex, bey = get_shape_boundary_point(e_shape, -dx, -dy)
-                start_x = bsx + (dx / dist) * 5
-                start_y = bsy + (dy / dist) * 5
-                end_x = bex - (dx / dist) * 5
-                end_y = bey - (dy / dist) * 5
-            else:
-                start_x, start_y, end_x, end_y = sx, sy, ex, ey
+            start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s_shape, e_shape)
                 
             arr["x"] = start_x
             arr["y"] = start_y

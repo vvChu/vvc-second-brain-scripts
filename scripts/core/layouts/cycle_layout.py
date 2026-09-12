@@ -1,7 +1,10 @@
 import math
 import networkx as nx
 from core.config import cfg
-from services.diagram_base import get_shape_boundary_point
+from services.diagram_base import (
+    compute_safe_arrow_endpoints,
+    sync_bound_text_translation,
+)
 
 def apply_cycle_layout(elements: list[dict]) -> bool:
     shapes = {}
@@ -98,38 +101,18 @@ def apply_cycle_layout(elements: list[dict]) -> bool:
             # Just keeping what LLM said for now unless explicitly forcing ellipse
             pass
             
-        for bound in shape.get("boundElements", []):
-            if isinstance(bound, dict) and bound.get("type") == "text":
-                tid = bound["id"]
-                for el in elements:
-                    if el.get("id") == tid and el.get("type") == "text":
-                        el["x"] = float(el.get("x", 0) + dx)
-                        el["y"] = float(el.get("y", 0) + dy)
-                        el["strokeColor"] = cfg.excalidraw_stroke_color
-                        el["fontFamily"] = cfg.excalidraw_font_family
+        sync_bound_text_translation(shape, elements, dx, dy)
                         
     # 2. Update arrows geometrically with curved path
     for arr, sid, eid in edges:
         s_shape = shapes[sid]
         e_shape = shapes[eid]
         
-        s_w = s_shape.get("width", 150)
-        s_h = s_shape.get("height", 100)
-        e_w = e_shape.get("width", 150)
-        e_h = e_shape.get("height", 100)
-        
-        sx = float(s_shape["x"] + s_w / 2)
-        sy = float(s_shape["y"] + s_h / 2)
-        ex = float(e_shape["x"] + e_w / 2)
-        ey = float(e_shape["y"] + e_h / 2)
-        
-        dx = ex - sx
-        dy = ey - sy
-        dist = math.hypot(dx, dy)
+        start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s_shape, e_shape)
         
         # Calculate mid point, pushed outwards slightly to form a curve
-        mx = (sx + ex) / 2
-        my = (sy + ey) / 2
+        mx = (start_x + end_x) / 2
+        my = (start_y + end_y) / 2
         
         # Vector from center to mid point
         v_cx = mx - center_x
@@ -140,17 +123,6 @@ def apply_cycle_layout(elements: list[dict]) -> bool:
             mx = mx + (v_cx / v_dist) * push_amount
             my = my + (v_cy / v_dist) * push_amount
 
-        if dist > 0:
-            # Exact boundary intersection (handles wide rectangles correctly)
-            bsx, bsy = get_shape_boundary_point(s_shape, dx, dy)
-            bex, bey = get_shape_boundary_point(e_shape, -dx, -dy)
-            start_x = bsx + (dx / dist) * 5
-            start_y = bsy + (dy / dist) * 5
-            end_x = bex - (dx / dist) * 5
-            end_y = bey - (dy / dist) * 5
-        else:
-            start_x, start_y, end_x, end_y = sx, sy, ex, ey
-            
         arr["x"] = start_x
         arr["y"] = start_y
         

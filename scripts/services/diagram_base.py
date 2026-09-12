@@ -11,10 +11,26 @@ import logging
 import re
 import threading
 from pathlib import Path
+from typing import Any
 
 from core.config import cfg
+from services.moc_mermaid import sanitize_mermaid, wrap_label
 
 _logger = logging.getLogger("vvc.diagram")
+
+__all__ = [
+    "get_shape_boundary_point",
+    "sync_bound_text_translation",
+    "compute_safe_arrow_endpoints",
+    "find_diagram_context",
+    "resolve_chapter_images",
+    "spawn_worker",
+    "save_diagram_file",
+    "load_templates",
+    "select_template",
+    "wrap_label",
+    "sanitize_mermaid",
+]
 
 
 def get_shape_boundary_point(shape: dict, dx: float, dy: float) -> tuple[float, float]:
@@ -59,24 +75,140 @@ def get_shape_boundary_point(shape: dict, dx: float, dy: float) -> tuple[float, 
     return cx + ndx * t, cy + ndy * t
 
 
+def sync_bound_text_translation(
+    shape: dict[str, Any],
+    elements: list[dict[str, Any]],
+    dx: float,
+    dy: float,
+) -> None:
+    """Synchronously translate bound text elements for a shape.
+
+    Checks both shape.get("boundElements", []) and any element with
+    el.get("containerId") == shape["id"], translating text elements synchronously.
+
+    Args:
+        shape: Shape element dict being translated.
+        elements: Full list of diagram elements.
+        dx: Horizontal displacement.
+        dy: Vertical displacement.
+    """
+    sid = shape.get("id")
+    if not sid:
+        return
+
+    bound_text_ids = set()
+    for bound in shape.get("boundElements", []):
+        if isinstance(bound, dict) and bound.get("type") == "text" and bound.get("id"):
+            bound_text_ids.add(bound["id"])
+
+    for el in elements:
+        if el.get("type") != "text":
+            continue
+        el_id = el.get("id")
+        is_bound = (el_id and el_id in bound_text_ids) or (el.get("containerId") == sid)
+        if is_bound:
+            el["x"] = float(el.get("x", 0.0) + dx)
+            el["y"] = float(el.get("y", 0.0) + dy)
+            if not el.get("strokeColor"):
+                el["strokeColor"] = cfg.excalidraw_stroke_color
+            if not el.get("fontFamily"):
+                el["fontFamily"] = cfg.excalidraw_font_family
+
+
+def compute_safe_arrow_endpoints(
+    s_shape: dict[str, Any],
+    e_shape: dict[str, Any],
+) -> tuple[float, float, float, float]:
+    """Compute safe arrow start and end points between two shapes.
+
+    Extracts boundaries via get_shape_boundary_point, enforces safety distance
+    dot > 12.0 with adaptive padding min(5.0, (dot - 2.0) / 2.0) to prevent
+    inverted arrows or crushed arrowhead blobs.
+
+    Args:
+        s_shape: Source shape dict.
+        e_shape: Target shape dict.
+
+    Returns:
+        tuple (start_x, start_y, end_x, end_y) of safe endpoints.
+    """
+    import math
+
+    sx = float(s_shape.get("x", 0.0)) + float(s_shape.get("width", 150.0)) / 2.0
+    sy = float(s_shape.get("y", 0.0)) + float(s_shape.get("height", 100.0)) / 2.0
+    ex = float(e_shape.get("x", 0.0)) + float(e_shape.get("width", 150.0)) / 2.0
+    ey = float(e_shape.get("y", 0.0)) + float(e_shape.get("height", 100.0)) / 2.0
+
+    dx = ex - sx
+    dy = ey - sy
+    dist = math.hypot(dx, dy)
+    if dist > 0:
+        bsx, bsy = get_shape_boundary_point(s_shape, dx, dy)
+        bex, bey = get_shape_boundary_point(e_shape, -dx, -dy)
+        dot = (bex - bsx) * (dx / dist) + (bey - bsy) * (dy / dist)
+        if dot > 12.0:
+            padding = min(5.0, (dot - 2.0) / 2.0)
+            start_x = bsx + (dx / dist) * padding
+            start_y = bsy + (dy / dist) * padding
+            end_x = bex - (dx / dist) * padding
+            end_y = bey - (dy / dist) * padding
+        elif dot > 0:
+            start_x, start_y = bsx, bsy
+            end_x, end_y = bex, bey
+        else:
+            start_x, start_y, end_x, end_y = sx, sy, ex, ey
+    else:
+        start_x, start_y, end_x, end_y = sx, sy, ex, ey
+
+    return float(start_x), float(start_y), float(end_x), float(end_y)
+
+
 def find_diagram_context(diagram_name: str, source_text: str) -> str:
     """Extract context around a diagram placeholder from the source text.
+
+    Handles wiki-links with optional display pipes: ![[name]] or ![[name|800]].
+    If not found, falls back to searching for the nearest section heading
+    matching diagram name keywords before defaulting to source_text[:1000].
 
     Args:
         diagram_name: e.g. "kien_truc.excalidraw.md"
         source_text: Full response text containing the placeholder.
 
     Returns:
-        Surrounding context (±500 chars around the placeholder).
+        Surrounding context (±500 chars around the placeholder, or section matching keywords, or first 1000 chars).
     """
-    placeholder = f"![[{diagram_name}]]"
-    idx = source_text.find(placeholder)
-    if idx < 0:
-        return source_text[:1000]
+    target_name = Path(diagram_name).name
+    pattern = re.compile(rf"!\[\[{re.escape(target_name)}(?:\|[^\]]*)?\]\]")
+    match = pattern.search(source_text)
+    if match:
+        start = max(0, match.start() - 500)
+        end = min(len(source_text), match.end() + 500)
+        return source_text[start:end]
 
-    start = max(0, idx - 500)
-    end = min(len(source_text), idx + len(placeholder) + 500)
-    return source_text[start:end]
+    # Fallback: search for the section heading matching the most diagram keywords
+    stem = re.sub(
+        r"\.(excalidraw\.md|mermaid\.md|excalidraw|mermaid|md)$",
+        "",
+        target_name,
+        flags=re.IGNORECASE,
+    )
+    keywords = [w.lower() for w in re.split(r"[_\-\s]+", stem) if len(w) >= 2]
+
+    if keywords:
+        headings = list(re.finditer(r"^(#{1,6}\s+.*?)$", source_text, flags=re.MULTILINE))
+        best_heading = None
+        best_score = 0
+        for h in headings:
+            h_text = h.group(1).lower()
+            score = sum(1 for kw in keywords if kw in h_text)
+            if score > best_score:
+                best_score = score
+                best_heading = h
+        if best_heading is not None and best_score > 0:
+            h_start = best_heading.start()
+            return source_text[h_start : min(len(source_text), h_start + 1000)]
+
+    return source_text[:1000]
 
 
 def resolve_chapter_images(

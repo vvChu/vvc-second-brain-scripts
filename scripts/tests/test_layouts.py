@@ -85,6 +85,20 @@ def _chain_elements(n: int = 4) -> list[dict]:
     return elements
 
 
+def _wheel_elements(n_outer: int = 5) -> list[dict]:
+    """Create a wheel graph: 1 central hub + n_outer outer nodes connected in a cycle and to the hub."""
+    hub = _make_shape("hub", 0, 0)
+    elements = [hub]
+    for i in range(n_outer):
+        elements.append(_make_shape(f"w{i}", 100 * i, 100 * i))
+    for i in range(n_outer):
+        elements.append(_make_arrow(f"ca{i}", f"w{i}", f"w{(i + 1) % n_outer}"))
+    for i in range(n_outer):
+        elements.append(_make_arrow(f"sa{i}", "hub", f"w{i}"))
+    return elements
+
+
+
 # ── Shared Assertions ──────────────────────────────────────────────
 
 def _assert_academic_aesthetics(elements: list[dict]) -> None:
@@ -316,6 +330,107 @@ class TestConcentricLayout:
         _assert_no_nan_coords(elements)
 
 
+# ── Wheel Layout Tests ─────────────────────────────────────────────
+
+class TestWheelLayout:
+    def test_empty_returns_false(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        assert apply_wheel_layout([]) is False
+
+    def test_wheel_returns_true(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        assert apply_wheel_layout(elements) is True
+
+    def test_hub_centered(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        apply_wheel_layout(elements, center_x=600, center_y=400)
+        hub = next(e for e in elements if e["id"] == "hub")
+        assert abs(hub["x"] - (600 - hub["width"] / 2)) < 1.0
+        assert abs(hub["y"] - (400 - hub["height"] / 2)) < 1.0
+
+    def test_outer_nodes_equidistant(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        apply_wheel_layout(elements, center_x=600, center_y=400, radius=260)
+        outer = [e for e in elements if e["id"].startswith("w")]
+        distances = []
+        for o in outer:
+            cx = o["x"] + o["width"] / 2
+            cy = o["y"] + o["height"] / 2
+            distances.append(math.hypot(cx - 600, cy - 400))
+        assert max(distances) - min(distances) < 1.0
+        assert abs(distances[0] - 260) < 1.0
+
+    def test_aesthetics_applied(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        apply_wheel_layout(elements)
+        _assert_academic_aesthetics(elements)
+        _assert_no_nan_coords(elements)
+
+    def test_spoke_and_cycle_arrows_geometry(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        apply_wheel_layout(elements)
+        cycle_arrows = [e for e in elements if e["id"].startswith("ca")]
+        spoke_arrows = [e for e in elements if e["id"].startswith("sa")]
+        for ca in cycle_arrows:
+            assert len(ca["points"]) == 3  # Curved with midpoint
+            assert ca.get("roundness", {}).get("type") == 2
+        for sa in spoke_arrows:
+            assert len(sa["points"]) == 2  # Straight spoke
+            assert sa.get("roundness") is None
+
+    def test_start_node_aligned_to_top(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        apply_wheel_layout(elements, center_x=600, center_y=400, radius=260)
+        w0 = next(e for e in elements if e["id"] == "w0")
+        cx = w0["x"] + w0["width"] / 2
+        cy = w0["y"] + w0["height"] / 2
+        # w0 should be at 12 o'clock: x=600, y=400 - 260 = 140
+        assert abs(cx - 600.0) < 1.0
+        assert abs(cy - 140.0) < 1.0
+
+    def test_bound_text_translation(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        elements = _wheel_elements(5)
+        text_el = {
+            "id": "t_w0",
+            "type": "text",
+            "containerId": "w0",
+            "text": "Outer Node 0",
+            "x": 0.0,
+            "y": 0.0,
+            "width": 100.0,
+            "height": 20.0,
+        }
+        elements.append(text_el)
+        apply_wheel_layout(elements, center_x=600, center_y=400, radius=260)
+        w0 = next(e for e in elements if e["id"] == "w0")
+        # Text element should be translated by the same displacement as w0
+        assert text_el["x"] == w0["x"]
+        assert text_el["y"] == w0["y"]
+
+    def test_dynamic_radius_clearance(self):
+        from core.layouts.wheel_layout import apply_wheel_layout
+        # Create wide rectangles
+        elements = _wheel_elements(5)
+        for el in elements:
+            if el.get("type") == "rectangle":
+                el["width"] = 220.0
+                el["height"] = 80.0
+        apply_wheel_layout(elements, center_x=600, center_y=400)
+        # Verify radius expanded beyond default 260 to preserve clearance
+        w0 = next(e for e in elements if e["id"] == "w0")
+        cy = w0["y"] + w0["height"] / 2
+        actual_radius = 400.0 - cy
+        assert actual_radius >= 260.0
+
+
+
 # ── Layout Router Tests ───────────────────────────────────────────
 
 class TestLayoutRouter:
@@ -340,3 +455,296 @@ class TestLayoutRouter:
         # Should have applied layout without error
         root = next(e for e in elements if e.get("id") == "root")
         assert "roughness" in root  # Aesthetics applied
+
+    def test_wheel_tag(self):
+        from core.layout_router import apply_smart_layout
+        elements = [
+            {"id": "meta", "type": "text", "text": "#layout:wheel"},
+            *_wheel_elements(5),
+        ]
+        apply_smart_layout(elements)
+        hub = next(e for e in elements if e.get("id") == "hub")
+        assert hub["strokeWidth"] == 3
+
+    def test_wheel_autodetect(self):
+        from core.layout_router import apply_smart_layout
+        elements = _wheel_elements(5)
+        apply_smart_layout(elements)
+        hub = next(e for e in elements if e.get("id") == "hub")
+        assert hub["strokeWidth"] == 3
+
+
+# ── Shared Layout Seams Tests ─────────────────────────────────────
+
+class TestSharedLayoutSeams:
+    def test_sync_bound_text_translation(self):
+        from services.diagram_base import sync_bound_text_translation
+        shape = _make_shape("s1", 100, 100)
+        shape["boundElements"] = [{"id": "t_bound", "type": "text"}]
+        t_bound = {
+            "id": "t_bound", "type": "text", "text": "Bound Text",
+            "x": 110, "y": 110, "width": 80, "height": 20,
+        }
+        t_container = {
+            "id": "t_cont", "type": "text", "containerId": "s1", "text": "Container Text",
+            "x": 120, "y": 120, "width": 80, "height": 20,
+        }
+        t_other = {
+            "id": "t_other", "type": "text", "text": "Unrelated",
+            "x": 500, "y": 500, "width": 80, "height": 20,
+        }
+        elements = [shape, t_bound, t_container, t_other]
+
+        sync_bound_text_translation(shape, elements, dx=40.0, dy=60.0)
+
+        assert t_bound["x"] == 150.0
+        assert t_bound["y"] == 170.0
+        assert t_container["x"] == 160.0
+        assert t_container["y"] == 180.0
+        assert t_other["x"] == 500.0  # Unchanged
+        assert t_other["y"] == 500.0
+
+    def test_sync_bound_text_translation_none_id_safety(self):
+        from services.diagram_base import sync_bound_text_translation
+        shape = _make_shape("s1", 100, 100)
+        shape["boundElements"] = [{"type": "text"}]  # Missing 'id'
+        t_unrelated_no_id = {
+            "type": "text", "text": "No ID text",
+            "x": 300, "y": 300,
+        }
+        elements = [shape, t_unrelated_no_id]
+        sync_bound_text_translation(shape, elements, dx=50.0, dy=50.0)
+        # Unrelated text without id must NOT be translated
+        assert t_unrelated_no_id["x"] == 300.0
+        assert t_unrelated_no_id["y"] == 300.0
+
+    def test_compute_safe_arrow_endpoints_adaptive_padding(self):
+        from services.diagram_base import compute_safe_arrow_endpoints
+        # Shapes spaced far apart: distance between centers = 400
+        s1 = _make_shape("s1", 100, 100, w=100, h=100)  # center (150, 150)
+        s2 = _make_shape("s2", 500, 100, w=100, h=100)  # center (550, 150)
+        start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s1, s2)
+
+        # Right edge of s1 is at x=200, left edge of s2 is at x=500
+        # dot distance = 300 > 12.0, so adaptive padding is min(5.0, (300 - 2) / 2) = 5.0
+        assert abs(start_x - 205.0) < 0.1
+        assert abs(end_x - 495.0) < 0.1
+        assert abs(start_y - 150.0) < 0.1
+        assert abs(end_y - 150.0) < 0.1
+
+    def test_compute_safe_arrow_endpoints_close_proximity(self):
+        from services.diagram_base import compute_safe_arrow_endpoints
+        # Shapes very close together: gap = 10px (0 < dot <= 12)
+        s1 = _make_shape("s1", 100, 100, w=100, h=100)  # center (150, 150), right edge x=200
+        s2 = _make_shape("s2", 210, 100, w=100, h=100)  # center (260, 150), left edge x=210
+        start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s1, s2)
+
+        # gap dot = 10 <= 12, so no padding applied, preventing inverted arrow
+        assert abs(start_x - 200.0) < 0.1
+        assert abs(end_x - 210.0) < 0.1
+
+    def test_compute_safe_arrow_endpoints_overlap(self):
+        from services.diagram_base import compute_safe_arrow_endpoints
+        # Overlapping shapes
+        s1 = _make_shape("s1", 100, 100, w=100, h=100)  # center (150, 150)
+        s2 = _make_shape("s2", 120, 100, w=100, h=100)  # center (170, 150), boundary dot < 0
+        start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s1, s2)
+
+        # Fallback to centers
+        assert abs(start_x - 150.0) < 0.1
+        assert abs(end_x - 170.0) < 0.1
+
+
+# ── Matrix Layout Tests ───────────────────────────────────────────
+
+class TestMatrixLayout:
+    def test_empty_returns_false(self):
+        from core.layouts.matrix_layout import apply_matrix_layout
+        assert apply_matrix_layout([]) is False
+
+    def test_matrix_2x2_quadrant_positioning(self):
+        from core.layouts.matrix_layout import apply_matrix_layout
+        elements = [
+            _make_shape("q_tl", 0, 0),
+            _make_shape("q_tr", 0, 0),
+            _make_shape("q_bl", 0, 0),
+            _make_shape("q_br", 0, 0),
+        ]
+        assert apply_matrix_layout(elements, style="cross") is True
+
+        shapes = {e["id"]: e for e in elements if e.get("type") in ("rectangle", "ellipse", "diamond")}
+        assert len(shapes) == 4
+
+        # Verify 2x2 grid distribution: 2 top, 2 bottom, 2 left, 2 right
+        top_nodes = [s for s in shapes.values() if (s["y"] + s["height"] / 2) < 400.0]
+        bottom_nodes = [s for s in shapes.values() if (s["y"] + s["height"] / 2) > 400.0]
+        left_nodes = [s for s in shapes.values() if (s["x"] + s["width"] / 2) < 600.0]
+        right_nodes = [s for s in shapes.values() if (s["x"] + s["width"] / 2) > 600.0]
+
+        assert len(top_nodes) == 2
+        assert len(bottom_nodes) == 2
+        assert len(left_nodes) == 2
+        assert len(right_nodes) == 2
+
+        # Background crosshair lines should be inserted
+        bg_lines = [e for e in elements if "matrix_v_" in e.get("id", "") or "matrix_h_" in e.get("id", "")]
+        assert len(bg_lines) == 2
+
+    def test_matrix_axis_style(self):
+        from core.layouts.matrix_layout import apply_matrix_layout
+        elements = [
+            _make_shape("s1", 0, 0),
+            _make_shape("s2", 0, 0),
+        ]
+        assert apply_matrix_layout(elements, style="axis") is True
+        axis_lines = [e for e in elements if "axis_y_" in e.get("id", "") or "axis_x_" in e.get("id", "")]
+        assert len(axis_lines) == 2
+
+    def test_matrix_idempotency(self):
+        from core.layouts.matrix_layout import apply_matrix_layout
+        elements = [
+            _make_shape("s1", 0, 0),
+            _make_shape("s2", 0, 0),
+        ]
+        apply_matrix_layout(elements, style="cross")
+        bg_lines_1 = [e for e in elements if "matrix_v_" in e.get("id", "") or "matrix_h_" in e.get("id", "")]
+        assert len(bg_lines_1) == 2
+
+        # Re-running layout should not duplicate dividers
+        apply_matrix_layout(elements, style="cross")
+        bg_lines_2 = [e for e in elements if "matrix_v_" in e.get("id", "") or "matrix_h_" in e.get("id", "")]
+        assert len(bg_lines_2) == 2
+
+
+# ── Value Chain Margin Tests ──────────────────────────────────────
+
+class TestValueChainMargin:
+    def test_last_node_without_margin_keyword_stays_rectangle(self):
+        from core.layouts.value_chain_layout import apply_value_chain_layout
+        elements = _chain_elements(4)
+        apply_value_chain_layout(elements)
+        last_node = next(e for e in elements if e["id"] == "v3")
+        # Should stay rectangle because it does not have margin keywords
+        assert last_node["type"] == "rectangle"
+
+    def test_last_node_with_margin_keyword_converts_to_diamond(self):
+        from core.layouts.value_chain_layout import apply_value_chain_layout
+        elements = _chain_elements(4)
+        elements.append({
+            "id": "t_v3",
+            "type": "text",
+            "containerId": "v3",
+            "text": "Biên lợi nhuận (Margin)",
+            "x": 0, "y": 0,
+        })
+        apply_value_chain_layout(elements)
+        last_node = next(e for e in elements if e["id"] == "v3")
+        assert last_node["type"] == "diamond"
+
+
+# ── Diagram Base & Worker Tests ───────────────────────────────────
+
+class TestDiagramBaseAndWorker:
+    def test_find_diagram_context_with_pipe(self):
+        from services.diagram_base import find_diagram_context
+        text = "Leading text. " * 50 + "![[he_thong.excalidraw.md|800x600]]" + " Trailing text." * 50
+        ctx = find_diagram_context("he_thong.excalidraw.md", text)
+        assert "![[he_thong.excalidraw.md|800x600]]" in ctx
+
+    def test_find_diagram_context_fallback_to_heading(self):
+        from services.diagram_base import find_diagram_context
+        text = "Preamble content.\n\n## Kiến Trúc Hệ Thống Tổng Thể\nDetailed architecture section text here.\n\n## Next Chapter"
+        ctx = find_diagram_context("kien_truc_he_thong.mermaid.md", text)
+        assert "## Kiến Trúc Hệ Thống Tổng Thể" in ctx
+        assert "Detailed architecture section text here." in ctx
+
+    def test_mermaid_academic_theme_guard_non_flowchart(self):
+        from services.mermaid_worker import _apply_academic_theme_to_mermaid
+        pie_code = 'pie title Market Share\n  "Apple" : 45\n  "Google" : 55'
+        themed = _apply_academic_theme_to_mermaid(pie_code)
+        assert "classDef" not in themed
+        assert "class " not in themed
+
+    def test_mermaid_subgraph_styling_and_label_wrapping(self):
+        from services.mermaid_worker import _apply_academic_theme_to_mermaid
+        raw_code = (
+            "flowchart TD\n"
+            "  subgraph SG1[Nhóm Chức Năng]\n"
+            "    A[Khái niệm phân tích dữ liệu rất dài cần bẻ dòng tự động] --> B[Đích Đến]\n"
+            "  end"
+        )
+        themed = _apply_academic_theme_to_mermaid(raw_code)
+        # Subgraph should have style, not class standard
+        assert "style SG1 fill:#f8fafc,stroke:#334155,stroke-width:1px;" in themed
+        assert "class SG1 standard;" not in themed
+        # Node label should be wrapped with <br>
+        assert "<br>" in themed
+
+    def test_find_diagram_context_path_prefix_and_highest_scoring_heading(self):
+        from services.diagram_base import find_diagram_context
+        text = (
+            "# Document\n\n"
+            "## Giới thiệu tổng quan hệ thống\n"
+            "Overview section text.\n\n"
+            "## Chi tiết kiến trúc hệ thống dữ liệu lớn\n"
+            "Deep architecture section text that matches all keywords.\n\n"
+            "## Kết luận\n"
+            "End text."
+        )
+        # 1. Path prefix normalization
+        text_with_pipe = "Some text ![[kien_truc.excalidraw.md|800]] trailing"
+        ctx_pipe = find_diagram_context("03 - Resources/attachments/kien_truc.excalidraw.md", text_with_pipe)
+        assert "![[kien_truc.excalidraw.md|800]]" in ctx_pipe
+
+        # 2. Highest scoring heading selection
+        ctx_heading = find_diagram_context(
+            "kien_truc_he_thong_du_lieu_lon.mermaid.md",
+            text,
+        )
+        assert "## Chi tiết kiến trúc hệ thống dữ liệu lớn" in ctx_heading
+
+    def test_mermaid_shape_preservation(self):
+        from services.mermaid_worker import _apply_academic_theme_to_mermaid
+        raw_code = (
+            "flowchart TD\n"
+            "  A([Stadium Start]) --> B[(Database Storage)]\n"
+            "  B --> C((Circle Center))\n"
+            "  C --> D{{Hexagon Process}}\n"
+            "  D --> E(Rounded Node)\n"
+            "  E --> F{Decision Node}"
+        )
+        themed = _apply_academic_theme_to_mermaid(raw_code)
+        # Delimiters must be strictly preserved
+        assert 'A(["Stadium Start"])' in themed
+        assert 'B[("Database Storage")]' in themed
+        assert 'C(("Circle Center"))' in themed
+        assert 'D{{"Hexagon Process"}}' in themed
+        assert 'E("Rounded Node")' in themed
+        assert 'F{"Decision Node"}' in themed
+        # Must not corrupt cylinder to rectangle with unicode parens
+        assert "\u2768" not in themed
+
+    def test_mermaid_chained_and_labeled_arrows_and_undirected(self):
+        from services.mermaid_worker import _apply_academic_theme_to_mermaid
+        raw_code = (
+            "flowchart TD\n"
+            "  HUB --- C1\n"
+            "  HUB --- C2\n"
+            "  HUB --- C3\n"
+            "  C1 --> C2 --> C3 --> C1\n"
+            "  C1 -->|success| S1[Success Target]\n"
+            "  C2 -.->|optional| AUX[Auxiliary Target]"
+        )
+        themed = _apply_academic_theme_to_mermaid(raw_code)
+        # HUB should be principal due to high connectivity (3 spokes)
+        assert "class HUB principal;" in themed
+        # AUX should be auxiliary due to dashed arrow -.->
+        assert "class AUX auxiliary;" in themed
+        # S1 should be standard
+        assert "class S1 standard;" in themed
+        # All cycle nodes must have class assignments
+        assert "class C1 standard;" in themed
+        assert "class C2 standard;" in themed
+        assert "class C3 standard;" in themed
+
+
