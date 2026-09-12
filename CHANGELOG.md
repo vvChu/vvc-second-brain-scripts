@@ -19,7 +19,11 @@ Nâng cấp toàn diện kiến trúc sinh sơ đồ và chuẩn hóa hiển th�
   - Bóc tách Subgraph bằng regex và định kiểu qua `style <sg_id>` thay vì `class`. Tích hợp `wrap_label` và `sanitize_mermaid` trên 10 loại hình khối.
 - **Thư viện mẫu & Kỹ năng (`diagram_templates.yaml`, `ccba-excalidraw-diagram`)**:
   - Thêm template `wheel` cho Mermaid và Excalidraw; chuyển sơ đồ *EOS Model Wheel* sang `wheel`; sửa template `matrix`.
-- **Test Suite**: Mở rộng bộ kiểm thử lên **365/365 tests passed** (100% pass, 0 regressions).
+- **D2 Vector Diagram Worker (`services/d2_worker.py`, `services/worker_dispatcher.py`)**:
+  - Hỗ trợ biên dịch D2 sang SVG vector qua local CLI hoặc Kroki HTTP fallback (zero-dependency), tự động lưu cả file `.svg` lẫn file `.d2` trong `attachments/`.
+- **Hero Image Command (`services/command/hero_image.py`, `services/command/styles.py`)**:
+  - Tích hợp lệnh `/hero-image`, `/hero`, `/banner` tổng hợp prompt điện ảnh 16:9 từ ngữ cảnh bài viết và tự động nhúng `![[hero.jpg|100%]]` ngay dưới H1 (bảo vệ frontmatter Windows CRLF/LF).
+- **Test Suite**: Mở rộng bộ kiểm thử lên **389/389 tests passed** (100% pass, 0 regressions).
 
 ## v8.13.0 — Command Service Deep Module Package Refactoring (ccba-codebase-design)
 Tái cấu trúc toàn diện tệp monolith `services/command.py` (469 dòng) thành Deep Module Package `services/command/` theo chuẩn `ccba-codebase-design`:
