@@ -77,6 +77,23 @@ def test_trigger_workers_qc_query_forwarding(mock_qc):
     mock_qc.assert_any_call("report_summary.xlsx", sample, "audit column QA")
 
 
+@patch("services.worker_dispatcher.trigger_d2_generation")
+def test_trigger_workers_d2(mock_d2):
+    """Should detect .d2.svg placeholders with and without pipes and dispatch to d2 worker."""
+    sample = (
+        "System architecture:\n\n"
+        "![[system_arch.d2.svg]]\n\n"
+        "Detailed pipeline:\n"
+        "![[pipeline.d2.svg|100%]]\n"
+    )
+    result = trigger_workers(sample)
+
+    assert result == ["system_arch.d2.svg", "pipeline.d2.svg"]
+    assert mock_d2.call_count == 2
+    mock_d2.assert_any_call("system_arch.d2.svg", sample)
+    mock_d2.assert_any_call("pipeline.d2.svg", sample)
+
+
 @patch("services.worker_dispatcher.trigger_mermaid_generation")
 @patch("services.worker_dispatcher.trigger_doc_generation")
 def test_trigger_workers_multiple_types(mock_doc, mock_mermaid):

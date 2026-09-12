@@ -58,15 +58,16 @@ def test_find_pending_query_answered():
 
 
 def test_writing_styles_count():
-    """Should have exactly 10 writing styles."""
+    """Should have exactly 11 writing styles."""
     from services.command import WRITING_STYLES
 
-    assert len(WRITING_STYLES) == 10
+    assert len(WRITING_STYLES) == 11
     assert "professional" in WRITING_STYLES
     assert "tim-urban" in WRITING_STYLES
     assert "eli5" in WRITING_STYLES
     assert "sparring" in WRITING_STYLES
     assert "fast" in WRITING_STYLES
+    assert "hero-image" in WRITING_STYLES
 
 
 # --- Brain Dump Tests ---

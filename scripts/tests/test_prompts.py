@@ -29,6 +29,7 @@ def test_service_prompts_exist():
     assert sv.MERMAID_GENERATE
     assert sv.EXCALIDRAW_GENERATE
     assert sv.EA_SCRIPT_GENERATE
+    assert sv.D2_GENERATE
     assert sv.LEGAL_CONCEPT
     assert sv.QC_MATRIX
     assert sv.DIAGRAM_CLASSIFY
@@ -103,6 +104,9 @@ def test_service_prompts_placeholders():
 
     # EA_SCRIPT_GENERATE
     assert "{context}" in sv.EA_SCRIPT_GENERATE
+
+    # D2_GENERATE
+    assert "{context}" in sv.D2_GENERATE
 
     # LEGAL_CONCEPT
     assert "{registry_data}" in sv.LEGAL_CONCEPT

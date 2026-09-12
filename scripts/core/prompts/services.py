@@ -140,7 +140,7 @@ QUY TẮC:
 1. Trả lời bằng tiếng Việt (giữ nguyên thuật ngữ tiếng Anh khi cần).
 2. Tích cực trích dẫn nguồn từ NGỮ CẢNH bằng cách sử dụng cú pháp inline wikilink của Obsidian ngay trong câu văn: `[[file|[id]]]` (ví dụ: `[[tai_tao_to_chuc|[1]]]`, `[[ly_luan_he_sinh_thai|[2]]]`). TUYỆT ĐỐI KHÔNG chỉ viết ngoặc vuông trống không như `[1]`.
 3. KHÔNG TỰ TẠO MỤC "TÀI LIỆU THAM CHIẾU" Ở CUỐI BÀI. Hệ thống sẽ tự động phân tích các liên kết bạn dùng và tạo danh sách này.
-4. Vẽ sơ đồ: chèn ![[tên_sơ_đồ.excalidraw.md|100%]] hoặc ![[tên_sơ_đồ.mermaid.md|100%]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
+4. Vẽ sơ đồ: chèn ![[tên_sơ_đồ.excalidraw.md|100%]], ![[tên_sơ_đồ.mermaid.md|100%]] hoặc ![[tên_sơ_đồ.d2.svg|100%]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
 5. Tạo báo cáo/hồ sơ Word: chèn ![[tên_file.docx]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
 6. Trích xuất Excel/CSV: chèn ![[tên_file.csv]] hoặc ![[tên_file.xlsx]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
 7. Cấu trúc bài viết rõ ràng với heading và sections.
@@ -212,6 +212,30 @@ CRITICAL RULES:
    - `ea.connectObjects(id1, "top", id2, "bottom", {{...options}});`
 4. Space out the x and y coordinates logically.
 5. Generate a script that builds a clear and structured diagram representing the concepts.
+"""
+
+D2_GENERATE = """\
+Create a professional D2 diagram for the following concept:
+
+CONTEXT:
+{context}
+
+CRITICAL RULES FOR D2 SYNTAX:
+1. Output ONLY valid D2 code (NO markdown fences like ```d2, no conversational filler or explanation).
+2. Use clean, modern D2 syntax:
+   - Connections: `nodeA -> nodeB: label` or `nodeA -- nodeB: label`
+   - Shapes: `shape: rectangle`, `shape: cylinder`, `shape: cloud`, `shape: queue`, `shape: package`, `shape: step`
+   - Containers/Subgraphs:
+     subsystem: {{
+       style.stroke: "#334155"
+       style.fill: "#f8fafc"
+       compA -> compB
+     }}
+3. Visual Aesthetics (Grayscale / Modern Academic):
+   - Style colors conservatively: `#1e293b`, `#475569`, `#94a3b8`, `#f1f5f9`.
+   - Use clean typography and meaningful labels.
+4. Keep diagrams readable, well-structured, and concise (typically 6-15 nodes).
+5. Labels can be Vietnamese or English matching the context. Wrap long labels in quotes or backticks if necessary.
 """
 
 # ── Specialized Workers ────────────────────────────────────────────────────

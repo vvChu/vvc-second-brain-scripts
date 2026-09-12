@@ -37,6 +37,11 @@ try:
 except ImportError:
     trigger_qc_generation = None  # type: ignore[assignment]
 
+try:
+    from services.d2_worker import trigger_d2_generation
+except ImportError:
+    trigger_d2_generation = None  # type: ignore[assignment]
+
 _logger = logging.getLogger("vvc.dispatcher")
 
 # Type alias for artifact handlers: (name: str, response: str, query: str) -> None
@@ -106,6 +111,11 @@ def _qc_bridge(name: str, response: str, query: str) -> None:
         trigger_qc_generation(name, response, query)
 
 
+def _d2_bridge(name: str, response: str, query: str) -> None:
+    if trigger_d2_generation is not None:
+        trigger_d2_generation(name, response)
+
+
 def _init_default_registry() -> None:
     """Initialize built-in artifact adapters."""
     _REGISTRY.clear()
@@ -133,6 +143,11 @@ def _init_default_registry() -> None:
         r"!\[\[([^\]|]+\.(?:csv|xlsx))(?:\|[^\]]*)?\]\]",
         _qc_bridge,
         name="qc_matrix",
+    )
+    register_artifact_adapter(
+        r"!\[\[([^\]|]+\.d2\.svg)(?:\|[^\]]*)?\]\]",
+        _d2_bridge,
+        name="d2_diagram",
     )
 
 
