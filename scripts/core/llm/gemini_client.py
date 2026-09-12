@@ -5,6 +5,7 @@ Tier 3 logic for Gemini CLI and direct REST API.
 
 import json
 import logging
+import re
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,7 @@ from typing import Any
 
 from core.config import cfg
 from core.llm.utils import http_session, strip_think_tags
+from core.llm.model_resolver import resolve_model
 
 _logger = logging.getLogger("vvc.llm.gemini")
 
@@ -36,9 +38,9 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
     if not cmd:
         return ""
 
-    target_model = model or cfg.gemini_model
+    target_model = resolve_model(model or cfg.gemini_model, task="general")
     # Normalize reasoning tier suffix for flash models if not explicitly set
-    if target_model in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
+    if re.match(r"^gemini-\d+(?:\.\d+)*-flash$", target_model) or target_model in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
         target_model = f"{target_model}-high"
 
     _logger.info(f"[Antigravity CLI] Routed to: {target_model}")
@@ -129,7 +131,7 @@ def call_gemini_api(
     if not api_key:
         return ""
 
-    target_model = model or cfg.gemini_vision_model
+    target_model = resolve_model(model or cfg.gemini_vision_model, task="vision")
     _logger.info(f"[Gemini API] Routed to: {target_model}")
     try:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={api_key}"

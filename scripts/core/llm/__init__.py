@@ -14,6 +14,7 @@ from core.llm.gemini_client import call_gemini_cli, call_antigravity_cli, call_g
 from core.llm.vision_client import call_vision
 from core.llm.audio_client import call_audio
 from core.llm.embedding_client import get_embedding, get_embedding_via_gateway
+from core.llm.model_resolver import resolve_model, STATIC_LATEST_GEMINI_FLASH
 
 _logger = logging.getLogger("vvc.llm")
 
@@ -59,18 +60,21 @@ def call_llm(
     gw_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.gemini_timeout
     cp_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.copilot_timeout
 
+    resolved_model = resolve_model(model, task=task) if model else ""
+
     # Determine Models based on Task
     if task == "reasoning":
-        gw_model = model or cfg.reasoning_gateway_model
+        gw_model = resolved_model or resolve_model(cfg.reasoning_gateway_model, task=task)
     elif task == "synthesis":
-        gw_model = model or (cfg.gateway_synthesis_model or "gemini-3.8-flash-high")
+        gw_model = resolved_model or resolve_model(cfg.gateway_synthesis_model or "gemini-3.8-flash-high", task=task)
     elif task == "correction":
-        gw_model = model or cfg.gateway_correction_model
+        gw_model = resolved_model or resolve_model(cfg.gateway_correction_model, task=task)
     else:
-        gw_model = model or cfg.gateway_proxy_model
+        gw_model = resolved_model or resolve_model(cfg.gateway_proxy_model, task=task)
 
-    cp_model = model or (cfg.copilot_correction_model if task == "correction" else cfg.copilot_model)
-    gemini_model = model or (cfg.gemini_text_synthesis_model if task == "synthesis" else (cfg.gemini_text_correction_model if task == "correction" else cfg.gemini_model))
+    cp_model = resolved_model or (cfg.copilot_correction_model if task == "correction" else cfg.copilot_model)
+    gemini_raw = resolved_model or (cfg.gemini_text_synthesis_model if task == "synthesis" else (cfg.gemini_text_correction_model if task == "correction" else cfg.gemini_model))
+    gemini_model = resolve_model(gemini_raw, task=task)
 
     # Try each tier:
     # For synthesis (Reduce/Note Generation), prioritize Antigravity CLI (gemini-3.8-flash-high)
@@ -121,6 +125,8 @@ __all__ = [
     "call_antigravity_cli",
     "call_vision",
     "call_audio",
+    "resolve_model",
+    "STATIC_LATEST_GEMINI_FLASH",
     "strip_think_tags",
     "encode_image",
 ]

@@ -6,6 +6,7 @@ Tier 1 logic for AI Gateway via LiteLLM.
 import logging
 from core.config import cfg
 from core.llm.utils import http_session, strip_think_tags
+from core.llm.model_resolver import resolve_model
 
 _logger = logging.getLogger("vvc.llm.gateway")
 
@@ -15,12 +16,13 @@ def call_gateway(prompt: str, *, model: str = "", timeout: int = 60) -> str:
         return ""
 
     try:
+        target_model = resolve_model(model or cfg.gateway_proxy_model, task="general")
         headers = {
             "Authorization": f"Bearer {cfg.gateway_api_key}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": model or cfg.gateway_proxy_model,
+            "model": target_model,
             "messages": [{"role": "user", "content": prompt}],
             "temperature": 0.3,
         }
@@ -51,12 +53,14 @@ def call_gateway_vision(image_b64: str, prompt: str, *, model: str = "", timeout
         return ""
 
     try:
+        raw_model = model or cfg.gateway_direct_model or cfg.gateway_proxy_model
+        target_model = resolve_model(raw_model, task="vision")
         headers = {
             "Authorization": f"Bearer {cfg.gateway_api_key}",
             "Content-Type": "application/json",
         }
         payload = {
-            "model": model or cfg.gateway_direct_model or cfg.gateway_proxy_model,
+            "model": target_model,
             "messages": [{
                 "role": "user",
                 "content": [

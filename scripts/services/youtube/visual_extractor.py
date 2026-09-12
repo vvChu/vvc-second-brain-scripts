@@ -20,7 +20,7 @@ except ImportError:
     PILImage = None
 
 from core.config import cfg
-from core.llm import call_llm
+from core.llm import call_llm, resolve_model
 from core.llm.utils import http_session, encode_image
 from core.media import find_ffmpeg_bin as _find_ffmpeg_bin
 
@@ -877,8 +877,9 @@ def extract_video_visuals(url: str, transcript_text: str = None, info_dict: dict
             "Authorization": f"Bearer {cfg.gateway_api_key}"
         }
         
+        target_model = resolve_model(cfg.gateway_proxy_model or "gemini-3.8-flash-low", task="vision")
         payload = {
-            "model": cfg.gateway_proxy_model or "gemini-3.5-flash-low",
+            "model": target_model,
             "messages": [
                 {
                     "role": "user",
