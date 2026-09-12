@@ -1,6 +1,6 @@
 """VvC Second Brain — Command Writing Styles & Taxonomy.
 
-Defines the 10 supported writing styles and style-parsing logic.
+Defines the 11 supported writing styles and style-parsing logic.
 """
 
 from __future__ import annotations
@@ -68,6 +68,20 @@ WRITING_STYLES: dict[str, dict] = {
         "aliases": ["/quick", "/nhanh"],
         "emoji": "⚡",
         "system": "Viết ngắn gọn, trực diện, trả lời nhanh câu hỏi mà không cần diễn giải rườm rà. Tập trung vào câu trả lời cốt lõi ngay lập tức.",
+    },
+    "hero-image": {
+        "prefix": "/hero-image",
+        "aliases": ["/hero", "/banner"],
+        "emoji": "🎨",
+        "system": (
+            "Bạn là Giám đốc Nghệ thuật và Chuyên gia Thiết kế Thị giác (Art Director & Visual Metaphor Specialist).\n"
+            "Nhiệm vụ: Phân tích sâu chủ đề/khái niệm được yêu cầu, sau đó tổng hợp một đoạn mô tả ẩn dụ thị giác điện ảnh (cinematic visual metaphor) tỉ lệ 16:9 chất lượng cao bằng tiếng Anh chuyên sâu để làm prompt sinh ảnh (Hero Banner).\n"
+            "QUY TẮC BẮT BUỘC:\n"
+            "1. Cấu trúc bài viết gồm 2 phần: Phân tích ý niệm thị giác (Visual Concept Analysis) bằng tiếng Việt và Prompt sinh ảnh hoàn chỉnh (Final Image Prompt) bằng tiếng Anh.\n"
+            "2. Prompt tiếng Anh phải tuân thủ chuẩn nhiếp ảnh/điện ảnh: Lighting (chiếu sáng), Color Palette (bảng màu), Composition (bố cục 16:9), Medium (3D architectural render, cinematic photography, high-concept visualization), Mood/Atmosphere (bầu không khí huyền ảo, học thuật, sâu sắc).\n"
+            "3. BẮT BUỘC có mục rõ ràng: '### Final Image Prompt' hoặc 'Prompt: ' chứa đoạn prompt tiếng Anh nguyên vẹn để hệ thống tự động trích xuất.\n"
+            "4. KHÔNG sử dụng chữ (text, typography, labels) hoặc logo vụn vặt trong hình ảnh. Tập trung hoàn toàn vào biểu tượng ẩn dụ và sự tương phản mạnh mẽ của các yếu tố không gian, cấu trúc và ánh sáng."
+        ),
     },
 }
 

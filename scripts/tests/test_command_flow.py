@@ -569,4 +569,294 @@ def test_clean_wikilink_quotes_embeds_and_notes():
     assert clean_wikilink_quotes('[[note_without_quotes]]') == "[[note_without_quotes]]"
 
 
+# ── Hero Image Command Flow Tests (v8.13.0) ───────────────────────────────────
+
+def test_parse_style_hero_image_triggers():
+    """Verify /hero-image, /hero, and /banner all route to hero-image style."""
+    from services.command.styles import parse_style
+
+    assert parse_style("/hero-image [[kien_truc_he_thong]]") == ("hero-image", "[[kien_truc_he_thong]]")
+    assert parse_style("/hero [[kien_truc_he_thong]]") == ("hero-image", "[[kien_truc_he_thong]]")
+    assert parse_style("/banner [[kien_truc_he_thong]]") == ("hero-image", "[[kien_truc_he_thong]]")
+    assert parse_style("/hero-image") == ("hero-image", "")
+    assert parse_style("/hero") == ("hero-image", "")
+
+
+def test_find_topic_note(tmp_path):
+    """find_topic_note should resolve wikilinks, exact filenames, and normalized stems."""
+    from services.command.hero_image import find_topic_note
+
+    topics_dir = tmp_path / "topics"
+    topics_dir.mkdir(parents=True, exist_ok=True)
+    (topics_dir / "deep_module_design.md").write_text("# Deep Module\n", encoding="utf-8")
+
+    # Wikilink match
+    slug, path = find_topic_note("[[deep_module_design]]", topics_dir)
+    assert slug == "deep_module_design"
+    assert path == topics_dir / "deep_module_design.md"
+
+    # Wikilink with display alias
+    slug, path = find_topic_note("[[deep_module_design|Thiết Kế]]", topics_dir)
+    assert slug == "deep_module_design"
+    assert path == topics_dir / "deep_module_design.md"
+
+    # Missing note returns slug and None
+    slug, path = find_topic_note("[[non_existent_topic]]", topics_dir)
+    assert slug == "non_existent_topic"
+    assert path is None
+
+    # Multi-wikilink: should skip non-topic and resolve existing topic note
+    multi_query = "Xem [[concept_khac]] để viết tiếp cho topic [[deep_module_design]]"
+    slug, path = find_topic_note(multi_query, topics_dir)
+    assert slug == "deep_module_design"
+    assert path == topics_dir / "deep_module_design.md"
+
+    # Alias / Title resolution in topic note frontmatter
+    alias_topic = topics_dir / "kien_truc_phan_tan.md"
+    alias_topic.write_text(
+        "---\ntitle: Distributed Architecture\naliases:\n  - He Thong Phan Tan\n---\n\n# Distributed Architecture",
+        encoding="utf-8",
+    )
+    slug, path = find_topic_note("He Thong Phan Tan", topics_dir)
+    assert slug == "kien_truc_phan_tan"
+    assert path == alias_topic
+
+
+def test_embed_hero_image_in_topic_beneath_h1():
+    """embed_hero_image_in_topic should place embed tag directly beneath H1 heading."""
+    from services.command.hero_image import embed_hero_image_in_topic
+
+    original = (
+        "---\n"
+        "title: Kiến Trúc Phần Mềm\n"
+        "---\n\n"
+        "# Kiến Trúc Phần Mềm\n\n"
+        "Nội dung phân tích mở đầu.\n"
+    )
+    expected = (
+        "---\n"
+        "title: Kiến Trúc Phần Mềm\n"
+        "---\n\n"
+        "# Kiến Trúc Phần Mềm\n\n"
+        "![[kien_truc_phan_mem_hero.jpg|100%]]\n\n"
+        "Nội dung phân tích mở đầu.\n"
+    )
+    result = embed_hero_image_in_topic(original, "kien_truc_phan_mem_hero.jpg")
+    assert result == expected
+
+
+def test_embed_hero_image_in_topic_idempotent():
+    """embed_hero_image_in_topic should not duplicate embed if already present."""
+    from services.command.hero_image import embed_hero_image_in_topic
+
+    content_with_hero = (
+        "# AI Agents\n\n"
+        "![[ai_agents_hero.jpg|100%]]\n\n"
+        "Giới thiệu về AI Agents.\n"
+    )
+    assert embed_hero_image_in_topic(content_with_hero, "ai_agents_hero.jpg") == content_with_hero
+
+
+def test_embed_hero_image_in_topic_fallback_frontmatter():
+    """embed_hero_image_in_topic falls back to placing after frontmatter if no H1."""
+    from services.command.hero_image import embed_hero_image_in_topic
+
+    no_h1 = (
+        "---\n"
+        "title: Untitled\n"
+        "---\n\n"
+        "Chỉ có nội dung không có H1.\n"
+    )
+    result = embed_hero_image_in_topic(no_h1, "untitled_hero.jpg")
+    assert "![[untitled_hero.jpg|100%]]" in result
+    assert result.startswith("---\ntitle: Untitled\n---\n\n![[untitled_hero.jpg|100%]]")
+
+
+def test_embed_hero_image_in_topic_crlf_safety():
+    """embed_hero_image_in_topic must preserve frontmatter without corruption on Windows CRLF."""
+    from services.command.hero_image import embed_hero_image_in_topic
+
+    # Case 1: CRLF with H1
+    crlf_h1 = "---\r\ntitle: CRLF Note\r\n---\r\n\r\n# CRLF Heading\r\n\r\nBody text."
+    res1 = embed_hero_image_in_topic(crlf_h1, "crlf_hero.jpg")
+    assert res1.startswith("---\r\ntitle: CRLF Note\r\n---\r\n\r\n# CRLF Heading\n\n![[crlf_hero.jpg|100%]]\n\nBody text.")
+
+    # Case 2: CRLF without H1 (must NOT prepend before frontmatter!)
+    crlf_no_h1 = "---\r\ntitle: CRLF No H1\r\n---\r\n\r\nBody without heading."
+    res2 = embed_hero_image_in_topic(crlf_no_h1, "crlf_no_h1_hero.jpg")
+    assert not res2.startswith("![[crlf_no_h1_hero.jpg")
+    assert res2.startswith("---\r\ntitle: CRLF No H1\r\n---\n\n![[crlf_no_h1_hero.jpg|100%]]\n\nBody without heading.")
+
+
+def test_extract_image_prompt():
+    """extract_image_prompt should extract prompt block from various LLM response formats."""
+    from services.command.hero_image import extract_image_prompt
+
+    resp1 = (
+        "Phân tích ý niệm thị giác:\n"
+        "Một không gian kiến trúc tối giản.\n\n"
+        "### Final Image Prompt\n"
+        "A cinematic 16:9 render of a towering monolithic crystal structure with volumetric light shafts, octan render, 8k.\n\n"
+        "---\n"
+        "Hy vọng gợi ý này hữu ích."
+    )
+    assert "A cinematic 16:9 render" in extract_image_prompt(resp1)
+
+    resp2 = (
+        "Prompt: An architectural blueprint floating in a dark ethereal void with cyan glowing vector lines, 16:9 aspect ratio.\n"
+    )
+    assert "An architectural blueprint" in extract_image_prompt(resp2)
+
+    # Prompt inside code fence
+    resp3 = (
+        "Phân tích:\n\n"
+        "### Final Image Prompt\n"
+        "```\n"
+        "A high-contrast cinematic 16:9 photograph of an intricate geometric labyrinth in misty morning light.\n"
+        "```\n"
+    )
+    p3 = extract_image_prompt(resp3)
+    assert "A high-contrast cinematic 16:9 photograph" in p3
+    assert "```" not in p3
+
+
+def test_handle_command_hero_image_flow(tmp_path, monkeypatch):
+    """End-to-end: handle_command with /hero-image extracts topic, generates image, embeds in topic, and writes response."""
+    import dataclasses
+    from core.config import cfg
+    from services.command.coordinator import handle_command
+    from services.command.hero_image import set_custom_image_generator
+
+    # Setup directories
+    vault_root = tmp_path / "vault"
+    cmd_file = vault_root / "00 - Maps of Content" / "Command.md"
+    cmd_file.parent.mkdir(parents=True, exist_ok=True)
+    topics_dir = vault_root / "04 - Permanent" / "topics"
+    topics_dir.mkdir(parents=True, exist_ok=True)
+    attach_dir = vault_root / "03 - Resources" / "attachments"
+    attach_dir.mkdir(parents=True, exist_ok=True)
+
+    # Create topic note
+    topic_file = topics_dir / "kien_truc_deep_module.md"
+    topic_file.write_text(
+        "---\ntitle: Kiến Trúc Deep Module\n---\n\n# Kiến Trúc Deep Module\n\nNội dung bài viết về Deep Module.",
+        encoding="utf-8",
+    )
+
+    # Create Command.md inbox query
+    cmd_content = (
+        f"{INPUT_MARKER}\n\n"
+        "@AI: /hero-image [[kien_truc_deep_module]] ---\n\n"
+        f"{HISTORY_MARKER}\n"
+    )
+    cmd_file.write_text(cmd_content, encoding="utf-8")
+
+    # Mock config
+    mock_cfg = dataclasses.replace(
+        cfg,
+        vault_root=vault_root,
+        command_file=cmd_file,
+        attachments_dir=attach_dir,
+    )
+    monkeypatch.setattr("services.command.coordinator.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.hero_image.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.cfg", mock_cfg)
+
+    # Mock LLM
+    def mock_llm(prompt, task="general"):
+        return (
+            "Phân tích thị giác: Tượng trưng cho module sâu.\n\n"
+            "### Final Image Prompt\n"
+            "A cinematic 16:9 photographic visualization of an iceberg in dark ocean, moody dramatic lighting, 8k.\n"
+        )
+
+    monkeypatch.setattr("services.command.call_llm", mock_llm)
+    monkeypatch.setattr("services.command.coordinator.call_llm", mock_llm)
+    monkeypatch.setattr("services.command.hero_image.call_llm", mock_llm)
+
+    # Mock image generator to create file and return True
+    def dummy_generator(prompt, output_path):
+        output_path.write_bytes(b"dummy_image_data")
+        return True
+
+    set_custom_image_generator(dummy_generator)
+
+    try:
+        handle_command(command_file=cmd_file)
+
+        # 1. Image was generated and saved to attachments
+        expected_img = attach_dir / "kien_truc_deep_module_hero.jpg"
+        assert expected_img.exists()
+        assert expected_img.read_bytes() == b"dummy_image_data"
+
+        # 2. Topic note was updated with embed tag beneath H1
+        updated_topic = topic_file.read_text(encoding="utf-8")
+        assert "# Kiến Trúc Deep Module\n\n![[kien_truc_deep_module_hero.jpg|100%]]" in updated_topic
+
+        # 3. Command.md was updated with response and preview embed
+        updated_cmd = cmd_file.read_text(encoding="utf-8")
+        assert "@AI:  ---" in updated_cmd
+        assert "![[kien_truc_deep_module_hero.jpg|100%]]" in updated_cmd
+        assert "Phân tích thị giác" in updated_cmd
+    finally:
+        set_custom_image_generator(None)
+
+
+def test_handle_command_hero_image_offline_fallback(tmp_path, monkeypatch):
+    """handle_command with /hero-image when image generator is unavailable still delivers prompt without crashing."""
+    import dataclasses
+    from core.config import cfg
+    from services.command.coordinator import handle_command
+    from services.command.hero_image import set_custom_image_generator
+
+    vault_root = tmp_path / "vault"
+    cmd_file = vault_root / "00 - Maps of Content" / "Command.md"
+    cmd_file.parent.mkdir(parents=True, exist_ok=True)
+    attach_dir = vault_root / "03 - Resources" / "attachments"
+    attach_dir.mkdir(parents=True, exist_ok=True)
+
+    cmd_content = (
+        f"{INPUT_MARKER}\n\n"
+        "@AI: /hero Concept Không Có Topic Sẵn ---\n\n"
+        f"{HISTORY_MARKER}\n"
+    )
+    cmd_file.write_text(cmd_content, encoding="utf-8")
+
+    mock_cfg = dataclasses.replace(
+        cfg,
+        vault_root=vault_root,
+        command_file=cmd_file,
+        attachments_dir=attach_dir,
+    )
+    monkeypatch.setattr("services.command.coordinator.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.hero_image.cfg", mock_cfg)
+    monkeypatch.setattr("services.command.cfg", mock_cfg)
+
+    def mock_llm(prompt, task="general"):
+        return (
+            "Ý niệm thị giác: Bố cục trừu tượng.\n\n"
+            "### Final Image Prompt\n"
+            "A wide 16:9 architectural rendering with glowing isometric grid.\n"
+        )
+
+    monkeypatch.setattr("services.command.call_llm", mock_llm)
+    monkeypatch.setattr("services.command.coordinator.call_llm", mock_llm)
+    monkeypatch.setattr("services.command.hero_image.call_llm", mock_llm)
+    monkeypatch.setattr("services.command.hero_image.build_rag_context", lambda q: ("", {}))
+
+    # Force generator to return False (offline/no endpoint)
+    set_custom_image_generator(lambda p, o: False)
+
+    try:
+        handle_command(command_file=cmd_file)
+
+        updated_cmd = cmd_file.read_text(encoding="utf-8")
+        assert "@AI:  ---" in updated_cmd
+        assert "Hero Banner Placeholder" in updated_cmd
+        assert "A wide 16:9 architectural rendering" in updated_cmd
+    finally:
+        set_custom_image_generator(None)
+
+
+
 

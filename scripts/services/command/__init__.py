@@ -1,12 +1,12 @@
 """VvC Second Brain — Command Interactive Deep Module (v8.13.0).
 
 Monitors Command.md for @AI: queries, processes them with RAG + LLM,
-writes responses back. Supports 10 writing styles via /prefix.
+writes responses back. Supports 11 writing styles via /prefix.
 
 Sub-modules:
 - coordinator: Stateful orchestration, LLM dispatch, resilient I/O
 - inbox: Pure string transformations for inbox, queries, and patching
-- styles: Pure taxonomy of 10 writing styles and prefix parser
+- styles: Pure taxonomy of 11 writing styles and prefix parser
 - citations: Pure citation reindexing and wikilink quote sanitization
 - topic_saver: Auto-save long responses as Topic notes
 """
@@ -38,12 +38,24 @@ from services.command.coordinator import (
     write_response,
     handle_command,
 )
+from services.command.hero_image import (
+    find_topic_note,
+    extract_topic_context,
+    embed_hero_image_in_topic,
+    extract_image_prompt,
+    generate_hero_image,
+    process_hero_image,
+    set_custom_image_generator,
+)
 
 # Public Seam
 __all__ = [
     "handle_command",
     "WRITING_STYLES",
     "reindex_citations",
+    "embed_hero_image_in_topic",
+    "generate_hero_image",
+    "process_hero_image",
 ]
 
 # Shims / Re-exports for backward compatibility & test monkeypatching
@@ -55,3 +67,6 @@ _generate_response = generate_response
 _write_response = write_response
 _check_file_back = check_file_back
 _auto_save_topic = auto_save_topic
+_embed_hero_image_in_topic = embed_hero_image_in_topic
+_generate_hero_image = generate_hero_image
+_process_hero_image = process_hero_image

@@ -29,6 +29,7 @@ from services.command.inbox import (
     apply_command_patch,
 )
 from services.command.topic_saver import auto_save_topic
+from services.command.hero_image import process_hero_image
 
 try:
     from services.legal_sync_worker import trigger_legal_sync
@@ -91,7 +92,7 @@ def generate_response(query: str, style_name: str, rag_context: str) -> str:
         query=query,
     )
 
-    task = "synthesis" if style_name == "fast" else "reasoning"
+    task = "synthesis" if style_name in ("fast", "hero-image") else "reasoning"
     active_call_llm = _get_active_call_llm()
     return active_call_llm(prompt, task=task)
 
@@ -223,6 +224,21 @@ def handle_command(command_file: Path | None = None) -> None:
 
     style_name, clean_query = parse_style(query)
     style = WRITING_STYLES[style_name]
+
+    if style_name == "hero-image":
+        response, topic_path, image_path = process_hero_image(
+            clean_query,
+            active_cfg=active_cfg,
+            call_llm_fn=_get_active_call_llm(),
+        )
+        if not response:
+            log("error", "Hero-image response generation failed")
+            return
+        if write_response(content, query, response, style_name, style, target_file=cmd_file):
+            trigger_workers(response, clean_query)
+            check_file_back(response, clean_query)
+        return
+
     rag_context, rag_refs = build_rag_context(clean_query)
 
     response = generate_response(clean_query, style_name, rag_context)
