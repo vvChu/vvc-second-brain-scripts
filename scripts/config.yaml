@@ -26,6 +26,7 @@ ai_gateway:
   direct_model: "gemini-3.8-flash-high"
   synthesis_model: "gemini-3.8-flash-high"
   correction_model: "gemini-3.1-flash-lite"
+  image_model: "gemini-3.1-flash-image"
 
 # --- Backend Selection ---
 # Options: "gemini-cli" | "copilot-cli" | "gateway"

@@ -4,6 +4,18 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.13.3 — Multimodal Diagram Pipeline Standardization & Wayfinder Hardening
+Hoàn thành toàn diện 8 Frontier Tickets theo Bản đồ Định hướng Wayfinder (`.md/wayfinder/multimodal_diagrams/map.md`):
+- **D2 Kroki Recovery (`services/d2_worker.py`, `core/prompts/services.py`)**: Bổ sung `User-Agent` tùy biến vượt Cloudflare WAF của Kroki (HTTP 403), vệ sinh cấm engine thương mại `tala`, escape an toàn cú pháp JSON prompt.
+- **Tự Động Chữa Lành Thẻ Nhúng (`services/command/citations.py`, `coordinator.py`)**: Hàm `heal_artifact_embed_syntax()` chuẩn hóa toàn diện cú pháp thẻ nhúng Excalidraw (`_excalidraw_md` $\rightarrow$ `.excalidraw.md`), triệt tiêu link gãy khi lưu Topic Notes.
+- **NanoID 8 Ký Tự Chuẩn Obsidian Excalidraw (`services/excalidraw_worker.py`, `core/prompts/services.py`)**: Hàm `_ensure_nanoid_8` khử xung đột bằng `seen_ids`, đồng bộ mũi tên `startBinding/endBinding`, cập nhật prompt mẫu chuẩn 8 ký tự.
+- **Neo Giữ Tiêu Đề Khung Container (`services/diagram_base.py`, `services/excalidraw_worker.py`, `core/layout_router.py`)**: Cơ chế `containerHeaderOf` neo tiêu đề ở đỉnh khung, đồng bộ dịch chuyển khi canvas di dời, bổ sung Container Guard bỏ qua Sugiyama flattening trên các spatial clusters.
+- **Universal Bounding Box Normalization (`services/diagram_base.py`, `services/excalidraw_worker.py`)**: Hàm `normalize_canvas_bounding_box()` dịch chuyển toàn bộ shapes, text, và toạ độ uốn của mũi tên về vùng an toàn ($x \ge 80, y \ge 60$).
+- **Bảo Tồn Lớp Ngữ Nghĩa & Mã Hóa HTML Mermaid (`services/mermaid_worker.py`)**: Giữ nguyên các class `alert`, `law`, `accent`; mã hóa ký tự đặc biệt bằng HTML entities tiêu chuẩn (`#40;`, `#41;`, `#124;`) thay vì unicode lạ; phân tầng độ sáng cho nested subgraphs.
+- **Đồng Bộ Cấu Hình Hero Image SSOT (`config.yaml`, `core/config.py`, `services/command/styles.py`)**: Khai báo `gateway_image_model: "gemini-3.1-flash-image"` trong config SSOT, bổ sung Negative Constraints chống tranh hoạt hình/3D nhựa.
+- **Chữa Lành Ghi Chú Excalidraw Cũ (`attachments/`)**: Giải mã và chuẩn hóa ID 8 ký tự cùng toạ độ dương cho 2 sơ đồ đang nhúng thực tế (`mo_hinh_to_chuc_ai_yeung` và `ai_native_enterprise_os`).
+- **Test Suite**: Mở rộng lên **400/400 passed tests** (100% pass, 0 regressions).
+
 ## v8.13.2 — Command Deep Module Consolidation & Multi-Query Drainage Loop (ccba-codebase-design)
 Tái cấu trúc làm sâu module `services.command` theo 3 khuyến nghị từ đợt khảo sát kiến trúc:
 - **Hấp thụ `chat_history.py` vào `services/command/inbox.py`**: Khôi phục tính Locality tuyệt đối cho định dạng và vòng đời của `Command.md`. Chuyển `services/chat_history.py` thành thin backward-compatibility shim.

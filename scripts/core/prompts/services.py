@@ -183,15 +183,16 @@ CRITICAL RULES FOR EXCALIDRAW JSON:
 2. Shapes (rectangle, ellipse, diamond) CANNOT have a "text" field directly! 
 3. Text MUST be a separate element of type "text" and MUST be bound to a shape using `containerId`.
 4. Shapes MUST include the text element in their `boundElements` array.
-5. Example of a valid containerized text node:
+5. All text element IDs MUST have EXACTLY 8 characters (e.g. 'tx_node1', 'tx_step2') for Obsidian Excalidraw compatibility.
+6. Example of a valid containerized text node:
    [
-     {{"type": "rectangle", "id": "rect1", "x": 100, "y": 100, "width": 150, "height": 60, "boundElements": [{{"id": "txt1", "type": "text"}}] }},
-     {{"type": "text", "id": "txt1", "text": "Khái niệm", "containerId": "rect1", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "x": 110, "y": 110, "width": 130, "height": 40 }}
+     {{"type": "rectangle", "id": "bx_node1", "x": 100, "y": 100, "width": 150, "height": 60, "boundElements": [{{"id": "tx_node1", "type": "text"}}] }},
+     {{"type": "text", "id": "tx_node1", "text": "Khái niệm", "containerId": "bx_node1", "fontSize": 16, "fontFamily": 3, "textAlign": "center", "verticalAlign": "middle", "x": 110, "y": 110, "width": 130, "height": 40 }}
    ]
-6. Use clean aesthetics: `roughness: 0`, `fontFamily: 3` (Monospace).
-7. Connect shapes with arrows using `startBinding` and `endBinding`.
-8. GRID SYSTEM: Assign coordinates (x, y) using a rigid 200px grid (e.g., x: 100, 300, 500 and y: 100, 300, 500) to ensure shapes are perfectly aligned and do not overlap.
-9. Ensure all text elements have double-newline (\\n\\n) for line breaks if needed.
+7. Use clean aesthetics: `roughness: 0`, `fontFamily: 3` (Monospace).
+8. Connect shapes with arrows using `startBinding` and `endBinding`.
+9. GRID SYSTEM: Assign coordinates (x, y) using a rigid 200px grid (e.g., x: 100, 300, 500 and y: 100, 300, 500) to ensure shapes are perfectly aligned and do not overlap.
+10. Ensure all text elements have double-newline (\\n\\n) for line breaks if needed.
 
 Generate a clean, professional diagram that visualizes the key relationships and concepts."""
 
@@ -236,6 +237,9 @@ CRITICAL RULES FOR D2 SYNTAX:
    - Use clean typography and meaningful labels.
 4. Keep diagrams readable, well-structured, and concise (typically 6-15 nodes).
 5. Labels can be Vietnamese or English matching the context. Wrap long labels in quotes or backticks if necessary.
+6. Layout Engine:
+   - Use default layout or `vars: {{ d2-config: {{ layout-engine: elk }} }}`.
+   - NEVER use `layout-engine: tala` (commercial engine unsupported by server compiler).
 """
 
 # ── Specialized Workers ────────────────────────────────────────────────────

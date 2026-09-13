@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.13.2)
+# 🧠 VvC Second Brain — Agent Constitution (v8.13.3)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -235,11 +235,19 @@ Hệ thống hỗ trợ cơ chế sinh và hiển thị sơ đồ song song (Exc
   - Section `%% \n ## Drawing \n ```json ... ``` \n %%` chứa dữ liệu đồ họa JSON
 - **Shared Layout Seams & Safe Arrow Geometry**:
   - `sync_bound_text_translation`: Đồng bộ dịch chuyển các khối text liên kết theo cả hai cơ chế `boundElements` và `containerId == shape["id"]`, bảo toàn vị trí nhãn khi dời hình dạng.
-  - `compute_safe_arrow_endpoints`: Tính toán giao điểm đường biên chính xác qua `get_shape_boundary_point` và áp dụng khoảng cách an toàn `dot > 12.0` với adaptive padding `min(5.0, (dot - 2.0) / 2.0)`, triệt tiêu hoàn toàn lỗi đảo ngược mũi tên hoặc đè bẹp arrowhead khi hai node đặt sát nhau.
-- **Mermaid Academic Theme Hygiene**:
-  - Chỉ tiêm lớp CSS Academic Theme (`classDef principal/standard/auxiliary`) cho sơ đồ loại `flowchart` và `graph`. Các loại sơ đồ chuyên biệt (`pie`, `timeline`, `mindmap`, `sequenceDiagram`, `stateDiagram`) được giữ nguyên mã sạch để tránh xung đột cú pháp.
+- **Excalidraw ID Invariant & Universal Bounding Box (v8.13.3)**:
+  - Mọi Text Element ID bắt buộc phải có độ dài chính xác 8 ký tự `[a-zA-Z0-9_-]` để ăn khớp hoàn hảo với regex `/\s\^(.{8})[\n]+/g` và bước nhảy con trỏ 12 ký tự của Obsidian Excalidraw plugin, khử trùng lặp qua `seen_ids`.
+  - Mọi layout engine đều tự động chuẩn hóa canvas về toạ độ dương an toàn ($x \ge 80, y \ge 60$) qua `normalize_canvas_bounding_box`, tính cả toạ độ uốn của các mũi tên liên kết.
+- **Container Header Anchoring & Spatial Clustering Guard (v8.13.3)**:
+  - Tiêu đề container bao bọc (enclosing containers) được tách khỏi bound text và neo ở đỉnh khung (`containerHeaderOf`) để ngăn engine tự động kéo về trung tâm làm đè chữ lên node con; đồng bộ dịch chuyển theo khung.
+  - Bổ sung Container Guard trong bộ định tuyến layout (`layout_router.py`) để bảo toàn nguyên vẹn bố cục cụm không gian (spatial clusters) do LLM thiết kế, ngăn Sugiyama làm phẳng hoặc méo mó các phân nhóm logic.
+- **D2 & Hero Image Production Standards (v8.13.3)**:
+  - D2 worker gửi `User-Agent` tùy biến vượt Cloudflare WAF của Kroki (HTTP 403), vệ sinh cấm layout engine thương mại `tala`, escape an toàn cú pháp JSON prompt.
+  - Hero Image tuân thủ cấu hình Gateway SSOT (`gateway_image_model`) và áp dụng Rào cản Phủ định (Negative Constraints) triệt tiêu phong cách tranh hoạt hình, anime, hoặc 3D nhựa đồ chơi, bảo đảm chất lượng điện ảnh học thuật tối giản.
+- **Mermaid Academic Theme & Semantic Class Preservation**:
+  - Chỉ tiêm lớp CSS Academic Theme (`classDef principal/standard/auxiliary`) cho sơ đồ loại `flowchart` và `graph`. Bảo tồn nguyên vẹn các class ngữ nghĩa tùy biến (`alert`, `law`, `accent`).
+  - Mã hóa ký tự phá vỡ cú pháp trên nhãn node bằng thực thể HTML tiêu chuẩn (`#40;`, `#41;`, `#124;`) thay vì ký tự unicode lạ.
   - Nhận diện `subgraph` bằng regex, loại trừ khỏi việc gán `class standard;` và áp dụng styling riêng bằng `style <sg_id> fill:#f8fafc,stroke:#334155,stroke-width:1px;`.
-  - Tự động ngắt dòng và khử ký tự phá vỡ cú pháp trên nhãn node bằng `wrap_label` và `sanitize_mermaid`.
 - **Thư viện mẫu thị giác đa dạng**:
   Bổ sung và hỗ trợ đầy đủ các visual patterns: Wheel / Star-Cycle (`#layout:wheel`), 2x2 Matrix Quadrant Grid (`#layout:matrix`), Sugiyama Layered (`#layout:sugiyama`), Radial Hub-and-Spoke, Value Chain, Cycle, Tree, Concentric.
 

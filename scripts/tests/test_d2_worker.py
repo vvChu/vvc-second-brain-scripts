@@ -192,3 +192,37 @@ def test_generate_d2_handles_empty_llm_response(mock_llm, tmp_path, monkeypatch)
 
     svg_file = tmp_path / "empty.d2.svg"
     assert not svg_file.exists()
+
+
+def test_compile_d2_via_kroki_sends_user_agent():
+    """compile_d2_via_kroki must send custom User-Agent to avoid Cloudflare 403."""
+    from services.d2_worker import compile_d2_via_kroki
+    import urllib.request
+
+    captured_req = None
+
+    def fake_urlopen(req, timeout=15.0):
+        nonlocal captured_req
+        captured_req = req
+        class FakeResp:
+            def read(self): return b"<svg>test</svg>"
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        return FakeResp()
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        res = compile_d2_via_kroki("a -> b")
+        assert res == "<svg>test</svg>"
+        assert captured_req is not None
+        assert "VvC-SecondBrain-D2Worker" in captured_req.headers.get("User-agent", "")
+
+
+def test_clean_d2_sanitizes_tala_layout():
+    """_clean_d2 must rewrite layout-engine: tala to elk."""
+    from services.d2_worker import _clean_d2
+
+    raw = "vars: { d2-config: { layout-engine: tala } }\na -> b"
+    cleaned = _clean_d2(raw)
+    assert "layout-engine: elk" in cleaned
+    assert "layout-engine: tala" not in cleaned
+

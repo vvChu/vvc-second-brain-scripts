@@ -32,6 +32,8 @@ def test_config_gateway():
 
     assert isinstance(cfg.gateway_url, str)
     assert isinstance(cfg.gateway_proxy_model, str)
+    assert isinstance(cfg.gateway_image_model, str)
+    assert cfg.gateway_image_model == "gemini-3.1-flash-image"
 
 
 def test_load_env_file(tmp_path):

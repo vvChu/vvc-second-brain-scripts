@@ -56,10 +56,14 @@ def _clean_d2(raw: str) -> str:
     # Match fenced block with optional closing fence or end-of-string
     match = re.search(r"```(?:d2)?\s*\n?(.*?)(?:\n?```|\Z)", raw, re.DOTALL | re.IGNORECASE)
     if match and "```" in raw:
-        return match.group(1).strip()
-    cleaned = re.sub(r"^```(?:d2)?\s*\n?", "", raw, flags=re.IGNORECASE)
-    cleaned = re.sub(r"\n?```\s*$", "", cleaned)
-    return cleaned.strip()
+        cleaned = match.group(1).strip()
+    else:
+        cleaned = re.sub(r"^```(?:d2)?\s*\n?", "", raw, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\n?```\s*$", "", cleaned).strip()
+
+    # Active guardrail: Tala is a commercial proprietary layout engine unsupported by Kroki
+    cleaned = re.sub(r"layout-engine:\s*tala\b", "layout-engine: elk", cleaned, flags=re.IGNORECASE)
+    return cleaned
 
 
 def compile_d2_via_kroki(d2_code: str, timeout: float = 15.0) -> str:
@@ -78,10 +82,14 @@ def compile_d2_via_kroki(d2_code: str, timeout: float = 15.0) -> str:
         RuntimeError: If Kroki request fails or returns non-200.
     """
     url = "https://kroki.io/d2/svg"
+    headers = {
+        "Content-Type": "text/plain; charset=utf-8",
+        "User-Agent": "VvC-SecondBrain-D2Worker/8.13.2 (Windows NT 10.0; Win64; x64)",
+    }
     req = urllib.request.Request(
         url,
         data=d2_code.encode("utf-8"),
-        headers={"Content-Type": "text/plain; charset=utf-8"},
+        headers=headers,
         method="POST",
     )
     try:

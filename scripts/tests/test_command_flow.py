@@ -977,3 +977,24 @@ def test_hero_image_generator_respects_active_cfg(tmp_path, monkeypatch):
     mock_cfg_no_gw = dataclasses.replace(cfg, gateway_url=None, gateway_api_key=None)
     res = generate_hero_image("prompt", output_path, active_cfg=mock_cfg_no_gw)
     assert res is False
+
+
+def test_heal_artifact_embed_syntax():
+    """heal_artifact_embed_syntax must fix snake_cased diagram extensions in wikilinks."""
+    from services.command.citations import heal_artifact_embed_syntax, clean_wikilink_quotes
+
+    sample = (
+        "Check this: ![[architecture_excalidraw_md|100%]]\n"
+        "And this: ![[flow_mermaid_md]]\n"
+        "And vector: ![[system_d2_svg|800]]\n"
+    )
+    healed = heal_artifact_embed_syntax(sample)
+    assert "![[architecture.excalidraw.md|100%]]" in healed
+    assert "![[flow.mermaid.md]]" in healed
+    assert "![[system.d2.svg|800]]" in healed
+
+    # clean_wikilink_quotes should also call heal_artifact_embed_syntax
+    quoted = 'See ![["overview_excalidraw_md|100%"]]'
+    cleaned = clean_wikilink_quotes(quoted)
+    assert "![[overview.excalidraw.md|100%]]" in cleaned
+

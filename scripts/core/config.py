@@ -69,6 +69,7 @@ class VaultConfig:
     gateway_direct_model: str = ""
     gateway_synthesis_model: str = ""
     gateway_correction_model: str = ""
+    gateway_image_model: str = ""
 
     # --- Backend Selection ---
     backend: str = "gateway"
@@ -172,6 +173,7 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
         gateway_direct_model=gw.get("direct_model", ""),
         gateway_synthesis_model=gw.get("synthesis_model", ""),
         gateway_correction_model=gw.get("correction_model", ""),
+        gateway_image_model=os.environ.get("VVC_GATEWAY_IMAGE_MODEL", gw.get("image_model", "gemini-3.1-flash-image")),
         # Backend
         backend=raw.get("backend", "gateway"),
         fallback=raw.get("fallback", "copilot-cli"),

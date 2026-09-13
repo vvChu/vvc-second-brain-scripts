@@ -80,7 +80,8 @@ WRITING_STYLES: dict[str, dict] = {
             "1. Cấu trúc bài viết gồm 2 phần: Phân tích ý niệm thị giác (Visual Concept Analysis) bằng tiếng Việt và Prompt sinh ảnh hoàn chỉnh (Final Image Prompt) bằng tiếng Anh.\n"
             "2. Prompt tiếng Anh phải tuân thủ chuẩn nhiếp ảnh/điện ảnh: Lighting (chiếu sáng), Color Palette (bảng màu), Composition (bố cục 16:9), Medium (3D architectural render, cinematic photography, high-concept visualization), Mood/Atmosphere (bầu không khí huyền ảo, học thuật, sâu sắc).\n"
             "3. BẮT BUỘC có mục rõ ràng: '### Final Image Prompt' hoặc 'Prompt: ' chứa đoạn prompt tiếng Anh nguyên vẹn để hệ thống tự động trích xuất.\n"
-            "4. KHÔNG sử dụng chữ (text, typography, labels) hoặc logo vụn vặt trong hình ảnh. Tập trung hoàn toàn vào biểu tượng ẩn dụ và sự tương phản mạnh mẽ của các yếu tố không gian, cấu trúc và ánh sáng."
+            "4. KHÔNG sử dụng chữ (text, typography, labels) hoặc logo vụn vặt trong hình ảnh. Tập trung hoàn toàn vào biểu tượng ẩn dụ và sự tương phản mạnh mẽ của các yếu tố không gian, cấu trúc và ánh sáng.\n"
+            "5. RÀO CẢN PHỦ ĐỊNH (Negative Constraints): Tuyệt đối KHÔNG sử dụng phong cách tranh hoạt hình (cartoon), anime, đồ chơi nhựa 3D (plastic toy, glossy CGI render), chibi, hoặc hình vẽ minh họa trẻ con ngô nghê. Phong cách bắt buộc phải đạt độ nghiêm túc học thuật, điện ảnh (cinematic film still, editorial photography, moody architectural installation, dark minimal aesthetic)."
         ),
     },
 }

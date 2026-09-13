@@ -748,3 +748,52 @@ class TestDiagramBaseAndWorker:
         assert "class C3 standard;" in themed
 
 
+def test_sync_bound_text_translation_with_container_header_of():
+    """sync_bound_text_translation must move text tagged with containerHeaderOf."""
+    from services.diagram_base import sync_bound_text_translation
+
+    container = {"id": "c1", "type": "rectangle", "x": 100.0, "y": 100.0, "boundElements": []}
+    header_text = {"id": "t_hdr", "type": "text", "x": 100.0, "y": 114.0, "containerId": None, "containerHeaderOf": "c1"}
+    elements = [container, header_text]
+
+    sync_bound_text_translation(container, elements, 50.0, 30.0)
+    assert header_text["x"] == 150.0
+    assert header_text["y"] == 144.0
+
+
+def test_normalize_canvas_bounding_box():
+    """normalize_canvas_bounding_box must shift elements to safe positive coordinates >= (80, 60)."""
+    from services.diagram_base import normalize_canvas_bounding_box
+
+    elements = [
+        {"id": "n1", "type": "rectangle", "x": -50.0, "y": -20.0},
+        {"id": "n2", "type": "rectangle", "x": 100.0, "y": 200.0},
+        {"id": "a1", "type": "arrow", "x": -50.0, "y": -20.0, "points": [[0.0, 0.0], [-10.0, -10.0]]}
+    ]
+
+    normalize_canvas_bounding_box(elements, min_padding_x=80.0, min_padding_y=60.0)
+    # Arrow tip was at x = -60, y = -30. Shift should be: x + 140 -> 80, y + 90 -> 60
+    assert elements[0]["x"] >= 80.0
+    assert elements[0]["y"] >= 60.0
+    assert elements[1]["x"] > 100.0
+
+
+def test_layout_router_preserves_enclosing_containers():
+    """apply_smart_layout must not flatten spatial layouts when enclosing containers exist."""
+    from core.layout_router import apply_smart_layout
+
+    # Container box enclosing child box
+    container = {"id": "c1", "type": "rectangle", "x": 50.0, "y": 50.0, "width": 400.0, "height": 300.0}
+    child = {"id": "ch1", "type": "rectangle", "x": 100.0, "y": 100.0, "width": 100.0, "height": 50.0}
+    arrow = {"id": "a1", "type": "arrow", "x": 150.0, "y": 150.0, "points": [[0, 0], [50, 50]]}
+    elements = [container, child, arrow]
+
+    orig_c_x, orig_c_y = container["x"], container["y"]
+    apply_smart_layout(elements)
+
+    # Should not be reshuffled by Sugiyama
+    assert container["x"] == orig_c_x
+    assert container["y"] == orig_c_y
+
+
+

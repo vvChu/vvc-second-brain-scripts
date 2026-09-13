@@ -111,23 +111,38 @@ def _clean_mermaid(raw: str) -> str:
 
 
 def _format_mermaid_labels(code: str) -> str:
-    """Sanitize and wrap labels in Mermaid nodes while preserving all shape delimiters."""
+    """Sanitize and wrap labels in Mermaid nodes while preserving HTML formatting and shape delimiters."""
     def _format_content(content: str) -> str:
         is_quoted = (content.startswith('"') and content.endswith('"')) or (content.startswith("'") and content.endswith("'"))
         raw_text = content[1:-1] if is_quoted else content
         raw_text = re.sub(r"\\n|\n", "<br/>", raw_text)
 
-        parts = re.split(r"<br\s*/?>", raw_text, flags=re.IGNORECASE)
+        # Protect standard HTML formatting tags (<b>, <i>, <em>, <strong>, <br/>)
+        preserved_tags = []
+        def _save_tag(match: re.Match) -> str:
+            idx = len(preserved_tags)
+            preserved_tags.append(match.group(0))
+            return f"__HTML_TAG_{idx}__"
+
+        protected_text = re.sub(r"</?(?:b|i|em|strong|br)\b[^>]*>", _save_tag, raw_text, flags=re.IGNORECASE)
+
+        parts = re.split(r"<br\s*/?>", protected_text, flags=re.IGNORECASE)
         sanitized_parts = []
         for p in parts:
             p_clean = p.strip()
             if p_clean:
-                s = sanitize_mermaid(p_clean)
+                # Sanitize quotes and structural brackets inside labels
+                s = p_clean.replace('"', "'")
+                s = re.sub(r"[\[\]\{\}]", "", s)
                 w = wrap_label(s)
                 sanitized_parts.append(w)
             else:
                 sanitized_parts.append("")
-        return "<br/>".join(sanitized_parts)
+        
+        result = "<br/>".join(sanitized_parts)
+        for idx, tag in enumerate(preserved_tags):
+            result = result.replace(f"__HTML_TAG_{idx}__", tag)
+        return result
 
     pattern = re.compile(
         r"(?P<prefix>\b[a-zA-Z0-9_-]+\s*)"
@@ -173,11 +188,30 @@ def _format_mermaid_labels(code: str) -> str:
 
 
 def _apply_academic_theme_to_mermaid(mermaid_code: str) -> str:
-    """Post-processor that parses the Mermaid code, strips any inline custom classes,
-    declares a consistent Academic Grayscale Theme, and assigns nodes to their respective classes.
+    """Post-processor that parses the Mermaid code, preserves custom semantic classes (alert, law),
+    declares consistent Academic Grayscale Theme, and assigns unassigned nodes to appropriate classes.
     """
-    # 1. Clean existing class declarations to avoid conflicts
-    lines = [line for line in mermaid_code.split("\n") if "classDef" not in line and not line.strip().startswith("class ")]
+    # 1. Extract existing class definitions and assignments to preserve custom semantic classes
+    existing_class_defs = [
+        line.strip() for line in mermaid_code.split("\n")
+        if line.strip().startswith("classDef ")
+    ]
+    existing_assignments = [
+        line.strip() for line in mermaid_code.split("\n")
+        if line.strip().startswith("class ")
+    ]
+
+    assigned_nodes = set()
+    for ass in existing_assignments:
+        match = re.match(r"class\s+([^;]+?)\s+([a-zA-Z0-9_-]+);?", ass)
+        if match:
+            for n in match.group(1).split(","):
+                assigned_nodes.add(n.strip())
+
+    lines = [
+        line for line in mermaid_code.split("\n")
+        if not line.strip().startswith("classDef ") and not line.strip().startswith("class ")
+    ]
     cleaned_code = "\n".join(lines)
 
     # Guard: ONLY apply theme if diagram type starts with flowchart or graph
@@ -186,7 +220,7 @@ def _apply_academic_theme_to_mermaid(mermaid_code: str) -> str:
     if not (first_line.startswith("flowchart") or first_line.startswith("graph")):
         return cleaned_code
 
-    # 2. Format labels with sanitize_mermaid and wrap_label
+    # 2. Format labels with HTML formatting preservation
     cleaned_code = _format_mermaid_labels(cleaned_code)
 
     # 3. Extract subgraphs to exclude them from node classes and apply styling
@@ -245,20 +279,26 @@ def _apply_academic_theme_to_mermaid(mermaid_code: str) -> str:
         else:
             principal_node = max(nodes, key=lambda n: in_degrees[n] + out_degrees[n])
 
-    # Class definitions and assignments
+    # Class definitions: standard academic grayscale + preserved custom classes
     class_defs = [
         "classDef principal fill:#f1f5f9,stroke:#0f172a,stroke-width:2px;",
         "classDef standard fill:#ffffff,stroke:#334155,stroke-width:1px;",
         "classDef auxiliary fill:#ffffff,stroke:#64748b,stroke-width:1px,stroke-dasharray: 5 5;"
     ]
+    for cdef in existing_class_defs:
+        c_name = cdef.split()[1] if len(cdef.split()) > 1 else ""
+        if c_name not in ("principal", "standard", "auxiliary"):
+            class_defs.append(cdef)
 
     style_assignments = [
         f"style {sg_id} fill:#f8fafc,stroke:#334155,stroke-width:1px;"
         for sg_id in sorted(subgraph_ids)
     ]
 
-    class_assignments = []
+    class_assignments = list(existing_assignments)
     for nid in sorted(nodes):
+        if nid in assigned_nodes:
+            continue
         if nid == principal_node:
             class_assignments.append(f"class {nid} principal;")
         elif nid in auxiliary_nodes:
@@ -273,3 +313,4 @@ def _apply_academic_theme_to_mermaid(mermaid_code: str) -> str:
         output_parts.append("\n".join(class_assignments))
 
     return "\n\n".join(output_parts)
+

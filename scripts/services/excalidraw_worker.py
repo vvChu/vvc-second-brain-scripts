@@ -111,16 +111,28 @@ def _generate_excalidraw(diagram_name: str, source_text: str) -> None:
 
 
 
-def _ensure_nanoid_8(raw_id: str) -> str:
-    """Ensure element ID is strictly 8 alphanumeric characters for Obsidian Excalidraw parser."""
+def _ensure_nanoid_8(raw_id: str, seen_ids: set[str] | None = None) -> str:
+    """Ensure element ID is strictly 8 characters [a-zA-Z0-9_-] for Obsidian Excalidraw parser.
+    
+    Avoids collisions via seen_ids tracking.
+    """
     import hashlib
-    clean = re.sub(r"[^a-zA-Z0-9]", "", raw_id)
-    if len(clean) == 8:
+    clean = re.sub(r"[^a-zA-Z0-9_\-]", "", raw_id)
+    if len(clean) == 8 and (seen_ids is None or clean not in seen_ids):
+        if seen_ids is not None:
+            seen_ids.add(clean)
         return clean
-    if len(clean) > 8:
-        return clean[:8]
-    h = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()
-    return (clean + h)[:8]
+    
+    base = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()[:8]
+    candidate = base
+    counter = 0
+    if seen_ids is not None:
+        while candidate in seen_ids:
+            counter += 1
+            candidate = hashlib.sha256(f"{raw_id}_{counter}".encode("utf-8")).hexdigest()[:8]
+        seen_ids.add(candidate)
+    return candidate
+
 
 
 def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
@@ -182,7 +194,8 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                         "fontFamily": 3,
                         "textAlign": "center",
                         "verticalAlign": "top",
-                        "containerId": None
+                        "containerId": None,
+                        "containerHeaderOf": elem["id"]
                     }
                     new_elements.append(text_elem)
                 else:
@@ -226,6 +239,7 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                         elem["containerId"] = None
                         elem["verticalAlign"] = "top"
                         elem["y"] = c.get("y", 0) + 14
+                        elem["containerHeaderOf"] = c.get("id")
                         if "boundElements" in c and isinstance(c["boundElements"], list):
                             c["boundElements"] = [b for b in c["boundElements"] if (b.get("id") if isinstance(b, dict) else b) != elem["id"]]
                     else:
@@ -246,12 +260,17 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
             new_elements.append(elem)
             
         # Normalize all text element IDs strictly to 8 alphanumeric characters
+        seen_ids: set[str] = set()
+        for elem in new_elements:
+            if "id" in elem and len(elem["id"]) == 8 and re.match(r"^[a-zA-Z0-9_\-]+$", elem["id"]):
+                seen_ids.add(elem["id"])
+
         id_map = {}
         for elem in new_elements:
             if elem.get("type") == "text" and "id" in elem:
                 old_id = elem["id"]
-                if len(old_id) != 8:
-                    new_id = _ensure_nanoid_8(old_id)
+                if len(old_id) != 8 or not re.match(r"^[a-zA-Z0-9_\-]+$", old_id):
+                    new_id = _ensure_nanoid_8(old_id, seen_ids)
                     id_map[old_id] = new_id
                     elem["id"] = new_id
 
@@ -261,6 +280,13 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                     for b in elem["boundElements"]:
                         if isinstance(b, dict) and b.get("id") in id_map:
                             b["id"] = id_map[b["id"]]
+                if elem.get("type") == "arrow":
+                    sb = elem.get("startBinding")
+                    if isinstance(sb, dict) and sb.get("elementId") in id_map:
+                        sb["elementId"] = id_map[sb["elementId"]]
+                    eb = elem.get("endBinding")
+                    if isinstance(eb, dict) and eb.get("elementId") in id_map:
+                        eb["elementId"] = id_map[eb["elementId"]]
 
         import textwrap
         # Apply automatic text wrapping for text nodes
@@ -287,6 +313,10 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
         # Apply deterministic layout engine via Central Router
         from core.layout_router import apply_smart_layout
         apply_smart_layout(new_elements)
+
+        # Ensure all elements (shapes, texts, arrows) are within safe positive coordinates
+        from services.diagram_base import normalize_canvas_bounding_box
+        normalize_canvas_bounding_box(new_elements)
             
         data["elements"] = new_elements
 

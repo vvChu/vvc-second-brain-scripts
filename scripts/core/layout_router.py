@@ -171,7 +171,26 @@ def apply_smart_layout(elements: list[dict]) -> None:
         elif is_chain:
             from core.layouts.value_chain_layout import apply_value_chain_layout
             apply_value_chain_layout(elements)
+        elif _has_enclosing_containers(elements):
+            # Preserve spatial cluster / subgraph layout designed by LLM
+            return
         else:
             from core.layouts.sugiyama_layout import apply_sugiyama_layout
             apply_sugiyama_layout(elements)
+
+
+def _has_enclosing_containers(elements: list[dict]) -> bool:
+    """Detect if the diagram contains one or more enclosing container boxes."""
+    shapes = [el for el in elements if el.get("type") in ("rectangle", "ellipse", "diamond")]
+    for shape in shapes:
+        sx, sy = shape.get("x", 0), shape.get("y", 0)
+        sw, sh = shape.get("width", 100), shape.get("height", 100)
+        for o in shapes:
+            if o is not shape:
+                ox, oy = o.get("x", 0), o.get("y", 0)
+                ow, oh = o.get("width", 50), o.get("height", 50)
+                if sx <= ox and sy <= oy and (sx + sw) >= (ox + ow) and (sy + sh) >= (oy + oh) and (sw * sh > ow * oh * 1.5):
+                    return True
+    return False
+
 

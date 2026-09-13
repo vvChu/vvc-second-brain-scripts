@@ -27,7 +27,30 @@ def clean_wikilink_quotes(text: str) -> str:
 
     text = re.sub(r'(!?\[\[)"(.*?)"(\|.*?)?\]\]', _repl, text)
     text = re.sub(r"(!?\[\[)'(.*?)'(\|.*?)?\]\]", _repl, text)
+    text = heal_artifact_embed_syntax(text)
     return text
+
+
+def heal_artifact_embed_syntax(text: str) -> str:
+    """Normalize malformed snake_cased diagram extensions inside embed wikilinks.
+
+    Examples:
+        ![[foo_excalidraw_md]] -> ![[foo.excalidraw.md]]
+        ![[foo_excalidraw_md|100%]] -> ![[foo.excalidraw.md|100%]]
+        ![[bar_mermaid_md|800]] -> ![[bar.mermaid.md|800]]
+        ![[baz_d2_svg]] -> ![[baz.d2.svg]]
+
+    Args:
+        text: Input markdown text.
+
+    Returns:
+        Sanitized markdown text with valid diagram extensions.
+    """
+    text = re.sub(r"!\[\[([^\]|]+)_excalidraw_md(\|[^\]]*)?\]\]", r"![[\1.excalidraw.md\2]]", text)
+    text = re.sub(r"!\[\[([^\]|]+)_mermaid_md(\|[^\]]*)?\]\]", r"![[\1.mermaid.md\2]]", text)
+    text = re.sub(r"!\[\[([^\]|]+)_d2_svg(\|[^\]]*)?\]\]", r"![[\1.d2.svg\2]]", text)
+    return text
+
 
 
 def reindex_citations(response: str, rag_refs: dict[int, tuple[str, str]]) -> str:

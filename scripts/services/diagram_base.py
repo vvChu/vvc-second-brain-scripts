@@ -21,6 +21,7 @@ _logger = logging.getLogger("vvc.diagram")
 __all__ = [
     "get_shape_boundary_point",
     "sync_bound_text_translation",
+    "normalize_canvas_bounding_box",
     "compute_safe_arrow_endpoints",
     "find_diagram_context",
     "resolve_chapter_images",
@@ -105,7 +106,11 @@ def sync_bound_text_translation(
         if el.get("type") != "text":
             continue
         el_id = el.get("id")
-        is_bound = (el_id and el_id in bound_text_ids) or (el.get("containerId") == sid)
+        is_bound = (
+            (el_id and el_id in bound_text_ids)
+            or (el.get("containerId") == sid)
+            or (el.get("containerHeaderOf") == sid)
+        )
         if is_bound:
             el["x"] = float(el.get("x", 0.0) + dx)
             el["y"] = float(el.get("y", 0.0) + dy)
@@ -113,6 +118,63 @@ def sync_bound_text_translation(
                 el["strokeColor"] = cfg.excalidraw_stroke_color
             if not el.get("fontFamily"):
                 el["fontFamily"] = cfg.excalidraw_font_family
+
+
+def normalize_canvas_bounding_box(
+    elements: list[dict[str, Any]],
+    min_padding_x: float = 80.0,
+    min_padding_y: float = 60.0,
+) -> None:
+    """Shift all canvas elements to safe positive coordinates if clipping occurs.
+
+    Accounts for shapes, text, and arrow bend points (points array).
+
+    Args:
+        elements: List of Excalidraw element dicts.
+        min_padding_x: Minimum x coordinate (default 80.0).
+        min_padding_y: Minimum y coordinate (default 60.0).
+    """
+    if not elements:
+        return
+
+    min_x = float("inf")
+    min_y = float("inf")
+
+    for el in elements:
+        if "x" not in el or "y" not in el:
+            continue
+        el_x = float(el.get("x", 0.0))
+        el_y = float(el.get("y", 0.0))
+
+        if el.get("type") == "arrow" and "points" in el:
+            pts = el["points"]
+            if isinstance(pts, list) and pts:
+                p_xs = [el_x + float(p[0]) for p in pts if isinstance(p, (list, tuple)) and len(p) >= 2]
+                p_ys = [el_y + float(p[1]) for p in pts if isinstance(p, (list, tuple)) and len(p) >= 2]
+                if p_xs:
+                    min_x = min(min_x, min(p_xs))
+                if p_ys:
+                    min_y = min(min_y, min(p_ys))
+        else:
+            min_x = min(min_x, el_x)
+            min_y = min(min_y, el_y)
+
+    if min_x == float("inf") or min_y == float("inf"):
+        return
+
+    shift_x = 0.0
+    shift_y = 0.0
+    if min_x < min_padding_x:
+        shift_x = min_padding_x - min_x
+    if min_y < min_padding_y:
+        shift_y = min_padding_y - min_y
+
+    if shift_x > 0.0 or shift_y > 0.0:
+        for el in elements:
+            if "x" in el:
+                el["x"] = float(el.get("x", 0.0) + shift_x)
+            if "y" in el:
+                el["y"] = float(el.get("y", 0.0) + shift_y)
 
 
 def compute_safe_arrow_endpoints(
