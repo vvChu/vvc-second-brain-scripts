@@ -11,9 +11,11 @@ Usage:
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shutil
 import subprocess
+import sys
 import urllib.request
 import urllib.error
 from pathlib import Path
@@ -34,11 +36,71 @@ __all__ = [
     "trigger_d2_generation",
     "compile_d2_via_kroki",
     "compile_d2_to_svg",
+    "compile_d2",
+    "find_d2_bin",
+    "sanitize_d2_for_kroki",
     "_clean_d2",
 ]
 
 
-def _clean_d2(raw: str) -> str:
+def find_d2_bin() -> str | None:
+    """Locate D2 executable binary using a prioritized resolution order.
+
+    Resolution order:
+    1. PATH via shutil.which("d2")
+    2. Vault-local tools directory: cfg.vault_root / "tools" / "bin" / "d2.exe" (or "d2" on non-Windows)
+    3. Windows WinGet package: %LOCALAPPDATA%/Microsoft/WinGet/Packages/Terrastruct.D2_Microsoft.Winget.Source_*/d2.exe (glob)
+    4. Windows user Programs: %LOCALAPPDATA%/Programs/d2/d2.exe
+
+    Returns:
+        Absolute string path to D2 executable if found, otherwise None.
+    """
+    # 1. System PATH
+    which_bin = shutil.which("d2")
+    if which_bin:
+        return which_bin
+
+    # 2. Vault-local tools directory
+    exe_name = "d2.exe" if sys.platform == "win32" else "d2"
+    tools_bin = cfg.vault_root / "tools" / "bin" / exe_name
+    if tools_bin.is_file():
+        return str(tools_bin)
+
+    # 3. Windows WinGet directory (glob)
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    if local_appdata:
+        winget_dir = Path(local_appdata) / "Microsoft" / "WinGet" / "Packages"
+        if winget_dir.is_dir():
+            matches = sorted(winget_dir.glob("Terrastruct.D2_Microsoft.Winget.Source_*/d2.exe"))
+            if not matches:
+                matches = sorted(winget_dir.glob("Terrastruct.D2_Microsoft.Winget.Source_*/**/d2.exe"))
+            if matches and matches[-1].is_file():
+                return str(matches[-1])
+
+        # 4. Windows Programs directory
+        prog_bin = Path(local_appdata) / "Programs" / "d2" / "d2.exe"
+        if prog_bin.is_file():
+            return str(prog_bin)
+
+    return None
+
+
+def sanitize_d2_for_kroki(d2_code: str) -> str:
+    """Sanitize D2 code for Kroki HTTP API compatibility.
+
+    Rewrites proprietary 'layout-engine: tala' to open-source 'layout-engine: elk'
+    since Tala is a commercial proprietary layout engine unsupported by Kroki.
+
+    Args:
+        d2_code: D2 source code string.
+
+    Returns:
+        Sanitized D2 source code string.
+    """
+    return re.sub(r"layout-engine:\s*tala\b", "layout-engine: elk", d2_code, flags=re.IGNORECASE)
+
+
+def _clean_d2(raw: str, sanitize_tala: bool | None = None) -> str:
     """Clean and extract D2 source code from LLM response.
 
     Strips markdown fences (```d2 ... ``` or ``` ... ```) and conversational filler,
@@ -46,6 +108,10 @@ def _clean_d2(raw: str) -> str:
 
     Args:
         raw: Raw LLM response string.
+        sanitize_tala: Whether to rewrite 'layout-engine: tala' to 'elk'.
+            If True: always sanitizes tala to elk.
+            If False: preserves tala (for local D2 compiler with tala support).
+            If None (default): auto-detects; only sanitizes if no local D2 binary is found.
 
     Returns:
         Clean D2 source code string.
@@ -61,8 +127,10 @@ def _clean_d2(raw: str) -> str:
         cleaned = re.sub(r"^```(?:d2)?\s*\n?", "", raw, flags=re.IGNORECASE)
         cleaned = re.sub(r"\n?```\s*$", "", cleaned).strip()
 
-    # Active guardrail: Tala is a commercial proprietary layout engine unsupported by Kroki
-    cleaned = re.sub(r"layout-engine:\s*tala\b", "layout-engine: elk", cleaned, flags=re.IGNORECASE)
+    # Active guardrail: if no local binary or explicitly requested, rewrite tala for Kroki
+    should_sanitize = sanitize_tala if sanitize_tala is not None else (find_d2_bin() is None)
+    if should_sanitize:
+        cleaned = sanitize_d2_for_kroki(cleaned)
     return cleaned
 
 
@@ -70,6 +138,7 @@ def compile_d2_via_kroki(d2_code: str, timeout: float = 15.0) -> str:
     """Send HTTP POST to Kroki to compile D2 code to SVG.
 
     Zero third-party dependency via standard library urllib.request.
+    Always sanitizes tala layout-engine to elk before sending.
 
     Args:
         d2_code: Cleaned D2 source string.
@@ -81,6 +150,9 @@ def compile_d2_via_kroki(d2_code: str, timeout: float = 15.0) -> str:
     Raises:
         RuntimeError: If Kroki request fails or returns non-200.
     """
+    # Active guardrail: Kroki does not support proprietary Tala engine
+    d2_code = sanitize_d2_for_kroki(d2_code)
+
     url = "https://kroki.io/d2/svg"
     headers = {
         "Content-Type": "text/plain; charset=utf-8",
@@ -101,17 +173,17 @@ def compile_d2_via_kroki(d2_code: str, timeout: float = 15.0) -> str:
 
 def compile_d2_to_svg(
     d2_code: str,
-    output_svg_path: Path | None = None,
+    output_svg_path: Path | str | None = None,
     timeout: float = 15.0,
 ) -> str | None:
     """Compile D2 code to SVG via local CLI or Kroki fallback.
 
-    Primary: if local d2 CLI exists on PATH (shutil.which("d2")), run `d2 - output.svg`.
+    Primary: if local d2 CLI exists via find_d2_bin(), run `d2 - output.svg`.
     Fallback: send HTTP POST to https://kroki.io/d2/svg via urllib.request.
 
     Args:
         d2_code: Cleaned D2 source code.
-        output_svg_path: Optional destination Path for the SVG file.
+        output_svg_path: Optional destination Path or str for the SVG file.
         timeout: Timeout in seconds.
 
     Returns:
@@ -122,28 +194,34 @@ def compile_d2_to_svg(
         return None
 
     if output_svg_path:
+        output_svg_path = Path(output_svg_path)
         output_svg_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # 1. Primary: local d2 CLI
-    d2_bin = shutil.which("d2")
+    # 1. Primary: local d2 CLI via portable seam locator
+    d2_bin = find_d2_bin()
     if d2_bin:
         try:
             cmd = [d2_bin, "-", str(output_svg_path)] if output_svg_path else [d2_bin, "-", "-"]
+            use_shell = sys.platform == "win32" and d2_bin.lower().endswith((".cmd", ".bat"))
             res = subprocess.run(
                 cmd,
                 input=d2_code.encode("utf-8"),
                 capture_output=True,
                 check=True,
                 timeout=timeout,
+                shell=use_shell,
             )
             if output_svg_path and output_svg_path.exists():
                 return output_svg_path.read_text(encoding="utf-8")
             if res.stdout:
-                return res.stdout.decode("utf-8")
+                content = res.stdout.decode("utf-8")
+                if output_svg_path:
+                    output_svg_path.write_text(content, encoding="utf-8")
+                return content
         except Exception as e:
-            _logger.warning(f"Local d2 CLI failed: {e}. Falling back to Kroki.")
+            _logger.warning(f"Local d2 CLI ({d2_bin}) failed: {e}. Falling back to Kroki.")
 
-    # 2. Fallback: Kroki HTTP API
+    # 2. Fallback: Kroki HTTP API (auto-sanitizes tala to elk)
     try:
         svg_content = compile_d2_via_kroki(d2_code, timeout=timeout)
         if output_svg_path:
@@ -153,6 +231,10 @@ def compile_d2_to_svg(
     except Exception as e:
         _logger.error(f"D2 compilation failed on both local CLI and Kroki: {e}")
         return None
+
+
+compile_d2 = compile_d2_to_svg
+
 
 
 def trigger_d2_generation(diagram_name: str, source_text: str) -> None:

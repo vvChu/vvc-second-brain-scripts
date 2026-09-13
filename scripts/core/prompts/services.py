@@ -157,14 +157,14 @@ NGỮ CẢNH:
 QUY TẮC:
 1. Chỉ trả về mã Mermaid (KHÔNG có ```mermaid fences, không giải thích gì thêm)
 2. Dùng tiếng Việt cho labels khi phù hợp
-3. Ưu tiên flowchart TD (Top-Down) cho sơ đồ cây/phân cấp hoặc flowchart LR (Left-to-Right) cho các chuỗi tuyến tính/tiến trình
+3. HƯỚNG MẶC ĐỊNH BẮT BUỘC: Dùng `flowchart TD` (Top-Down) để tối ưu hiển thị dọc trên thiết bị di động (mobile responsive). CHỈ cho phép `flowchart LR` (Left-to-Right) khi tiến trình có tối đa <= 3 bước ngắn.
 4. Dùng dấu ngoặc kép cho labels chứa ký tự đặc biệt: id["Label (info)"]
 5. KHÔNG dùng HTML tags trong labels
 6. Giữ sơ đồ gọn gàng, tối đa 15-20 nodes
 7. Cấu trúc rõ ràng, sử dụng các kết nối nét liền (-->), nét đậm (==>) hoặc nét đứt (-.->)
 8. CHỌN ĐÚNG LOẠI SƠ ĐỒ theo nội dung:
-   - `flowchart TD`: phân cấp, cây tổ chức, phân rã khái niệm
-   - `flowchart LR`: chuỗi tiến trình, pipeline, value chain ngang
+   - `flowchart TD`: phân cấp, cây tổ chức, phân rã khái niệm, quy trình / pipeline chung (mặc định)
+   - `flowchart LR`: CHỈ dùng cho chuỗi tiến trình rất ngắn (<= 3 bước)
    - `timeline`: diễn biến theo thời gian, giai đoạn phát triển
    - `pie`: phân bổ tỷ lệ, cơ cấu thành phần
    - `mindmap`: brainstorm, phân nhánh ý tưởng
@@ -240,6 +240,10 @@ CRITICAL RULES FOR D2 SYNTAX:
 6. Layout Engine:
    - Use default layout or `vars: {{ d2-config: {{ layout-engine: elk }} }}`.
    - NEVER use `layout-engine: tala` (commercial engine unsupported by server compiler).
+7. Mobile Responsive Constraints (CRITICAL):
+   - Set default direction to vertical: specify `direction: down` at top-level.
+   - Stack node clusters and subgraphs vertically rather than horizontally.
+   - Limit diagram width to <= 500px to prevent horizontal clipping on mobile viewports.
 """
 
 # ── Specialized Workers ────────────────────────────────────────────────────

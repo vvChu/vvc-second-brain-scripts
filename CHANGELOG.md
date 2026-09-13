@@ -5,8 +5,9 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 ---
 
 ## v8.13.3 — Multimodal Diagram Pipeline Standardization & Wayfinder Hardening
-Hoàn thành toàn diện 8 Frontier Tickets theo Bản đồ Định hướng Wayfinder (`.md/wayfinder/multimodal_diagrams/map.md`):
-- **D2 Kroki Recovery (`services/d2_worker.py`, `core/prompts/services.py`)**: Bổ sung `User-Agent` tùy biến vượt Cloudflare WAF của Kroki (HTTP 403), vệ sinh cấm engine thương mại `tala`, escape an toàn cú pháp JSON prompt.
+Hoàn thành toàn diện 10 Frontier Tickets theo Bản đồ Định hướng Wayfinder (`.md/wayfinder/multimodal_diagrams/map.md`):
+- **D2 Kroki Recovery & Portable Seam Locator (`services/d2_worker.py`, `core/prompts/services.py`, `.gitignore`)**: Bổ sung `User-Agent` tùy biến vượt Cloudflare WAF của Kroki (HTTP 403), vệ sinh cấm engine thương mại `tala` trên Kroki, escape an toàn cú pháp JSON prompt. Bổ sung hàm `find_d2_bin()` định vị binary cục bộ theo 4 tầng (`shutil.which`, `tools/bin/d2.exe`, WinGet packages, Programs/d2) cho phép dùng local D2 (mở khóa Tala v0.9.0+) mà không ép `elk`.
+- **Responsive Mobile Diagrams (`core/prompts/services.py`, `services/mermaid_worker.py`, `.obsidian/snippets/mermaid-fit.css`)**: Ràng buộc hướng mặc định `flowchart TD` (Top-Down) và `direction: down` (chiều rộng $\le 500$px). Bổ sung CSS `.is-phone` cho phép cuộn ngang cảm ứng mượt mà cho cả Mermaid lẫn D2 SVG nhúng mà không bị co nhỏ chữ. Tự động chuẩn hóa `flowchart LR` có $>3$ liên kết thành `flowchart TD` (bảo vệ comment và nhãn chuỗi).
 - **Tự Động Chữa Lành Thẻ Nhúng (`services/command/citations.py`, `coordinator.py`)**: Hàm `heal_artifact_embed_syntax()` chuẩn hóa toàn diện cú pháp thẻ nhúng Excalidraw (`_excalidraw_md` $\rightarrow$ `.excalidraw.md`), triệt tiêu link gãy khi lưu Topic Notes.
 - **NanoID 8 Ký Tự Chuẩn Obsidian Excalidraw (`services/excalidraw_worker.py`, `core/prompts/services.py`)**: Hàm `_ensure_nanoid_8` khử xung đột bằng `seen_ids`, đồng bộ mũi tên `startBinding/endBinding`, cập nhật prompt mẫu chuẩn 8 ký tự.
 - **Neo Giữ Tiêu Đề Khung Container (`services/diagram_base.py`, `services/excalidraw_worker.py`, `core/layout_router.py`)**: Cơ chế `containerHeaderOf` neo tiêu đề ở đỉnh khung, đồng bộ dịch chuyển khi canvas di dời, bổ sung Container Guard bỏ qua Sugiyama flattening trên các spatial clusters.
@@ -14,7 +15,7 @@ Hoàn thành toàn diện 8 Frontier Tickets theo Bản đồ Định hướng W
 - **Bảo Tồn Lớp Ngữ Nghĩa & Mã Hóa HTML Mermaid (`services/mermaid_worker.py`)**: Giữ nguyên các class `alert`, `law`, `accent`; mã hóa ký tự đặc biệt bằng HTML entities tiêu chuẩn (`#40;`, `#41;`, `#124;`) thay vì unicode lạ; phân tầng độ sáng cho nested subgraphs.
 - **Đồng Bộ Cấu Hình Hero Image SSOT (`config.yaml`, `core/config.py`, `services/command/styles.py`)**: Khai báo `gateway_image_model: "gemini-3.1-flash-image"` trong config SSOT, bổ sung Negative Constraints chống tranh hoạt hình/3D nhựa.
 - **Chữa Lành Ghi Chú Excalidraw Cũ (`attachments/`)**: Giải mã và chuẩn hóa ID 8 ký tự cùng toạ độ dương cho 2 sơ đồ đang nhúng thực tế (`mo_hinh_to_chuc_ai_yeung` và `ai_native_enterprise_os`).
-- **Test Suite**: Mở rộng lên **400/400 passed tests** (100% pass, 0 regressions).
+- **Test Suite**: Mở rộng lên **415/415 passed tests** (100% pass, 0 regressions).
 
 ## v8.13.2 — Command Deep Module Consolidation & Multi-Query Drainage Loop (ccba-codebase-design)
 Tái cấu trúc làm sâu module `services.command` theo 3 khuyến nghị từ đợt khảo sát kiến trúc:

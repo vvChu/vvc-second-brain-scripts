@@ -226,3 +226,197 @@ def test_clean_d2_sanitizes_tala_layout():
     assert "layout-engine: elk" in cleaned
     assert "layout-engine: tala" not in cleaned
 
+
+# --- Ticket 10: Portable Seam Locator & Tala Resolution Tests ---
+
+def test_find_d2_bin_priority_1_shutil_which():
+    """find_d2_bin must prioritize PATH via shutil.which."""
+    from services.d2_worker import find_d2_bin
+
+    with patch("shutil.which", return_value="C:\\system\\d2.exe"):
+        assert find_d2_bin() == "C:\\system\\d2.exe"
+
+
+def test_find_d2_bin_priority_2_tools_bin(tmp_path, monkeypatch):
+    """find_d2_bin must check vault tools/bin directory if not on PATH."""
+    import dataclasses
+    from core.config import cfg
+    from services.d2_worker import find_d2_bin
+
+    mock_cfg = dataclasses.replace(cfg, vault_root=tmp_path)
+    monkeypatch.setattr("services.d2_worker.cfg", mock_cfg)
+
+    tools_bin = tmp_path / "tools" / "bin"
+    tools_bin.mkdir(parents=True)
+    fake_exe = tools_bin / "d2.exe"
+    fake_exe.write_text("binary", encoding="utf-8")
+
+    with patch("shutil.which", return_value=None):
+        assert find_d2_bin() == str(fake_exe)
+
+
+def test_find_d2_bin_priority_3_winget(tmp_path, monkeypatch):
+    """find_d2_bin must resolve via WinGet Packages glob."""
+    from services.d2_worker import find_d2_bin
+
+    pkg_dir = tmp_path / "Microsoft" / "WinGet" / "Packages" / "Terrastruct.D2_Microsoft.Winget.Source_abcdef"
+    pkg_dir.mkdir(parents=True)
+    fake_exe = pkg_dir / "d2.exe"
+    fake_exe.write_text("binary", encoding="utf-8")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    with patch("shutil.which", return_value=None):
+        found = find_d2_bin()
+        assert found == str(fake_exe)
+
+
+def test_find_d2_bin_priority_4_programs(tmp_path, monkeypatch):
+    """find_d2_bin must resolve via Programs/d2/d2.exe."""
+    from services.d2_worker import find_d2_bin
+
+    prog_dir = tmp_path / "Programs" / "d2"
+    prog_dir.mkdir(parents=True)
+    fake_exe = prog_dir / "d2.exe"
+    fake_exe.write_text("binary", encoding="utf-8")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    with patch("shutil.which", return_value=None):
+        found = find_d2_bin()
+        assert found == str(fake_exe)
+
+
+def test_find_d2_bin_returns_none_when_uninstalled(tmp_path, monkeypatch):
+    """find_d2_bin returns None when no binary is found."""
+    from services.d2_worker import find_d2_bin
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    with patch("shutil.which", return_value=None):
+        assert find_d2_bin() is None
+
+
+def test_clean_d2_preserves_tala_when_local_binary_exists():
+    """When local D2 binary exists, _clean_d2 preserves tala layout engine."""
+    from services.d2_worker import _clean_d2
+
+    raw = "vars: { d2-config: { layout-engine: tala } }\na -> b"
+    with patch("services.d2_worker.find_d2_bin", return_value="C:\\bin\\d2.exe"):
+        cleaned = _clean_d2(raw)
+        assert "layout-engine: tala" in cleaned
+        assert "layout-engine: elk" not in cleaned
+
+
+def test_compile_d2_via_kroki_always_sanitizes_tala():
+    """compile_d2_via_kroki must sanitize tala layout to elk even if code contained tala."""
+    from services.d2_worker import compile_d2_via_kroki
+
+    captured_data = None
+
+    def fake_urlopen(req, timeout=15.0):
+        nonlocal captured_data
+        captured_data = req.data.decode("utf-8")
+        class FakeResp:
+            def read(self): return b"<svg>kroki-compiled</svg>"
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        return FakeResp()
+
+    with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+        raw = "vars: { d2-config: { layout-engine: tala } }\na -> b"
+        svg = compile_d2_via_kroki(raw)
+        assert svg == "<svg>kroki-compiled</svg>"
+        assert "layout-engine: elk" in captured_data
+        assert "layout-engine: tala" not in captured_data
+
+
+def test_compile_d2_alias_matches_compile_d2_to_svg():
+    """compile_d2 alias must be identical to compile_d2_to_svg."""
+    from services.d2_worker import compile_d2, compile_d2_to_svg
+
+    assert compile_d2 is compile_d2_to_svg
+
+
+def test_find_d2_bin_priority_3_winget_nested(tmp_path, monkeypatch):
+    """find_d2_bin must resolve nested WinGet package layout (e.g. bin/d2.exe)."""
+    from services.d2_worker import find_d2_bin
+
+    pkg_dir = tmp_path / "Microsoft" / "WinGet" / "Packages" / "Terrastruct.D2_Microsoft.Winget.Source_12345" / "bin"
+    pkg_dir.mkdir(parents=True)
+    fake_exe = pkg_dir / "d2.exe"
+    fake_exe.write_text("binary", encoding="utf-8")
+
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+
+    with patch("shutil.which", return_value=None):
+        found = find_d2_bin()
+        assert found == str(fake_exe)
+
+
+def test_compile_d2_to_svg_accepts_string_path(tmp_path):
+    """compile_d2_to_svg must accept output_svg_path as a string without crashing."""
+    out_svg_str = str(tmp_path / "sub" / "output.svg")
+
+    with patch("services.d2_worker.find_d2_bin", return_value=None):
+        with patch("services.d2_worker.compile_d2_via_kroki", return_value="<svg>via-str-path</svg>"):
+            res = compile_d2_to_svg("a -> b", output_svg_path=out_svg_str)
+            assert res == "<svg>via-str-path</svg>"
+            assert Path(out_svg_str).read_text(encoding="utf-8") == "<svg>via-str-path</svg>"
+
+
+def test_compile_d2_to_svg_stdout_saved_to_file(tmp_path):
+    """If local D2 outputs SVG to stdout instead of disk, save stdout to output_svg_path."""
+    out_svg = tmp_path / "stdout_diag.svg"
+
+    mock_res = MagicMock()
+    mock_res.stdout = b"<svg>from-stdout</svg>"
+
+    with patch("services.d2_worker.find_d2_bin", return_value="C:\\bin\\d2.exe"):
+        with patch("subprocess.run", return_value=mock_res):
+            res = compile_d2_to_svg("a -> b", output_svg_path=out_svg)
+            assert res == "<svg>from-stdout</svg>"
+            assert out_svg.exists()
+            assert out_svg.read_text(encoding="utf-8") == "<svg>from-stdout</svg>"
+
+
+def test_compile_d2_to_svg_local_failure_with_tala_falls_back_to_kroki_with_elk(tmp_path):
+    """When local D2 binary fails with tala, Kroki fallback must receive sanitized elk."""
+    captured_data = None
+
+    def fake_urlopen(req, timeout=15.0):
+        nonlocal captured_data
+        captured_data = req.data.decode("utf-8")
+        class FakeResp:
+            def read(self): return b"<svg>fallback-kroki-elk</svg>"
+            def __enter__(self): return self
+            def __exit__(self, *args): pass
+        return FakeResp()
+
+    raw_tala = "vars: { d2-config: { layout-engine: tala } }\na -> b"
+    out_svg = tmp_path / "fallback.svg"
+
+    with patch("services.d2_worker.find_d2_bin", return_value="C:\\bin\\d2.exe"):
+        with patch("subprocess.run", side_effect=RuntimeError("local tala license missing")):
+            with patch("urllib.request.urlopen", side_effect=fake_urlopen):
+                res = compile_d2_to_svg(raw_tala, output_svg_path=out_svg)
+                assert res == "<svg>fallback-kroki-elk</svg>"
+                assert "layout-engine: elk" in captured_data
+                assert "layout-engine: tala" not in captured_data
+                assert out_svg.read_text(encoding="utf-8") == "<svg>fallback-kroki-elk</svg>"
+
+
+def test_compile_d2_to_svg_cmd_batch_uses_shell():
+    """When local binary is a .cmd or .bat on Windows, subprocess.run must be invoked with shell=True."""
+    mock_res = MagicMock()
+    mock_res.stdout = b"<svg>batch-output</svg>"
+
+    with patch("services.d2_worker.find_d2_bin", return_value="C:\\tools\\d2.cmd"):
+        with patch("sys.platform", "win32"):
+            with patch("subprocess.run", return_value=mock_res) as mock_subproc:
+                res = compile_d2_to_svg("a -> b")
+                assert res == "<svg>batch-output</svg>"
+                mock_subproc.assert_called_once()
+                assert mock_subproc.call_args[1].get("shell") is True
+
+
+

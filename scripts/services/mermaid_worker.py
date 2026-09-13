@@ -29,6 +29,14 @@ _logger = logging.getLogger("vvc.mermaid")
 
 from core.prompts.services import MERMAID_GENERATE as _MERMAID_PROMPT  # noqa: E402
 
+__all__ = [
+    "trigger_mermaid_generation",
+    "normalize_mermaid_direction",
+    "_normalize_mermaid_direction",
+    "_clean_mermaid",
+    "_apply_academic_theme_to_mermaid",
+]
+
 
 def trigger_mermaid_generation(diagram_name: str, source_text: str) -> None:
     """Trigger background Mermaid diagram generation."""
@@ -107,7 +115,47 @@ def _clean_mermaid(raw: str) -> str:
         _logger.warning(f"Invalid Mermaid: doesn't start with valid type: {first_line}")
         return ""
 
-    return raw.strip()
+    return normalize_mermaid_direction(raw.strip())
+
+
+def normalize_mermaid_direction(code: str) -> str:
+    """Normalize Mermaid flowchart direction for mobile responsiveness.
+
+    If a flowchart uses LR (Left-to-Right) layout but contains more than 3
+    arrow connections (-->), automatically switch to TD (Top-Down) layout to
+    prevent horizontal overflow on narrow mobile screens.
+
+    Args:
+        code: Mermaid diagram source code.
+
+    Returns:
+        Mermaid source code with direction normalized to TD if arrow count > 3.
+    """
+    if not code:
+        return ""
+
+    if re.search(r"\b(?:flowchart|graph)\s+LR\b", code, re.IGNORECASE):
+        # Strip comments and quoted label strings to avoid false arrow matches in labels
+        clean_code = re.sub(r"%%[^\n]*", "", code)
+        clean_code = re.sub(r'"[^"]*"|\'[^\']*\'', "", clean_code)
+
+        # Count directional arrow links (--> or thick ==> or dotted -.-> / -. text .->)
+        arrow_count = len(re.findall(r"-->|==>|-\.->|\.->", clean_code))
+        if arrow_count > 3:
+            _logger.info(
+                f"Normalizing Mermaid direction: detected {arrow_count} links in LR flowchart, switching to TD for mobile responsiveness."
+            )
+            code = re.sub(
+                r"\b(flowchart|graph)\s+LR\b",
+                r"\1 TD",
+                code,
+                count=1,
+                flags=re.IGNORECASE,
+            )
+    return code
+
+
+_normalize_mermaid_direction = normalize_mermaid_direction
 
 
 def _format_mermaid_labels(code: str) -> str:
@@ -191,6 +239,8 @@ def _apply_academic_theme_to_mermaid(mermaid_code: str) -> str:
     """Post-processor that parses the Mermaid code, preserves custom semantic classes (alert, law),
     declares consistent Academic Grayscale Theme, and assigns unassigned nodes to appropriate classes.
     """
+    mermaid_code = normalize_mermaid_direction(mermaid_code)
+
     # 1. Extract existing class definitions and assignments to preserve custom semantic classes
     existing_class_defs = [
         line.strip() for line in mermaid_code.split("\n")

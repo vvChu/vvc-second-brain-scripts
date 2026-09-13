@@ -796,4 +796,94 @@ def test_layout_router_preserves_enclosing_containers():
     assert container["y"] == orig_c_y
 
 
+# --- Ticket 9: Responsive Diagrams for Mobile Tests ---
+
+def test_mermaid_mobile_responsive_direction_normalization():
+    """normalize_mermaid_direction must convert flowchart LR with >3 arrows to flowchart TD."""
+    from services.mermaid_worker import normalize_mermaid_direction
+
+    # <= 3 arrows: remains LR
+    lr_short = "flowchart LR\n  A --> B\n  B --> C\n  C --> D"
+    assert normalize_mermaid_direction(lr_short) == lr_short
+
+    # > 3 arrows chained: switches to TD
+    lr_chained = "flowchart LR\n  A --> B --> C --> D --> E"
+    norm_chained = normalize_mermaid_direction(lr_chained)
+    assert norm_chained.startswith("flowchart TD")
+
+    # > 3 arrows separate lines: switches to TD
+    lr_multiline = "flowchart LR\n  A --> B\n  B --> C\n  C --> D\n  D --> E"
+    norm_multiline = normalize_mermaid_direction(lr_multiline)
+    assert norm_multiline.startswith("flowchart TD")
+
+    # Thick and dotted arrows counted
+    lr_thick = "flowchart LR\n  A ==> B ==> C ==> D ==> E"
+    norm_thick = normalize_mermaid_direction(lr_thick)
+    assert norm_thick.startswith("flowchart TD")
+
+    # Already TD: remains TD
+    td_long = "flowchart TD\n  A --> B --> C --> D --> E"
+    assert normalize_mermaid_direction(td_long) == td_long
+
+    # Empty string handling
+    assert normalize_mermaid_direction("") == ""
+
+    # Quoted labels containing arrows do NOT falsely trigger TD
+    lr_quoted_arrows = (
+        'flowchart LR\n'
+        '  Step1["Input --> Output"] --> Step2["Validation --> Confirmation"]'
+    )
+    assert normalize_mermaid_direction(lr_quoted_arrows) == lr_quoted_arrows
+
+    # Comments containing arrows do NOT falsely trigger TD
+    lr_comments_arrows = (
+        "flowchart LR\n"
+        "  %% A --> B --> C --> D\n"
+        "  A --> B\n"
+        "  B --> C"
+    )
+    assert normalize_mermaid_direction(lr_comments_arrows) == lr_comments_arrows
+
+    # Dotted arrows with inline labels are counted correctly and trigger TD
+    lr_dotted_labeled = (
+        "flowchart LR\n"
+        "  A -. bước 1 .-> B\n"
+        "  B -. bước 2 .-> C\n"
+        "  C -. bước 3 .-> D\n"
+        "  D -. bước 4 .-> E"
+    )
+    norm_dotted = normalize_mermaid_direction(lr_dotted_labeled)
+    assert norm_dotted.startswith("flowchart TD")
+
+    # Solid arrows with inline text are counted correctly and trigger TD
+    lr_text_labeled = (
+        "flowchart LR\n"
+        "  A -- gửi yêu cầu --> B\n"
+        "  B -- xác thực --> C\n"
+        "  C -- xử lý dữ liệu --> D\n"
+        "  D -- phản hồi --> E"
+    )
+    norm_text = normalize_mermaid_direction(lr_text_labeled)
+    assert norm_text.startswith("flowchart TD")
+
+
+def test_mermaid_academic_theme_with_responsive_direction():
+    """_apply_academic_theme_to_mermaid must normalize flowchart LR with >3 arrows to flowchart TD."""
+    from services.mermaid_worker import _apply_academic_theme_to_mermaid
+
+    raw_code = (
+        "flowchart LR\n"
+        "  Step1[Bắt đầu] --> Step2[Xử lý]\n"
+        "  Step2 --> Step3[Đánh giá]\n"
+        "  Step3 --> Step4[Phê duyệt]\n"
+        "  Step4 --> Step5[Hoàn tất]"
+    )
+    themed = _apply_academic_theme_to_mermaid(raw_code)
+    # Direction should be normalized to TD
+    assert themed.startswith("flowchart TD")
+    # Academic theme classes should still be declared and assigned
+    assert "classDef principal" in themed
+    assert "class Step1 principal;" in themed
+
+
 

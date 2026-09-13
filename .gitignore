@@ -90,6 +90,8 @@ requirements-hub.txt
 .out-of-scope/
 
 # External CLI tools & local junctions
+tools/bin/
+*.exe
 .claude/
 .opencode/
 pwsh.cmd
