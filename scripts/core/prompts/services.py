@@ -151,6 +151,9 @@ QUY TẮC:
      * Tạo báo cáo/hồ sơ Word: chèn `![[tên_file.docx]]`
      * Trích xuất bảng kiểm/dữ liệu Excel/CSV: chèn `![[tên_file.csv]]` hoặc `![[tên_file.xlsx]]`
 6. Cấu trúc bài viết rõ ràng với heading và sections.
+7. BỐI CẢNH HỘI THOẠI NỐI TIẾP (khi có <previous_conversation_context>):
+   - Nếu ngữ cảnh có chứa thẻ `<previous_conversation_context>`, hãy hiểu người dùng đang hỏi nối tiếp hoặc đào sâu câu hỏi trước đó.
+   - Trả lời tập trung vào khía cạnh được yêu cầu thêm, kết nối liền mạch với thông tin đã trao đổi trước, không lặp lại toàn bộ bài viết cũ.
 """
 
 # ── Diagram Workers ────────────────────────────────────────────────────────

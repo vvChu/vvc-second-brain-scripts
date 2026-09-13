@@ -409,8 +409,9 @@ def test_style_parse_result_self_equality_hash_and_slicing():
 
     # 3. Slicing support
     assert r1[0:2] == ("fast", "Tóm tắt")
-    assert r1[:] == ("fast", "Tóm tắt", True)
-    assert r1[-1] is True
+    assert r1[0:3] == ("fast", "Tóm tắt", True)
+    assert r1[:] == ("fast", "Tóm tắt", True, "")
+    assert r1.is_fast is True
 
 
 def test_find_diagram_context_d2_variants_and_keyword_stripping():

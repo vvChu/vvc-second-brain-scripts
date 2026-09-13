@@ -4,6 +4,19 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.15.0 — Large Document Map-Reduce Chunker, Port 8045 Claude Opus/Sonnet & Conditional Multi-turn (Sprint P3)
+Hoàn thành toàn diện gói nâng cấp LLM OS v8.15.0 (Sprint P3) theo Bản đồ Wayfinder (`.md/wayfinder/llm_os_upgrade_sprint_p3/map.md`):
+- **Tích Hợp Antigravity Tools Proxy Port 8045 (`core/llm/gateway_client.py`, `config.yaml`, `core/config.py`)**: Kết nối trực tiếp Port 8045 trên Server Spark (`100.83.192.30:8045`) qua giao thức OpenAI `/v1/chat/completions` (zero new dependencies). Mở khóa suy luận chuyên sâu từ **Claude Opus 4.6 Thinking** (`claude-opus-4-6-thinking`) và **Claude Sonnet 4.6** (`claude-sonnet-4-6`).
+- **Tier 1 Self-Healing & Cooldown Circuit Breaker (`core/llm/gateway_client.py`)**: Khi Port 8045 gặp lỗi 503 (pool cooldown) hoặc 429, tự động kích hoạt soft cooldown 30s và giáng cấp tức thì sang `gemini-3.8-flash-high` trên Port 8090 mà không làm sập pipeline. Chèn Callout `> [!info]` thông báo giáng cấp thân thiện đầu bài viết qua `consume_gateway_downgraded()`.
+- **Hỗ Trợ Slash Commands Ép Model (`services/command/styles.py`)**: Nhận diện tiền tố ép model `/opus` (Claude Opus 4.6 Thinking), `/sonnet` (Claude Sonnet 4.6), `/pro` (Gemini 3.1 Pro), `/fast` hoặc `/flash` (Gemini 3.8 Flash High). Mở rộng `StyleParseResult` hỗ trợ unpacking linh hoạt 2, 3 và 4 phần tử (`style_name, clean_query, is_fast, explicit_model`).
+- **Engine Adaptive Text Chunking & Map-Reduce (`core/text_chunker.py`)**:
+  - `split_into_chunks()`: Phân tách tài liệu lớn theo ranh giới Heading (`#`, `##`, `###`) hoặc ngắt dòng đoạn văn (`\n\n`), duy trì overlap 1,000 ký tự.
+  - `map_reduce_summarize()`: Xử lý dứt điểm tài liệu khổng lồ (>200,000 ký tự), chấm dứt hiện tượng Silent Drop. Pha Map dùng `gemini-3.8-flash-high` tóm tắt siêu tốc từng chunk, Pha Reduce dùng model đích (Opus 4.6 hoặc model yêu cầu) tổng hợp thành ngữ cảnh mạch lạc. Tích hợp cho cả JIT URL Ingestion (`coordinator.py`) và Fleeting Brain Dump (`concept_synthesis.py`).
+- **Bộ Nhớ Ngắn Hạn Multi-turn Có Điều Kiện (`services/command/coordinator.py`, `core/prompts/services.py`)**:
+  - `detect_continuity_signal()`: Nhận diện các câu hỏi đào sâu ("ở trên", "vừa rồi", "phần 2", "giải thích thêm", "so sánh với cái trước"...).
+  - `extract_last_exchange()`: Trích xuất chính xác 1 lượt hỏi-đáp gần nhất ($\le 4,000$ ký tự) từ `Command.md` và nhúng vào thẻ `<previous_conversation_context>`.
+- **Toàn Bộ Bộ Kiểm Thử**: Bổ sung `test_gateway_routing_p3.py`, `test_core_text_chunker.py`, `test_command_multiturn.py`, nâng tổng số test lên **481/481 passed tests** (100% pass, 0 regressions).
+
 ## v8.14.0 — Command Module & Worker Ecosystem Optimization (P0 + P1 Package)
 Nâng cấp toàn diện hiệu năng và chất lượng tạo nội dung của Module Command theo chuẩn Double-Pass Adversarial Review:
 - **Kiểm Soát Artifacts Trong Prompt (`core/prompts/services.py`)**: Ràng buộc chặt chẽ điều kiện chèn sơ đồ trực quan và tài liệu DOCX/CSV/XLSX, triệt tiêu 100% bão tác vụ rác ngoài ý muốn. Phân định rõ ngữ nghĩa 3 loại sơ đồ (Excalidraw cho concept/matrix, Mermaid cho flowchart/sequence, D2 cho system topology).

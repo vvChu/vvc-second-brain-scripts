@@ -6,11 +6,15 @@ pass focused on QC, generating a Coordination Matrix as CSV or XLSX.
 
 from __future__ import annotations
 
+import csv
 import logging
 import re
 from pathlib import Path
-import pandas as pd
-import io
+
+try:
+    import pandas as pd
+except ImportError:
+    pd = None
 
 from core.config import cfg
 from core.log import log
@@ -70,7 +74,6 @@ def _generate_qc(filename: str, source_text: str, query: str) -> None:
                 if row:
                     row += [''] * (len(headers) - len(row))
                     data.append(row[:len(headers)])
-            df = pd.DataFrame(data, columns=headers)
         else:
             raise ValueError("No valid Markdown table found.")
         
@@ -80,9 +83,15 @@ def _generate_qc(filename: str, source_text: str, query: str) -> None:
         output_path = output_dir / filename
         
         if filename.endswith(".xlsx"):
+            if pd is None:
+                raise ImportError("pandas is required for .xlsx export")
+            df = pd.DataFrame(data, columns=headers)
             df.to_excel(str(output_path), index=False)
         else:
-            df.to_csv(str(output_path), index=False, encoding="utf-8-sig")
+            with open(output_path, "w", newline="", encoding="utf-8-sig") as f:
+                writer = csv.writer(f)
+                writer.writerow(headers)
+                writer.writerows(data)
             
         _logger.info(f"QC Matrix saved: {filename}")
         log("diagram", f"QC Matrix created: {filename}")

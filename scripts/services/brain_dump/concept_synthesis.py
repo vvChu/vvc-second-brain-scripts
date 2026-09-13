@@ -419,6 +419,23 @@ def _backlink_source_to_concepts(
 def _synthesize_and_save_concepts(dump_text: str, url_content: str, source_ref: str) -> list[tuple[str, str]]:
     today = date.today().isoformat()
     
+    # Adaptive chunking for massive dump text or URL content (>200,000 chars)
+    if len(dump_text) > 200_000:
+        try:
+            from core.text_chunker import map_reduce_summarize
+            _logger.info(f"Dump text exceeds 200k ({len(dump_text)} chars). Pre-summarizing with Map-Reduce.")
+            dump_text = map_reduce_summarize(dump_text, max_chars=200_000)
+        except Exception as e:
+            _logger.warning(f"Failed to pre-summarize large dump text: {e}")
+
+    if len(url_content) > 200_000:
+        try:
+            from core.text_chunker import map_reduce_summarize
+            _logger.info(f"URL content exceeds 200k ({len(url_content)} chars). Pre-summarizing with Map-Reduce.")
+            url_content = map_reduce_summarize(url_content, max_chars=200_000)
+        except Exception as e:
+            _logger.warning(f"Failed to pre-summarize large URL content: {e}")
+
     # Calculate proportional dynamic concept extraction limits based on raw input length
     total_len = len(dump_text) + len(url_content)
     if total_len < 5000:

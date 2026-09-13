@@ -91,27 +91,31 @@ WRITING_STYLES: dict[str, dict] = {
 
 
 class StyleParseResult:
-    """Polymorphic result container for parse_style supporting both 2-item and 3-item unpacking.
+    """Polymorphic result container for parse_style supporting 2-item, 3-item, and 4-item unpacking.
 
     Supports:
-        style_name, clean_query = parse_style(...)          # 2-item unpacking
-        style_name, clean_query, is_fast = parse_style(...)   # 3-item unpacking
-        res[0], res[1], res[2]                              # Indexing & slicing
-        res.style_name, res.clean_query, res.is_fast        # Attributes
-        res == (style_name, clean_query)                    # 2-tuple equality
-        res == (style_name, clean_query, is_fast)            # 3-tuple equality
-        res == other_res                                    # StyleParseResult equality
-        hash(res)                                           # Hashable (dict key / set member)
+        style_name, clean_query = parse_style(...)                     # 2-item unpacking
+        style_name, clean_query, is_fast = parse_style(...)            # 3-item unpacking
+        style_name, clean_query, is_fast, model = parse_style(...)     # 4-item unpacking
+        res[0], res[1], res[2], res[3]                                 # Indexing & slicing
+        res.style_name, res.clean_query, res.is_fast, res.explicit_model # Attributes
     """
 
-    def __init__(self, style_name: str, clean_query: str, is_fast: bool = False) -> None:
+    def __init__(
+        self,
+        style_name: str,
+        clean_query: str,
+        is_fast: bool = False,
+        explicit_model: str = "",
+    ) -> None:
         self.style_name = style_name
         self.clean_query = clean_query
         self.is_fast = is_fast
-        self._data = (style_name, clean_query, is_fast)
+        self.explicit_model = explicit_model
+        self._data = (style_name, clean_query, is_fast, explicit_model)
 
     def __len__(self) -> int:
-        return 3
+        return 4
 
     def __getitem__(self, idx: Any) -> Any:
         return self._data[idx]
@@ -121,10 +125,13 @@ class StyleParseResult:
             frame = sys._getframe(1)
             for inst in dis.get_instructions(frame.f_code):
                 if inst.offset >= frame.f_lasti:
-                    if inst.opname == "UNPACK_SEQUENCE" and inst.argval == 2:
-                        return iter((self.style_name, self.clean_query))
-                    elif inst.opname == "UNPACK_SEQUENCE" and inst.argval == 3:
-                        return iter(self._data)
+                    if inst.opname == "UNPACK_SEQUENCE":
+                        if inst.argval == 2:
+                            return iter((self.style_name, self.clean_query))
+                        elif inst.argval == 3:
+                            return iter((self.style_name, self.clean_query, self.is_fast))
+                        elif inst.argval == 4:
+                            return iter(self._data)
                     break
         except Exception:
             pass
@@ -135,6 +142,8 @@ class StyleParseResult:
             if len(other) == 2:
                 return (self.style_name, self.clean_query) == tuple(other)
             elif len(other) == 3:
+                return (self.style_name, self.clean_query, self.is_fast) == tuple(other)
+            elif len(other) == 4:
                 return self._data == tuple(other)
         elif isinstance(other, StyleParseResult):
             return self._data == other._data
@@ -144,44 +153,63 @@ class StyleParseResult:
         return hash(self._data)
 
     def __repr__(self) -> str:
-        return f"({self.style_name!r}, {self.clean_query!r}, {self.is_fast!r})"
+        return f"({self.style_name!r}, {self.clean_query!r}, {self.is_fast!r}, {self.explicit_model!r})"
 
 
-FAST_PREFIXES = {"/fast", "/quick", "/nhanh"}
+FAST_PREFIXES = {"/fast", "/quick", "/nhanh", "/flash"}
+
+MODEL_PREFIX_MAP: dict[str, str] = {
+    "/opus": "claude-opus-4-6-thinking",
+    "/sonnet": "claude-sonnet-4-6",
+    "/pro": "gemini-3.1-pro",
+    "/flash": "gemini-3.8-flash-high",
+    "/fast": "gemini-3.8-flash-high",
+    "/quick": "gemini-3.8-flash-high",
+    "/nhanh": "gemini-3.8-flash-high",
+}
 
 
-def parse_style(query: str) -> tuple[str, str, bool]:
-    """Parse style prefix and speed override from query.
+def parse_style(query: str) -> tuple[str, str, bool, str]:
+    """Parse style prefix, speed override, and model override from query.
 
     Args:
-        query: Raw query string possibly containing style/speed prefixes.
+        query: Raw query string possibly containing style/speed/model prefixes.
 
     Returns:
-        tuple-like object (style_name, clean_query, is_fast).
-        Supports 2-item unpacking (style_name, clean_query) for backward compatibility.
+        tuple-like object (style_name, clean_query, is_fast, explicit_model).
+        Supports 2-item, 3-item, and 4-item unpacking for backward compatibility.
     """
     stripped = query.strip()
-    all_prefixes: list[tuple[str, str]] = []
+    all_prefixes: list[tuple[str, str, str]] = []  # (prefix, type, value)
+
     for name, style in WRITING_STYLES.items():
         prefixes = [style["prefix"]] if isinstance(style["prefix"], str) else list(style["prefix"])
         prefixes.extend(style.get("aliases", []))
         for pfx in prefixes:
             if pfx:
-                all_prefixes.append((pfx, name))
+                all_prefixes.append((pfx, "style", name))
+
+    for pfx, model_id in MODEL_PREFIX_MAP.items():
+        all_prefixes.append((pfx, "model", model_id))
+
     # Sort prefixes by length descending so longer prefixes match first (e.g. /hero-image before /hero)
     all_prefixes.sort(key=lambda x: len(x[0]), reverse=True)
 
     matched_styles: list[str] = []
     is_fast = False
+    explicit_model = ""
 
     while stripped.startswith("/"):
         matched = False
-        for pfx, name in all_prefixes:
+        for pfx, pfx_type, val in all_prefixes:
             m = re.match(rf"^{re.escape(pfx)}(?:\s+|$)", stripped)
             if m:
-                if pfx in FAST_PREFIXES or name == "fast":
+                if pfx in FAST_PREFIXES or val == "fast":
                     is_fast = True
-                matched_styles.append(name)
+                if pfx_type == "model":
+                    explicit_model = val
+                elif pfx_type == "style":
+                    matched_styles.append(val)
                 stripped = stripped[m.end():].strip()
                 matched = True
                 break
@@ -199,5 +227,5 @@ def parse_style(query: str) -> tuple[str, str, bool]:
     if style_name == "fast":
         is_fast = True
 
-    clean_query = stripped if matched_styles else query
-    return StyleParseResult(style_name, clean_query, is_fast)  # type: ignore[return-value]
+    clean_query = stripped if (matched_styles or explicit_model) else query
+    return StyleParseResult(style_name, clean_query, is_fast, explicit_model)  # type: ignore[return-value]

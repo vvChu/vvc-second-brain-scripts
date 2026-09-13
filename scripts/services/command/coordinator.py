@@ -81,6 +81,7 @@ def generate_response(
     style_name: str,
     rag_context: str,
     is_fast: bool = False,
+    explicit_model: str = "",
 ) -> str:
     """Generate LLM response for a user query.
 
@@ -89,6 +90,7 @@ def generate_response(
         style_name: Writing style name.
         rag_context: Vault context string.
         is_fast: If True, overrides model routing to use task="synthesis" for speed.
+        explicit_model: Optional explicit model override (e.g. claude-opus-4-6-thinking).
 
     Returns:
         LLM response text.
@@ -106,7 +108,45 @@ def generate_response(
         task = "reasoning"
 
     active_call_llm = _get_active_call_llm()
+    if explicit_model:
+        return active_call_llm(prompt, model=explicit_model, task=task)
     return active_call_llm(prompt, task=task)
+
+
+def detect_continuity_signal(query: str) -> bool:
+    """Check if query references previous conversation turns."""
+    pattern = (
+        r"(ở trên|vừa rồi|trước đó|vừa nêu|bảng trên|phần \d+|mục \d+|ý thứ \d+|luận điểm \d+|"
+        r"nói rõ hơn|giải thích thêm|làm rõ|chi tiết hơn|tiếp tục|tiếp theo|bổ sung|so sánh với cái trước|"
+        r"above|previous|earlier|clarify|elaborate|continue|furthermore)"
+    )
+    return bool(re.search(pattern, query, re.IGNORECASE))
+
+
+def extract_last_exchange(command_content: str, max_chars: int = 4000) -> dict[str, str] | None:
+    """Extract the most recent Q&A exchange prior to the pending query in Command.md.
+
+    Returns:
+        Dict with 'query' and 'response', or None if no prior exchange.
+    """
+    if "## 🕰️ Lịch sử tương tác" not in command_content:
+        return None
+    history_part = command_content.split("## 🕰️ Lịch sử tương tác", 1)[1]
+    m_query = re.search(r"@AI:\s*(.*?)\s*---", history_part, re.DOTALL)
+    if not m_query:
+        return None
+    prev_query = m_query.group(1).strip()
+
+    after_query = history_part[m_query.end():]
+    m_resp = re.search(r">\s*\[!done\]\+?\s*[^\n]*\n((?:>[^\n]*\n?)+)", after_query)
+    if not m_resp:
+        return None
+    raw_lines = m_resp.group(1).splitlines()
+    clean_lines = [re.sub(r"^>\s?", "", line) for line in raw_lines]
+    prev_resp = "\n".join(clean_lines).strip()
+    if len(prev_resp) > max_chars:
+        prev_resp = prev_resp[:max_chars] + "\n...(cắt ngắn để bảo toàn ngân sách ngữ cảnh)..."
+    return {"query": prev_query, "response": prev_resp}
 
 
 def extract_and_fetch_urls(clean_query: str) -> tuple[str, list[str]]:
@@ -180,11 +220,21 @@ def extract_and_fetch_urls(clean_query: str) -> tuple[str, list[str]]:
             if not title:
                 title = url
 
-            trimmed_text = text.strip()[:4000]
+            stripped_text = text.strip()
+            if len(stripped_text) > 200_000:
+                try:
+                    from core.text_chunker import map_reduce_summarize
+                    processed_text = map_reduce_summarize(stripped_text, max_chars=200_000)
+                except Exception as e:
+                    _logger.warning(f"Map-Reduce summarization failed for {url}: {e}")
+                    processed_text = stripped_text[:4000]
+            else:
+                processed_text = stripped_text[:4000]
+
             safe_title = html.escape(title, quote=True)
             safe_url = html.escape(url, quote=True)
             xml_blocks.append(
-                f'<external_web_source url="{safe_url}" title="{safe_title}">\n{trimmed_text}\n</external_web_source>'
+                f'<external_web_source url="{safe_url}" title="{safe_title}">\n{processed_text}\n</external_web_source>'
             )
             fetched_urls.append(url)
         except Exception as e:
@@ -327,7 +377,11 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
             processed_count += 1
             continue
 
-        style_name, clean_query, is_fast = parse_style(query)
+        parsed_style = parse_style(query)
+        style_name = parsed_style.style_name
+        clean_query = parsed_style.clean_query
+        is_fast = parsed_style.is_fast
+        explicit_model = getattr(parsed_style, "explicit_model", "")
         style = WRITING_STYLES[style_name]
 
         if style_name == "hero-image":
@@ -355,12 +409,33 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
 
         rag_context, rag_refs = build_rag_context(clean_query)
 
+        # Multi-turn Context: if query references previous turn, inject last exchange
+        if detect_continuity_signal(clean_query):
+            last_exchange = extract_last_exchange(content)
+            if last_exchange:
+                prev_ctx = (
+                    f'<previous_conversation_context>\n'
+                    f'<user_previous_query>{html.escape(last_exchange["query"])}</user_previous_query>\n'
+                    f'<assistant_previous_response>\n{last_exchange["response"]}\n</assistant_previous_response>\n'
+                    f'</previous_conversation_context>'
+                )
+                rag_context = f"{prev_ctx}\n\n{rag_context}" if rag_context else prev_ctx
+                _logger.info(f"Injected multi-turn conversation context for query: {clean_query[:50]}...")
+
         # JIT URL Ingestion: fetch content from external URLs in query
         ext_context, fetched_urls = extract_and_fetch_urls(clean_query)
         if ext_context:
             rag_context = f"{ext_context}\n\n{rag_context}" if rag_context else ext_context
 
-        response = generate_response(clean_query, style_name, rag_context, is_fast=is_fast)
+        gen_kwargs = {"is_fast": is_fast}
+        if explicit_model:
+            gen_kwargs["explicit_model"] = explicit_model
+        response = generate_response(
+            clean_query,
+            style_name,
+            rag_context,
+            **gen_kwargs,
+        )
         if not response:
             log("error", "Command response generation failed")
             error_callout = (
@@ -370,6 +445,18 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
             if write_response(content, query, error_callout, style_name, style, target_file=cmd_file):
                 processed_count += 1
             break
+
+        # Check if gateway gracefully downgraded from Opus to Gemini due to 503 cooldown
+        try:
+            from core.llm.gateway_client import consume_gateway_downgraded
+            if consume_gateway_downgraded():
+                downgrade_callout = (
+                    "> [!info] ℹ️ Claude Opus 4.6 đang trong thời gian hồi phục tài khoản (cooldown), "
+                    "hệ thống đã tự động phản hồi bằng Gemini 3.8 Flash High để bạn không phải chờ đợi.\n\n"
+                )
+                response = downgrade_callout + response
+        except Exception:
+            pass
 
         # Clean up accidental quotes inside wikilinks generated by LLM: ![["filename.md"]] -> ![[filename.md]]
         response = clean_wikilink_quotes(response)

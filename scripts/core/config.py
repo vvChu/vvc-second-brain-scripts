@@ -65,6 +65,8 @@ class VaultConfig:
     # --- AI Gateway ---
     gateway_url: str = ""
     gateway_api_key: str = ""
+    gateway_proxy_url: str = ""
+    gateway_proxy_api_key: str = ""
     gateway_proxy_model: str = ""
     gateway_direct_model: str = ""
     gateway_synthesis_model: str = ""
@@ -169,6 +171,8 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
         # AI Gateway
         gateway_url=os.environ.get("VVC_GATEWAY_URL", gw.get("url", "")),
         gateway_api_key=os.environ.get("VVC_GATEWAY_KEY", gw.get("api_key", "")),
+        gateway_proxy_url=os.environ.get("VVC_GATEWAY_PROXY_URL", gw.get("proxy_url", "http://100.83.192.30:8045/v1")),
+        gateway_proxy_api_key=os.environ.get("VVC_GATEWAY_PROXY_KEY", gw.get("proxy_api_key", "")),
         gateway_proxy_model=gw.get("proxy_model", ""),
         gateway_direct_model=gw.get("direct_model", ""),
         gateway_synthesis_model=gw.get("synthesis_model", ""),

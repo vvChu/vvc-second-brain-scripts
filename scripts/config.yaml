@@ -21,6 +21,8 @@ vault:
 # --- AI Gateway (Server Spark via Tailscale VPN: 100.83.192.30) ---
 ai_gateway:
   url: "http://100.83.192.30:8090/v1"
+  proxy_url: "http://100.83.192.30:8045/v1"
+  proxy_api_key: ""  # Set via System Env Var: VVC_GATEWAY_PROXY_KEY (falls back to VVC_GATEWAY_KEY)
   api_key: ""  # Set via System Env Var or local .env: VVC_GATEWAY_KEY (never hardcode here)
   proxy_model: "gemini-3.8-flash-high"
   direct_model: "gemini-3.8-flash-high"
