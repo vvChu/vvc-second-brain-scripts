@@ -10,7 +10,7 @@ bundle: _core
 tier: kernel
 command: /ccba-llm-pipeline-patterns
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   author: "CCBA Hub"
 gpi:
   s: 3.0
@@ -279,6 +279,71 @@ Khi viết unit test cho các tệp vừa làm Inbox vừa lưu Lịch sử (Inb
 
 ---
 
+## Pattern 10: Dual-Scope Context for Visual Workers (Target Section + Full Reference)
+
+### Vấn đề
+Khi một bài viết dài (7,000–10,000 ký tự) kích hoạt worker sinh sơ đồ nền (Mermaid, Excalidraw, D2):
+- Nếu chỉ cắt cửa sổ hạn hẹp quanh thẻ nhúng (±500 ký tự) $\rightarrow$ **Đói ngữ cảnh (Context Starvation)**: Worker chỉ nhìn thấy tiêu đề và 1–2 câu mở bài, buộc phải suy diễn hư cấu toàn bộ nội dung sơ đồ.
+- Nếu nạp toàn bộ bài viết phẳng mà không phân biệt $\rightarrow$ **Lost in the Middle**: Mô hình không xác định được sơ đồ đang minh họa cho phần nào.
+
+### Giải pháp
+Cấu trúc ngữ cảnh phân tầng 2 lớp (Dual-Scope Context) với ngưỡng an toàn tối đa 12,000 ký tự (~3,000 tokens):
+```python
+# 1. Xác định phân mục chứa placeholder (từ heading ## trước đến heading kế tiếp)
+target_section = source_text[sec_start:sec_end].strip()
+
+# 2. Toàn bộ bài viết tham chiếu
+full_context = source_text[:12000].strip()
+
+return (
+    f"=== [TARGET SECTION (Trọng tâm sơ đồ)] ===\n{target_section}\n\n"
+    f"=== [FULL ARTICLE CONTEXT (Toàn bộ bài viết tham chiếu)] ===\n{full_context}"
+)
+```
+
+---
+
+## Pattern 11: Prompt Conditional Artifact Anchors (Anti-Spurious Worker Storm)
+
+### Vấn đề
+Khi prompt hệ thống quy định cú pháp nhúng sơ đồ/tệp dưới dạng mệnh lệnh khẳng định không điều kiện:
+`4. Vẽ sơ đồ: chèn ![[tên_sơ_đồ.mermaid.md|100%]]`
+$\rightarrow$ **100% các dòng mô hình (Claude Opus, Sonnet, Gemini Flash) đều tự động chèn sơ đồ vào mọi câu trả lời**, kể cả khi câu hỏi chỉ là giải thích định nghĩa đơn giản. Điều này gây bùng nổ tác vụ rác, chiếm dụng GPU và làm nghẽn hàng đợi Gateway.
+
+### Giải pháp
+Áp dụng **Rào cản Điều kiện Hóa (Conditional Artifact Directives)** và phân định ngữ nghĩa trực quan rõ ràng:
+1. **Điều kiện tiên quyết**: CHỈ chèn khi (1) người dùng yêu cầu trực tiếp, HOẶC (2) nội dung phân tích có quy trình nhiều bước hoặc kiến trúc hệ thống đa tầng phức tạp cần trực quan hóa; TUYỆT ĐỐI KHÔNG chèn khi chỉ giải thích khái niệm.
+2. **Phân định ngữ nghĩa sơ đồ**:
+   - Excalidraw: bản đồ tư duy, mô hình khái niệm trừu tượng, ma trận 2x2.
+   - Mermaid: lưu đồ tiến trình (Flowchart TD), chuỗi tuần tự (Sequence), cây phân cấp.
+   - D2: kiến trúc hạ tầng kỹ thuật, topology mạng, hệ thống phân tán.
+3. **Tài liệu đính kèm (DOCX/CSV/XLSX)**: BẮT BUỘC chỉ chèn khi người dùng có yêu cầu cụ thể.
+
+---
+
+## Pattern 12: Zero-Broken-Link Diagram Fallbacks & Windows Path Hygiene
+
+### Vấn đề
+1. Khi worker gặp lỗi mạng, timeout, hoặc lỗi cú pháp (LLM sinh mã sơ đồ lỗi), nếu kết thúc bằng `return` im lặng, trên Obsidian ghi chú sẽ chứa liên kết gãy đỏ `file not created yet`.
+2. Trên hệ điều hành Windows, nếu tên sơ đồ do LLM tạo ra chứa dấu ngoặc kép hoặc ký tự đặc biệt (`<>:"/\\|?*`), thao tác ghi đĩa sẽ crash với `OSError: [Errno 22] Invalid argument`.
+
+### Giải pháp
+1. **Fallback Placeholder**: Luôn tạo một file sơ đồ cảnh báo tối giản hợp lệ (Mermaid flowchart viền đỏ, Excalidraw warning card, D2 error SVG) thay vì bỏ dở:
+   ```python
+   # Mermaid Fallback ví dụ
+   mermaid_code = (
+       "flowchart TD\n"
+       f'    err["⚠️ Không thể khởi tạo sơ đồ: {safe_title}<br/><i>{safe_error}</i>"]\n'
+       "    style err fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;\n"
+   )
+   ```
+2. **Windows Path Sanitization**: Vệ sinh bắt buộc mọi tên file trước khi ghi đĩa:
+   ```python
+   safe_name = re.sub(r'[<>:"/\\|?*]', '_', raw_filename)
+   ```
+
+---
+
 ## Quick Reference — Model Routing cho Pipeline Tasks
 
 | Task trong pipeline | Model khuyến nghị | Lý do |
@@ -301,3 +366,7 @@ Khi viết unit test cho các tệp vừa làm Inbox vừa lưu Lịch sử (Inb
 | Think-Tag Stripping | `D:\VvC_Notes\scripts\core\llm\utils.py` |
 | Semantic Duplicate Detection | `D:\VvC_Notes\scripts\pipeline\post_process.py` |
 | Output Sanitization | xem `ai-gateway-sdk` SKILL.md §Output Processing |
+| Dual-Scope Context | `D:\VvC_Notes\scripts\services\diagram_base.py` |
+| Conditional Artifact Directives | `D:\VvC_Notes\scripts\core\prompts\services.py` |
+| Zero-Broken-Link Fallbacks | `D:\VvC_Notes\scripts\services\diagram_base.py` + workers |
+
