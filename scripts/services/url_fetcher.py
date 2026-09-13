@@ -89,7 +89,7 @@ def _extract_with_trafilatura(html: str) -> str:
     return ""
 
 
-def fetch_url(url: str, visual: bool = False) -> str:
+def fetch_url(url: str, visual: bool = False, transcribe: bool = True) -> str:
     """Fetch and extract article text from a URL.
 
     For non-YouTube articles, images are automatically extracted via
@@ -99,6 +99,7 @@ def fetch_url(url: str, visual: bool = False) -> str:
     Args:
         url: Web page URL.
         visual: For YouTube URLs, enable video frame extraction.
+        transcribe: For podcast URLs, enable audio download and transcription.
 
     Returns:
         Extracted text (with optional image metadata appended).
@@ -132,7 +133,10 @@ def fetch_url(url: str, visual: bool = False) -> str:
     try:
         from services.podcast import is_podcast_url, fetch_podcast
         if is_podcast_url(url):
-            podcast_text = fetch_podcast(url)
+            if transcribe:
+                podcast_text = fetch_podcast(url)
+            else:
+                podcast_text = fetch_podcast(url, transcribe=False)
             if podcast_text:
                 return podcast_text
     except Exception as e:

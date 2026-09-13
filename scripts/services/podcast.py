@@ -344,8 +344,8 @@ def _transcode_stream_to_mp3(stream_url: str) -> Path | None:
     return transcode_audio_to_mp3(stream_url, output_path=tmp_path)
 
 
-def fetch_podcast(url: str) -> str:
-    """Fetch podcast metadata and full audio transcript.
+def fetch_podcast(url: str, transcribe: bool = True) -> str:
+    """Fetch and parse a podcast episode from supported platforms or direct audio URLs.
 
     Orchestrates:
     1. HTTP fetch of podcast webpage with correct UTF-8 decoding.
@@ -405,7 +405,7 @@ def fetch_podcast(url: str) -> str:
     # 3. Audio Stream Resolution & Whisper Transcription
     transcript_text = ""
 
-    if stream_url:
+    if transcribe and stream_url:
         _logger.info(f"Resolved audio stream for {url_clean}, transcoding to 16kHz MP3...")
         mp3_path = _transcode_stream_to_mp3(stream_url)
         if mp3_path:

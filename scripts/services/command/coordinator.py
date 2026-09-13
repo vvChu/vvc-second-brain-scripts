@@ -139,8 +139,20 @@ def extract_and_fetch_urls(clean_query: str) -> tuple[str, list[str]]:
     for url in unique_urls:
         try:
             from services.url_fetcher import fetch_url
+            import inspect
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(fetch_url, url)
+                try:
+                    sig = inspect.signature(fetch_url)
+                    accepts_transcribe = "transcribe" in sig.parameters or any(
+                        p.kind == inspect.Parameter.VAR_KEYWORD for p in sig.parameters.values()
+                    )
+                except Exception:
+                    accepts_transcribe = False
+
+                if accepts_transcribe:
+                    future = executor.submit(fetch_url, url, transcribe=False)
+                else:
+                    future = executor.submit(fetch_url, url)
                 try:
                     text = future.result(timeout=10.0)
                 except concurrent.futures.TimeoutError:
