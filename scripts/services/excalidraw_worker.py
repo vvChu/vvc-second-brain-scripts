@@ -111,6 +111,18 @@ def _generate_excalidraw(diagram_name: str, source_text: str) -> None:
 
 
 
+def _ensure_nanoid_8(raw_id: str) -> str:
+    """Ensure element ID is strictly 8 alphanumeric characters for Obsidian Excalidraw parser."""
+    import hashlib
+    clean = re.sub(r"[^a-zA-Z0-9]", "", raw_id)
+    if len(clean) == 8:
+        return clean
+    if len(clean) > 8:
+        return clean[:8]
+    h = hashlib.sha256(raw_id.encode("utf-8")).hexdigest()
+    return (clean + h)[:8]
+
+
 def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
     """Validate and clean Excalidraw JSON output, and extract text elements."""
     # Extract JSON block using regex to ignore any conversational text
@@ -141,7 +153,7 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
             # 1. Heal: Extract "text" property from shapes into a separate text element
             if elem.get("type") in ("rectangle", "ellipse", "diamond") and "text" in elem:
                 text_val = elem.pop("text")
-                text_id = elem["id"] + "_text"
+                text_id = _ensure_nanoid_8(f"t_{elem['id']}")
                 
                 text_elem = {
                     "type": "text",
@@ -181,7 +193,6 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                     if "boundElements" not in c or not c["boundElements"]:
                         c["boundElements"] = []
                     
-                    # Fix: Handle cases where boundElements contains None or strings instead of dicts
                     cleaned_bounds = []
                     for b in c["boundElements"]:
                         if isinstance(b, dict):
@@ -195,17 +206,31 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
 
             new_elements.append(elem)
             
+        # Normalize all text element IDs strictly to 8 alphanumeric characters
+        id_map = {}
+        for elem in new_elements:
+            if elem.get("type") == "text" and "id" in elem:
+                old_id = elem["id"]
+                if len(old_id) != 8:
+                    new_id = _ensure_nanoid_8(old_id)
+                    id_map[old_id] = new_id
+                    elem["id"] = new_id
+
+        if id_map:
+            for elem in new_elements:
+                if "boundElements" in elem and isinstance(elem["boundElements"], list):
+                    for b in elem["boundElements"]:
+                        if isinstance(b, dict) and b.get("id") in id_map:
+                            b["id"] = id_map[b["id"]]
+
         import textwrap
         # Apply automatic text wrapping for text nodes
         for elem in new_elements:
             if elem.get("type") == "text" and "text" in elem:
                 text = elem["text"]
-                # Approximate container width based on element width or default 150
                 w = float(elem.get("width", 150))
-                # Approx 8 pixels per character for fontSize 16
                 max_chars = max(10, int(w / 8))
                 
-                # Split by existing newlines to respect manual breaks
                 lines = text.split("\n")
                 wrapped_lines = []
                 for line in lines:
@@ -215,10 +240,9 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                         wrapped_lines.append(line)
                 elem["text"] = "\n".join(wrapped_lines)
 
-                # Recalculate height based on actual line count after wrapping
                 num_lines = len(wrapped_lines)
                 font_size = elem.get("fontSize", 16)
-                line_height = font_size * 1.25  # Excalidraw default line spacing
+                line_height = font_size * 1.25
                 elem["height"] = num_lines * line_height
             
         # Apply deterministic layout engine via Central Router
@@ -231,7 +255,7 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
         text_blocks = []
         for elem in new_elements:
             if elem.get("type") == "text" and "text" in elem and "id" in elem:
-                text_blocks.append(f"{elem['text']}\n^{elem['id']}")
+                text_blocks.append(f"{elem['text']} ^{elem['id']}")
         text_content = "\n\n".join(text_blocks)
 
         return json.dumps(data, ensure_ascii=False, indent=2), text_content

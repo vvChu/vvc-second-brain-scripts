@@ -87,8 +87,14 @@ def apply_smart_layout(elements: list[dict]) -> None:
                     try:
                         g_outer = G.subgraph(outer_nodes)
                         outer_cycles = nx.cycle_basis(g_outer)
-                        if outer_cycles and len(max(outer_cycles, key=len)) >= 3:
-                            is_wheel = True
+                        if outer_cycles:
+                            longest_cycle = max(outer_cycles, key=len)
+                            # Outer cycle must span at least 70% of outer nodes
+                            if len(longest_cycle) >= max(3, int(len(outer_nodes) * 0.7)):
+                                hub_neighbors = set(G.neighbors(hub_candidate))
+                                cycle_conn = len(hub_neighbors.intersection(longest_cycle))
+                                if cycle_conn >= int(len(longest_cycle) * 0.7):
+                                    is_wheel = True
                     except Exception:
                         pass
             

@@ -113,10 +113,8 @@ def _position_shapes(
         shape["x"] = new_x
         shape["y"] = new_y
         shape["roughness"] = 0
-        if not shape.get("backgroundColor") or shape.get("backgroundColor") == "transparent":
-            shape["backgroundColor"] = cfg.excalidraw_background_color
-        if not shape.get("strokeColor"):
-            shape["strokeColor"] = cfg.excalidraw_stroke_color
+        shape["backgroundColor"] = cfg.excalidraw_background_color
+        shape["strokeColor"] = cfg.excalidraw_stroke_color
         shape["strokeWidth"] = 3 if sid == hub_id else cfg.excalidraw_stroke_width
         shape["fillStyle"] = "solid"
 
@@ -240,4 +238,18 @@ def apply_wheel_layout(
 
     _position_shapes(shapes, pos, elements, hub_id)
     _route_arrows(edges, shapes, hub_id, center_x, center_y)
+
+    # Normalize bounding box to prevent negative coordinates
+    if shapes:
+        min_x = min(float(s.get("x", 0.0)) for s in shapes.values())
+        min_y = min(float(s.get("y", 0.0)) for s in shapes.values())
+        shift_x = max(0.0, 80.0 - min_x) if min_x < 80.0 else 0.0
+        shift_y = max(0.0, 60.0 - min_y) if min_y < 60.0 else 0.0
+        if shift_x > 0.0 or shift_y > 0.0:
+            for el in elements:
+                if "x" in el:
+                    el["x"] = float(el.get("x", 0.0)) + shift_x
+                if "y" in el:
+                    el["y"] = float(el.get("y", 0.0)) + shift_y
+
     return True
