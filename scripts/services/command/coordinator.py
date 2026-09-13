@@ -6,6 +6,8 @@ resilient disk I/O, and background worker triggering.
 
 from __future__ import annotations
 
+import concurrent.futures
+import html
 import logging
 from pathlib import Path
 import re
@@ -105,6 +107,79 @@ def generate_response(
 
     active_call_llm = _get_active_call_llm()
     return active_call_llm(prompt, task=task)
+
+
+def extract_and_fetch_urls(clean_query: str) -> tuple[str, list[str]]:
+    """Detect HTTP/HTTPS URLs in query, fetch content via url_fetcher, and format as XML context.
+
+    Args:
+        clean_query: The cleaned user query text.
+
+    Returns:
+        Tuple of (formatted_xml_context, list_of_fetched_urls).
+    """
+    urls = re.findall(r"https?://[^\s)\]]+", clean_query)
+    if not urls:
+        return "", []
+
+    seen = set()
+    unique_urls = []
+    for u in urls:
+        clean_u = u.rstrip(".,;:\"'>")
+        if clean_u.endswith(")") and clean_u.count("(") < clean_u.count(")"):
+            clean_u = clean_u.rstrip(")")
+        if clean_u and clean_u not in seen:
+            seen.add(clean_u)
+            unique_urls.append(clean_u)
+
+    unique_urls = unique_urls[:5]
+
+    xml_blocks = []
+    fetched_urls = []
+    for url in unique_urls:
+        try:
+            from services.url_fetcher import fetch_url
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(fetch_url, url)
+                try:
+                    text = future.result(timeout=10.0)
+                except concurrent.futures.TimeoutError:
+                    _logger.warning(f"JIT URL fetch timed out (>10s) for {url}")
+                    continue
+
+            if not text or not text.strip():
+                continue
+
+            title = ""
+            heading_match = re.search(r"^#\s+(.+)$", text.strip(), re.MULTILINE)
+            if heading_match:
+                title = heading_match.group(1).strip()
+            if not title:
+                try:
+                    from services.url_fetcher import fetch_url_title
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as t_executor:
+                        t_future = t_executor.submit(fetch_url_title, url)
+                        try:
+                            title = t_future.result(timeout=3.0) or ""
+                        except (concurrent.futures.TimeoutError, Exception):
+                            title = ""
+                except Exception:
+                    title = ""
+            if not title:
+                title = url
+
+            trimmed_text = text.strip()[:4000]
+            safe_title = html.escape(title, quote=True)
+            safe_url = html.escape(url, quote=True)
+            xml_blocks.append(
+                f'<external_web_source url="{safe_url}" title="{safe_title}">\n{trimmed_text}\n</external_web_source>'
+            )
+            fetched_urls.append(url)
+        except Exception as e:
+            _logger.warning(f"Failed to fetch JIT URL {url}: {e}")
+            continue
+
+    return "\n\n".join(xml_blocks), fetched_urls
 
 
 def check_file_back(response: str, query: str) -> None:
@@ -251,6 +326,12 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
             )
             if not response:
                 log("error", "Hero-image response generation failed")
+                error_callout = (
+                    "> [!danger] ⚠️ Lỗi kết nối mô hình LLM\n"
+                    "> Không thể nhận phản hồi từ Gateway hoặc CLI. Vui lòng kiểm tra lại dịch vụ và thử lại sau."
+                )
+                if write_response(content, query, error_callout, style_name, style, target_file=cmd_file):
+                    processed_count += 1
                 break
             if write_response(content, query, response, style_name, style, target_file=cmd_file):
                 trigger_workers(response, clean_query)
@@ -262,9 +343,20 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
 
         rag_context, rag_refs = build_rag_context(clean_query)
 
+        # JIT URL Ingestion: fetch content from external URLs in query
+        ext_context, fetched_urls = extract_and_fetch_urls(clean_query)
+        if ext_context:
+            rag_context = f"{ext_context}\n\n{rag_context}" if rag_context else ext_context
+
         response = generate_response(clean_query, style_name, rag_context, is_fast=is_fast)
         if not response:
             log("error", "Command response generation failed")
+            error_callout = (
+                "> [!danger] ⚠️ Lỗi kết nối mô hình LLM\n"
+                "> Không thể nhận phản hồi từ Gateway hoặc CLI. Vui lòng kiểm tra lại dịch vụ và thử lại sau."
+            )
+            if write_response(content, query, error_callout, style_name, style, target_file=cmd_file):
+                processed_count += 1
             break
 
         # Clean up accidental quotes inside wikilinks generated by LLM: ![["filename.md"]] -> ![[filename.md]]

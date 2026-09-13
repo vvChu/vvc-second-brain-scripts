@@ -19,6 +19,7 @@ from core.log import log
 from services.diagram_base import (
     find_diagram_context,
     save_diagram_file,
+    save_fallback_diagram,
     select_template,
     spawn_worker,
     sanitize_mermaid,
@@ -76,6 +77,7 @@ def _generate_mermaid(diagram_name: str, source_text: str) -> None:
 
     if not mermaid_code:
         log("error", f"Mermaid generation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi kết nối hoặc LLM không trả về phản hồi", "mermaid")
         return
 
     # Clean up output
@@ -83,6 +85,7 @@ def _generate_mermaid(diagram_name: str, source_text: str) -> None:
 
     if not mermaid_code:
         log("error", f"Mermaid validation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi cú pháp Mermaid không hợp lệ", "mermaid")
         return
 
     # Post-process to automatically inject Grayscale Academic Theme classDefs & assignments

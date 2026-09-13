@@ -39,6 +39,7 @@ from services.command.topic_saver import (
     auto_save_topic,
 )
 from services.command.coordinator import (
+    extract_and_fetch_urls,
     generate_response,
     check_file_back,
     write_response,
@@ -59,6 +60,7 @@ from services.command.hero_image import (
 __all__ = [
     "handle_command",
     "process_command",
+    "extract_and_fetch_urls",
     "WRITING_STYLES",
     "reindex_citations",
     "embed_hero_image_in_topic",

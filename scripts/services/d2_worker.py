@@ -27,6 +27,7 @@ from core.prompts.services import D2_GENERATE
 from services.diagram_base import (
     find_diagram_context,
     save_diagram_file,
+    save_fallback_diagram,
     spawn_worker,
 )
 
@@ -268,11 +269,13 @@ def _generate_d2(diagram_name: str, source_text: str) -> None:
 
     if not d2_code:
         log("error", f"D2 generation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi kết nối hoặc LLM không trả về phản hồi", "d2")
         return
 
     d2_code = _clean_d2(d2_code)
     if not d2_code:
         log("error", f"D2 validation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi cú pháp mã D2", "d2")
         return
 
     # Derive filenames: e.g. "arch.d2.svg" -> "arch.d2", "arch.svg" -> "arch.d2"
@@ -300,6 +303,7 @@ def _generate_d2(diagram_name: str, source_text: str) -> None:
 
     if not svg_content:
         log("error", f"D2 compilation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi biên dịch D2 vector sang SVG", "d2")
         return
 
     # Ensure diagram file is recorded via save_diagram_file

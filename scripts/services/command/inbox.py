@@ -245,6 +245,8 @@ def format_response_callout(
         Formatted markdown block ending with double newline.
     """
     now = now_str if now_str is not None else datetime.now().strftime("%Y-%m-%d %H:%M")
+    if response.strip().startswith("> [!danger]"):
+        return f"@AI: {query} ---\n{response.strip()}\n\n"
     return (
         f"@AI: {query} ---\n"
         f"> [!done]+ {emoji} Trả lời ({now}) — *{style_name}*\n"

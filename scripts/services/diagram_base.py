@@ -6,11 +6,12 @@ Handles placeholder scanning, vision image retrieval, and threaded spawning.
 
 from __future__ import annotations
 
+import html
 import json
 import logging
+from pathlib import Path
 import re
 import threading
-from pathlib import Path
 from typing import Any
 
 from core.config import cfg
@@ -27,6 +28,7 @@ __all__ = [
     "resolve_chapter_images",
     "spawn_worker",
     "save_diagram_file",
+    "save_fallback_diagram",
     "load_templates",
     "select_template",
     "wrap_label",
@@ -364,14 +366,196 @@ def spawn_worker(target: callable, args: tuple, name: str = "diagram") -> None:
 
 def save_diagram_file(diagram_name: str, md_content: str, diagram_type: str) -> None:
     """Save diagram markdown content to the attachments directory."""
-    output_path = cfg.attachments_dir / diagram_name
+    safe_name = re.sub(r'[<>:"/\\|?*]', '_', diagram_name)
+    output_path = cfg.attachments_dir / safe_name
     try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(md_content, encoding="utf-8")
         _logger.info(f"{diagram_type.capitalize()} saved: {output_path.name}")
         from core.log import log
-        log("diagram", f"{diagram_type.capitalize()} created: {diagram_name}")
+        log("diagram", f"{diagram_type.capitalize()} created: {safe_name}")
     except OSError as e:
         _logger.error(f"Failed to save {diagram_type}: {e}")
+
+
+def save_fallback_diagram(diagram_name: str, error_reason: str, diagram_type: str) -> None:
+    """Save a minimal, valid warning diagram file to prevent broken links in Obsidian.
+
+    Creates an error/warning placeholder for Mermaid, Excalidraw, or D2 diagrams
+    when generation or validation fails.
+
+    Args:
+        diagram_name: Filename of target diagram (e.g. "flow.mermaid.md", "arch.excalidraw.md", "sys.d2.svg").
+        error_reason: Human-readable error reason for display.
+        diagram_type: Diagram engine type ("mermaid", "excalidraw", or "d2").
+    """
+    clean_error = error_reason.replace('"', "'").strip()
+
+    if diagram_type.lower() == "mermaid":
+        clean_title = Path(diagram_name).name
+        for ext in (".mermaid.md", ".mermaid", ".md"):
+            if clean_title.endswith(ext):
+                clean_title = clean_title[:-len(ext)]
+                break
+        clean_title = clean_title.replace("_", " ").title()
+
+        safe_title = sanitize_mermaid(clean_title)
+        safe_error = clean_error.replace('"', "'").replace("<", "&lt;").replace(">", "&gt;")
+
+        mermaid_code = (
+            "flowchart TD\n"
+            f'    err["⚠️ Không thể khởi tạo sơ đồ: {safe_title}<br/><i>{safe_error}</i>"]\n'
+            "    style err fill:#fee2e2,stroke:#ef4444,stroke-width:2px,color:#991b1b;\n"
+        )
+        md_content = f"```mermaid\n{mermaid_code}```\n"
+        save_diagram_file(diagram_name, md_content, "mermaid")
+
+    elif diagram_type.lower() == "excalidraw":
+        clean_title = Path(diagram_name).name
+        for ext in (".excalidraw.md", ".excalidraw", ".md"):
+            if clean_title.endswith(ext):
+                clean_title = clean_title[:-len(ext)]
+                break
+        clean_title = clean_title.replace("_", " ").title()
+
+        card_id = "carderr1"
+        text_id = "texterr1"
+        text_label = f"⚠️ Sơ đồ: {clean_title}\n{clean_error}"
+
+        elements = [
+            {
+                "id": card_id,
+                "type": "rectangle",
+                "x": 100,
+                "y": 100,
+                "width": 380,
+                "height": 100,
+                "angle": 0,
+                "strokeColor": "#ef4444",
+                "backgroundColor": "#fee2e2",
+                "fillStyle": "solid",
+                "strokeWidth": 2,
+                "strokeStyle": "dashed",
+                "roughness": 1,
+                "opacity": 100,
+                "groupIds": [],
+                "roundness": {"type": 3},
+                "seed": 1000,
+                "version": 1,
+                "versionNonce": 1,
+                "isDeleted": False,
+                "boundElements": [{"id": text_id, "type": "text"}],
+            },
+            {
+                "id": text_id,
+                "type": "text",
+                "x": 120,
+                "y": 125,
+                "width": 340,
+                "height": 50,
+                "angle": 0,
+                "strokeColor": "#991b1b",
+                "backgroundColor": "transparent",
+                "fillStyle": "solid",
+                "strokeWidth": 1,
+                "strokeStyle": "solid",
+                "roughness": 1,
+                "opacity": 100,
+                "groupIds": [],
+                "roundness": None,
+                "seed": 1001,
+                "version": 1,
+                "versionNonce": 1,
+                "isDeleted": False,
+                "boundElements": None,
+                "text": text_label,
+                "fontSize": 16,
+                "fontFamily": 3,
+                "textAlign": "center",
+                "verticalAlign": "middle",
+                "containerId": card_id,
+                "originalText": text_label,
+            },
+        ]
+
+        data = {
+            "type": "excalidraw",
+            "version": 2,
+            "source": "https://excalidraw.com",
+            "elements": elements,
+            "appState": {"viewBackgroundColor": "#ffffff", "currentItemFontFamily": 3},
+            "files": {},
+        }
+
+        json_str = json.dumps(data, ensure_ascii=False, indent=2)
+        text_content = f"{text_label} ^{text_id}"
+
+        md_content = (
+            "---\n"
+            "excalidraw-plugin: parsed\n"
+            "tags: [excalidraw]\n"
+            "---\n"
+            "==⚠  Switch to EXCALIDRAW VIEW in the MORE OPTIONS menu of this document. ⚠==\n\n"
+            "# Excalidraw Data\n\n"
+            "## Text Elements\n"
+            f"{text_content}\n\n"
+            "%%\n"
+            "## Drawing\n"
+            "```json\n"
+            f"{json_str}\n"
+            "```\n"
+            "%%\n"
+        )
+        save_diagram_file(diagram_name, md_content, "excalidraw")
+
+    elif diagram_type.lower() == "d2":
+        clean_title = Path(diagram_name).name
+        for ext in (".d2.svg", ".svg", ".d2"):
+            if clean_title.endswith(ext):
+                clean_title = clean_title[:-len(ext)]
+                break
+        clean_title = clean_title.replace("_", " ").title()
+
+        # Save raw .d2 error file alongside
+        if diagram_name.endswith(".d2.svg"):
+            d2_filename = diagram_name[:-4]
+        elif diagram_name.endswith(".svg"):
+            d2_filename = diagram_name[:-4] + ".d2"
+        else:
+            d2_filename = f"{diagram_name}.d2"
+
+        safe_d2_title = clean_title.replace('"', "'")
+        safe_d2_error = clean_error.replace('"', "'")
+        d2_code = (
+            f'error: "⚠️ Không thể khởi tạo sơ đồ: {safe_d2_title}\\n{safe_d2_error}" {{\n'
+            '  style: {\n'
+            '    fill: "#fee2e2"\n'
+            '    stroke: "#ef4444"\n'
+            '  }\n'
+            '}\n'
+        )
+        safe_d2_filename = re.sub(r'[<>:"/\\|?*]', '_', d2_filename)
+        try:
+            d2_path = cfg.attachments_dir / safe_d2_filename
+            d2_path.parent.mkdir(parents=True, exist_ok=True)
+            d2_path.write_text(d2_code, encoding="utf-8")
+        except OSError:
+            pass
+
+        # Generate minimal valid standalone SVG with XML entity escaping
+        safe_svg_title = html.escape(clean_title, quote=True)
+        safe_svg_error = html.escape(clean_error, quote=True)
+        svg_content = (
+            '<svg xmlns="http://www.w3.org/2000/svg" width="450" height="120" viewBox="0 0 450 120">\n'
+            '  <rect x="10" y="10" width="430" height="100" rx="8" fill="#fee2e2" stroke="#ef4444" stroke-width="2" stroke-dasharray="4 4"/>\n'
+            f'  <text x="225" y="50" font-family="sans-serif" font-size="14" font-weight="bold" fill="#991b1b" text-anchor="middle">⚠️ Sơ đồ D2: {safe_svg_title}</text>\n'
+            f'  <text x="225" y="75" font-family="sans-serif" font-size="12" fill="#7f1d1d" text-anchor="middle">{safe_svg_error}</text>\n'
+            '</svg>\n'
+        )
+        save_diagram_file(diagram_name, svg_content, "d2")
+    else:
+        _logger.warning(f"Unknown diagram type for fallback: {diagram_type}")
+
 
 
 # --- Template Library ---

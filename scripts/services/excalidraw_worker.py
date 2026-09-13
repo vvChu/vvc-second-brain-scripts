@@ -19,7 +19,13 @@ from pathlib import Path
 from core.config import cfg
 from core.log import log
 from core.llm import call_llm
-from services.diagram_base import find_diagram_context, spawn_worker, save_diagram_file, select_template
+from services.diagram_base import (
+    find_diagram_context,
+    spawn_worker,
+    save_diagram_file,
+    save_fallback_diagram,
+    select_template,
+)
 
 _logger = logging.getLogger("vvc.excalidraw")
 
@@ -93,12 +99,14 @@ def _generate_excalidraw(diagram_name: str, source_text: str) -> None:
 
     if not json_content:
         log("error", f"Excalidraw generation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi kết nối hoặc LLM không trả về phản hồi", "excalidraw")
         return
 
     # Validate and fix JSON + Extract text
     result = _validate_excalidraw_json(json_content)
     if not result:
         log("error", f"Excalidraw JSON validation failed: {diagram_name}")
+        save_fallback_diagram(diagram_name, "Lỗi cú pháp JSON Excalidraw", "excalidraw")
         return
         
     json_content, text_elements = result
