@@ -1,7 +1,7 @@
 ---
 name: ccba-llm-pipeline-patterns
 description: Anti-patterns và best practices cho việc xây dựng LLM processing pipelines.
-  Đúc rút từ VvC LLM OS (v5.1→v8.7, 2026).
+  Đúc rút từ VvC LLM OS (v5.1→v8.15, 2026).
 applies_to:
 - Phần mềm
 - Thẩm tra thiết kế
@@ -10,7 +10,7 @@ bundle: _core
 tier: kernel
 command: /ccba-llm-pipeline-patterns
 metadata:
-  version: "1.1.0"
+  version: "1.2.0"
   author: "CCBA Hub"
 gpi:
   s: 3.0
@@ -25,10 +25,12 @@ triggers:
 - rag pipeline
 - synthesis pipeline
 - self-correction
+- map reduce
+- multi turn memory
 ---
 # LLM Pipeline Patterns
 
-Pattern library cho các pipeline LLM multi-stage — đúc rút từ thực tế vận hành **VvC LLM OS** (v5.1 → v8.7, 2026). Mỗi pattern đều có ít nhất 1 incident thực tế chứng minh sự cần thiết.
+Pattern library cho các pipeline LLM multi-stage — đúc rút từ thực tế vận hành **VvC LLM OS** (v5.1 → v8.15, 2026). Mỗi pattern đều có ít nhất 1 incident thực tế chứng minh sự cần thiết.
 
 > [!IMPORTANT]
 > Đây là **documentation skill** — không có code cần install. Load file này khi thiết kế bất kỳ pipeline LLM nào trong CCBA.
@@ -122,7 +124,7 @@ if output_path.exists():
 # ✅ ĐÚNG — upsert thay vì insert
 yaml.safe_dump(new_data, stream, allow_unicode=True)  # overwrite toàn bộ
 
-# ❌ SAIÔ — append không kiểm tra
+# ❌ SAI — append không kiểm tra
 with open(output_path, "a") as f:
     f.write(new_content)  # → duplicate content mỗi lần chạy
 ```
@@ -225,7 +227,7 @@ Python `logging` mặc định ghi vào `stderr`. PowerShell coi bất kỳ outp
 
 ### Fix (1 dòng)
 ```python
-# ❌ SAIÔ — ghi vào stderr, PowerShell báo lỗi
+# ❌ SAI — ghi vào stderr, PowerShell báo lỗi
 logging.basicConfig(level=logging.INFO)
 
 # ✅ ĐÚNG — ghi vào stdout
@@ -344,10 +346,121 @@ $\rightarrow$ **100% các dòng mô hình (Claude Opus, Sonnet, Gemini Flash) đ
 
 ---
 
+## Pattern 13: Heading-Aware 2-Phase Map-Reduce for Mega Documents (>200,000 chars)
+
+### Vấn đề
+Khi tài liệu đầu vào (bài báo kỹ thuật, podcast transcript, sách điện tử, hoặc Fleeting Brain Dump tích lũy nhiều tuần) vượt quá 200,000 ký tự (~50,000–70,000 tokens):
+1. **Silent Information Drop**: Nếu áp dụng cắt thô cứng (Hard Truncation, ví dụ `text[:4000]`), hệ thống sẽ vứt bỏ 95%+ nội dung, làm mất hoàn toàn các luận điểm cốt lõi ở nửa sau tài liệu.
+2. **Context Blowout & Lost in the Middle**: Nếu nhồi nhét toàn bộ 200k+ ký tự vào một prompt duy nhất, chi phí inference tăng vọt, thời gian trễ kéo dài (>30s), và mô hình suy luận thường bỏ qua các chi tiết ở giữa văn bản.
+
+### Giải pháp: 2-Phase Map-Reduce với Sliding Window Overlap
+Tách biệt xử lý thành 2 pha độc lập, kết hợp ưu thế về tốc độ của mô hình siêu nhẹ và năng lực tổng hợp của mô hình lý luận sâu:
+
+```
+[Mega Document (>200,000 chars)]
+               │
+               ▼
+[Heading-Aware Chunking] ── (Ưu tiên # > ## > ### > \n\n, chunk_size=40k, overlap=1k)
+  ├── Chunk 1 (40k chars) ──► Pass 1 (Map): Gemini 3.8 Flash High (~2s) ──► Summary 1
+  ├── Chunk 2 (40k chars) ──► Pass 1 (Map): Gemini 3.8 Flash High (~2s) ──► Summary 2
+  └── Chunk N (40k chars) ──► Pass 1 (Map): Gemini 3.8 Flash High (~2s) ──► Summary N
+                                                     │
+                                                     ▼
+[Pass 2 (Reduce)] ◄── Ghép các bản tóm tắt (<20,000 chars)
+  │
+  └──► Claude Opus 4.6 Thinking / Gemini 3.1 Pro ──► Tổng hợp toàn diện & trích xuất cấu trúc
+```
+
+### Triển khai Tham Khảo
+```python
+def map_reduce_summarize(text: str, target_model: str = "gemini-3.8-flash-high", max_chars: int = 200_000) -> str:
+    """Tóm tắt Map-Reduce cho tài liệu vượt ngưỡng an toàn."""
+    if len(text) <= max_chars:
+        return text  # Zero-Truncation: Dưới ngưỡng thì giữ nguyên 100%
+
+    chunks = split_into_chunks(text, chunk_size=40_000, overlap=1_000)
+    summaries = []
+    for idx, chunk in enumerate(chunks):
+        map_prompt = (
+            f"Bạn là chuyên gia phân tích. Hãy tóm tắt trích xuất các luận điểm cốt lõi, "
+            f"số liệu, thực thể và cấu trúc logic của phần {idx+1}/{len(chunks)}:\n\n{chunk}"
+        )
+        chunk_sum = call_fast_llm(map_prompt, model=target_model)
+        summaries.append(f"### Phân đoạn {idx+1}/{len(chunks)}\n{chunk_sum}")
+
+    combined = "\n\n".join(summaries)
+    reduce_prompt = (
+        f"Hãy tổng hợp các phân đoạn tóm tắt sau thành một bản tóm tắt học thuật toàn diện, "
+        f"giữ trọn vẹn số liệu và luận điểm logic:\n\n{combined}"
+    )
+    final_summary = call_reasoning_llm(reduce_prompt)
+    return (
+        f'<large_document_map_reduce_summary original_chars="{len(text)}" chunks="{len(chunks)}">\n'
+        f"{final_summary}\n"
+        f"</large_document_map_reduce_summary>"
+    )
+```
+
+### Key Invariants
+1. **Heading-Aware Split Priority**: Ưu tiên cắt tại ranh giới ngữ nghĩa Markdown Heading (`#`, `##`, `###`), sau đó mới đến đoạn văn kép (`\n\n`), bảo đảm không cắt xé giữa chừng một bảng biểu hay danh sách.
+2. **Boundary Overlap**: Duy trì 1,000 ký tự gối đầu (overlap) giữa 2 chunk liên tiếp để không làm đứt mạch câu văn ở đường biên.
+3. **Traceable Metadata Tag**: Bản tóm tắt tổng hợp bắt buộc phải được bọc trong thẻ XML có thuộc tính `original_chars` và `chunks` để downstream modules biết tài liệu gốc đã qua tiền xử lý nén.
+
+---
+
+## Pattern 14: Conditional Short-term Multi-turn Memory & Prompt Budget Protection
+
+### Vấn đề
+Trong giao diện tương tác qua tệp tri thức (như `Command.md`), người dùng thường đặt các câu hỏi nối tiếp có tính phụ thuộc ngữ cảnh ("Ở trên bạn nói...", "Giải thích rõ hơn mục 2", "So sánh với cái vừa rồi"):
+1. **Stateless Amnesia**: Nếu pipeline hoàn toàn không lưu trạng thái (Stateless), mô hình không hiểu các đại từ thay thế, trả lời sai lệch hoặc yêu cầu người dùng nhắc lại câu hỏi.
+2. **Context Bloat & RAG Pollution**: Nếu nạp toàn bộ lịch sử trò chuyện (Full History) vào mọi lượt hỏi, số lượng input tokens phình to nhanh chóng, làm loãng không gian truy xuất của RAG (Vector/BM25) và tăng chi phí API không cần thiết.
+
+### Giải pháp: Conditional Injection + Single-Turn Bounded Extraction
+Chỉ kích hoạt nạp lịch sử khi phát hiện tín hiệu liên kết ngữ nghĩa (Semantic Continuity Signals), và chỉ bóc tách duy nhất $N=1$ lượt trao đổi gần nhất với giới hạn trần cố định:
+
+```
+User Query ──► [Regex Continuity Detector]
+                     │
+         ┌───────────┴───────────┐
+         ▼ (Không có tín hiệu)     ▼ (Có tín hiệu: "ở trên", "vừa rồi", "phần 2"...)
+    [Zero Context]          [Bounded Extraction (N=1, max 4,000 chars)]
+         │                         │
+         ▼                         ▼
+  Pure RAG Query            RAG Query + <previous_conversation_context>
+```
+
+### Triển khai Tham Khảo
+```python
+CONTINUITY_PATTERN = re.compile(
+    r"(ở trên|vừa rồi|trước đó|vừa nêu|bảng trên|phần \d+|mục \d+|ý thứ \d+|luận điểm \d+|"
+    r"nói rõ hơn|giải thích thêm|làm rõ|chi tiết hơn|tiếp tục|tiếp theo|bổ sung|so sánh với cái trước)",
+    re.IGNORECASE,
+)
+
+def detect_continuity_signal(query: str) -> bool:
+    """Xác định xem truy vấn có phụ thuộc vào lượt trao đổi trước không."""
+    return bool(CONTINUITY_PATTERN.search(query))
+
+def extract_last_exchange(file_content: str, max_chars: int = 4_000) -> dict[str, str] | None:
+    """Trích xuất duy nhất 1 lượt hỏi-đáp gần nhất ngay trước mục Input hiện tại."""
+    # Bóc tách câu hỏi và phản hồi gần nhất từ lịch sử
+    ...
+    return {"query": clean_q[:1000], "response": clean_r[:max_chars]}
+```
+
+### Key Invariants
+1. **Zero-Impact on Independent Queries**: Các câu hỏi độc lập (chiếm 80%+ số lượng) hoàn toàn không bị chèn thêm bất kỳ token ngữ cảnh lịch sử nào.
+2. **Bounded Memory Ceiling**: Bối cảnh lịch sử được giới hạn cứng tối đa 4,000 ký tự (~1,000 tokens), bảo đảm không lấn chiếm ngân sách của tài liệu RAG thực tế.
+3. **XML Isolation**: Đóng gói lịch sử bên trong thẻ `<previous_conversation_context>` riêng biệt với `<rag_context>` để LLM phân định rạch ròi giữa tri thức tham chiếu và ngữ cảnh hội thoại phụ.
+
+---
+
 ## Quick Reference — Model Routing cho Pipeline Tasks
 
 | Task trong pipeline | Model khuyến nghị | Lý do |
 |---|---|---|
+| Deep reasoning & synthesis | `claude-opus-4-6-thinking` | Port 8045 / Spark, deep academic reasoning, Map-Reduce Reduce phase |
+| Fast JIT Map / Interactive | `gemini-3.8-flash-high` | Port 8090, ~2s ultra-fast response, JIT URL Map phase, auto-downgrade fallback |
 | OCR / Vision extract | `ocr-primary` (Gemini Flash) | Fast, cheap, multimodal |
 | Draft synthesis (Pass 1) | `qwen-local-primary` | Fast local GPU, Vietnamese |
 | Quality check (Pass 2) | `reasoning-gemma` / `claude-sonnet-thinking` | Precision verify |
@@ -369,4 +482,5 @@ $\rightarrow$ **100% các dòng mô hình (Claude Opus, Sonnet, Gemini Flash) đ
 | Dual-Scope Context | `D:\VvC_Notes\scripts\services\diagram_base.py` |
 | Conditional Artifact Directives | `D:\VvC_Notes\scripts\core\prompts\services.py` |
 | Zero-Broken-Link Fallbacks | `D:\VvC_Notes\scripts\services\diagram_base.py` + workers |
-
+| Heading-Aware Map-Reduce | `D:\VvC_Notes\scripts\core\text_chunker.py` |
+| Conditional Multi-turn Memory | `D:\VvC_Notes\scripts\services\command\coordinator.py` |
