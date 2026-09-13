@@ -14,9 +14,91 @@ from core.prompts.services import (
 
 _logger = logging.getLogger("vvc.text_chunker")
 
-def orthographic_preprocess(text: str) -> str:
-    """Adaptive orthographic correction and markdown formatting with semantic chunking."""
+
+def is_structured_article(text: str) -> bool:
+    """Determine if a text is already a well-structured markdown article.
+
+    A structured article has clean headings, distinct paragraphs, and standard
+    sentence punctuation, while lacking spoken audio artifacts like timestamps
+    [MM:SS] or transcript section headers.
+
+    Such texts do not need destructive LLM rewriting/chunking, preserving the
+    author's original wording and saving significant latency and token costs.
+
+    Args:
+        text: Raw input text.
+
+    Returns:
+        True if the text is deemed an already-structured article eligible for bypass.
+    """
+    if not text or len(text.strip()) < 200:
+        return False
+
+    clean_text = text.strip()
+
+    # 1. Any timestamps [MM:SS], [H:MM:SS], or [HH:MM:SS] indicate video/audio transcripts
+    if re.search(r"\[\d+:\d+(?::\d+)?\]", clean_text):
+        return False
+
+    # 2. Known transcript / video section markers
+    audio_markers = [
+        "## 🎙️ Lời thoại âm thanh",
+        "## 🎬 Hình ảnh trực quan",
+        "## 🎞️",
+    ]
+    if any(marker in clean_text for marker in audio_markers):
+        return False
+
+    # 3. Check for Markdown headings (^#{1,4}\s+)
+    headings = re.findall(r"^#{1,4}\s+\S.*$", clean_text, flags=re.MULTILINE)
+
+    # 4. Check for paragraph breaks (\n\n+)
+    paragraphs = [p.strip() for p in re.split(r"\n\s*\n", clean_text) if p.strip()]
+
+    # 5. Check punctuation density (sentence-ending punctuation . ! ?)
+    # Exclude code fences and headings when measuring prose punctuation
+    prose_sample = re.sub(r"```[\s\S]*?```", "", clean_text)
+    prose_sample = re.sub(r"^#{1,6}\s+.*$", "", prose_sample, flags=re.MULTILINE)
+    words = re.findall(r"\b\w+\b", prose_sample)
+    punctuations = re.findall(r"[.!?]", prose_sample)
+
+    word_count = len(words)
+    punc_count = len(punctuations)
+
+    # If text has substantial words, verify healthy punctuation density (speech-to-text lacks punctuation)
+    if word_count >= 50:
+        if punc_count < max(1, word_count // 40):
+            return False
+
+    # 6. Structural Criteria:
+    # Option A: At least 2 distinct markdown headings and at least 2 paragraphs
+    if len(headings) >= 2 and len(paragraphs) >= 2:
+        return True
+
+    # Option B: At least 1 markdown heading and at least 3 well-formed paragraphs with healthy punctuation
+    if len(headings) >= 1 and len(paragraphs) >= 3 and punc_count >= 5:
+        return True
+
+    return False
+
+
+def orthographic_preprocess(text: str, force: bool = False) -> str:
+    """Adaptive orthographic correction and markdown formatting with semantic chunking.
+
+    Args:
+        text: Input text to preprocess.
+        force: If True, forces orthographic chunking and LLM correction even for
+            well-structured articles. Defaults to False.
+
+    Returns:
+        Processed text, either bypassed verbatim or corrected via LLM chunks.
+    """
     if not text or len(text) < 50:
+        return text
+
+    # Smart Bypass: Keep well-structured markdown articles intact
+    if not force and is_structured_article(text):
+        _logger.info("Text is already a well-structured markdown article. Bypassing orthographic preprocessing.")
         return text
 
     # Semantic Chunking
