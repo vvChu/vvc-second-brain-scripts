@@ -149,31 +149,62 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
         new_elements = []
         containers = {el["id"]: el for el in elements if "id" in el}
 
+        def _is_enclosing_container(shape: dict) -> bool:
+            if shape.get("type") not in ("rectangle", "ellipse", "diamond"):
+                return False
+            sx, sy = shape.get("x", 0), shape.get("y", 0)
+            sw, sh = shape.get("width", 100), shape.get("height", 100)
+            for o in elements:
+                if o is not shape and o.get("type") in ("rectangle", "ellipse", "diamond"):
+                    ox, oy = o.get("x", 0), o.get("y", 0)
+                    ow, oh = o.get("width", 50), o.get("height", 50)
+                    if sx <= ox and sy <= oy and (sx + sw) >= (ox + ow) and (sy + sh) >= (oy + oh) and (sw * sh > ow * oh * 1.5):
+                        return True
+            return False
+
         for elem in elements:
             # 1. Heal: Extract "text" property from shapes into a separate text element
             if elem.get("type") in ("rectangle", "ellipse", "diamond") and "text" in elem:
                 text_val = elem.pop("text")
                 text_id = _ensure_nanoid_8(f"t_{elem['id']}")
+                is_enclosing = _is_enclosing_container(elem)
                 
-                text_elem = {
-                    "type": "text",
-                    "id": text_id,
-                    "x": elem.get("x", 0) + 10,
-                    "y": elem.get("y", 0) + 10,
-                    "width": elem.get("width", 100) - 20,
-                    "height": 20,
-                    "text": text_val,
-                    "fontSize": 16,
-                    "fontFamily": 3,
-                    "textAlign": "center",
-                    "verticalAlign": "middle",
-                    "containerId": elem["id"]
-                }
-                new_elements.append(text_elem)
-                
-                if "boundElements" not in elem or not elem["boundElements"]:
-                    elem["boundElements"] = []
-                elem["boundElements"].append({"id": text_id, "type": "text"})
+                if is_enclosing:
+                    text_elem = {
+                        "type": "text",
+                        "id": text_id,
+                        "x": elem.get("x", 0),
+                        "y": elem.get("y", 0) + 14,
+                        "width": elem.get("width", 100),
+                        "height": 36,
+                        "text": text_val,
+                        "fontSize": 13,
+                        "fontFamily": 3,
+                        "textAlign": "center",
+                        "verticalAlign": "top",
+                        "containerId": None
+                    }
+                    new_elements.append(text_elem)
+                else:
+                    text_elem = {
+                        "type": "text",
+                        "id": text_id,
+                        "x": elem.get("x", 0) + 10,
+                        "y": elem.get("y", 0) + 10,
+                        "width": elem.get("width", 100) - 20,
+                        "height": 20,
+                        "text": text_val,
+                        "fontSize": 16,
+                        "fontFamily": 3,
+                        "textAlign": "center",
+                        "verticalAlign": "middle",
+                        "containerId": elem["id"]
+                    }
+                    new_elements.append(text_elem)
+                    
+                    if "boundElements" not in elem or not elem["boundElements"]:
+                        elem["boundElements"] = []
+                    elem["boundElements"].append({"id": text_id, "type": "text"})
             
             # 2. Heal: Ensure all text elements have required properties
             if elem.get("type") == "text":
@@ -190,19 +221,27 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                 c_id = elem.get("containerId")
                 if c_id and c_id in containers:
                     c = containers[c_id]
-                    if "boundElements" not in c or not c["boundElements"]:
-                        c["boundElements"] = []
-                    
-                    cleaned_bounds = []
-                    for b in c["boundElements"]:
-                        if isinstance(b, dict):
-                            cleaned_bounds.append(b)
-                        elif isinstance(b, str):
-                            cleaned_bounds.append({"id": b, "type": "text"})
-                    c["boundElements"] = cleaned_bounds
-                    
-                    if not any(b.get("id") == elem["id"] for b in c["boundElements"]):
-                        c["boundElements"].append({"id": elem["id"], "type": "text"})
+                    # If container is an enclosing subgraph frame, unbind to prevent middle centering
+                    if _is_enclosing_container(c):
+                        elem["containerId"] = None
+                        elem["verticalAlign"] = "top"
+                        elem["y"] = c.get("y", 0) + 14
+                        if "boundElements" in c and isinstance(c["boundElements"], list):
+                            c["boundElements"] = [b for b in c["boundElements"] if (b.get("id") if isinstance(b, dict) else b) != elem["id"]]
+                    else:
+                        if "boundElements" not in c or not c["boundElements"]:
+                            c["boundElements"] = []
+                        
+                        cleaned_bounds = []
+                        for b in c["boundElements"]:
+                            if isinstance(b, dict):
+                                cleaned_bounds.append(b)
+                            elif isinstance(b, str):
+                                cleaned_bounds.append({"id": b, "type": "text"})
+                        c["boundElements"] = cleaned_bounds
+                        
+                        if not any(b.get("id") == elem["id"] for b in c["boundElements"]):
+                            c["boundElements"].append({"id": elem["id"], "type": "text"})
 
             new_elements.append(elem)
             
