@@ -37,7 +37,7 @@ def _generate_qc(filename: str, source_text: str, query: str) -> None:
     try:
         csv_text = call_llm(
             _QC_PROMPT.format(query=query, context=source_text[:2000]),
-            task="reasoning",
+            task="synthesis",
         )
         
         if not csv_text:

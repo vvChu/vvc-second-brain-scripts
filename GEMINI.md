@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Project Context (v8.13.3)
+# 🧠 VvC Second Brain — Project Context (v8.14.0)
 
 > [!NOTE] Context File Hierarchy
 > | File | Role | Authority |

@@ -43,6 +43,7 @@ from services.command.coordinator import (
     check_file_back,
     write_response,
     handle_command,
+    process_command,
 )
 from services.command.hero_image import (
     find_topic_note,
@@ -57,6 +58,7 @@ from services.command.hero_image import (
 # Public Seam
 __all__ = [
     "handle_command",
+    "process_command",
     "WRITING_STYLES",
     "reindex_citations",
     "embed_hero_image_in_topic",

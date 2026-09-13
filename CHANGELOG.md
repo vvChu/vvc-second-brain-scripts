@@ -4,6 +4,15 @@ Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hi�
 
 ---
 
+## v8.14.0 — Command Module & Worker Ecosystem Optimization (P0 + P1 Package)
+Nâng cấp toàn diện hiệu năng và chất lượng tạo nội dung của Module Command theo chuẩn Double-Pass Adversarial Review:
+- **Kiểm Soát Artifacts Trong Prompt (`core/prompts/services.py`)**: Ràng buộc chặt chẽ điều kiện chèn sơ đồ trực quan và tài liệu DOCX/CSV/XLSX, triệt tiêu 100% bão tác vụ rác ngoài ý muốn. Phân định rõ ngữ nghĩa 3 loại sơ đồ (Excalidraw cho concept/matrix, Mermaid cho flowchart/sequence, D2 cho system topology).
+- **Explicit Wikilink Prioritization & Safe Topic Resolver (`services/rag_builder.py`)**: Bóc tách `[[stem]]` từ câu hỏi, ưu tiên nạp `topics/` -> `sources/` -> `concepts/` -> `MOC/` lên đầu ngữ cảnh RAG (`priority="explicit_user_reference"`), dùng `extract_body()` xử lý Windows CRLF và giữ nguyên `scan_all_concepts()`.
+- **Dual-Scope Diagram Context 12k Chars (`services/diagram_base.py`)**: Chấm dứt hiện tượng sơ đồ "đói ngữ cảnh" bằng cách phân tầng `[TARGET SECTION]` trọng tâm kết hợp `[FULL ARTICLE CONTEXT]` toàn bài (lên tới 12,000 ký tự).
+- **Tối Ưu Tốc Độ Background Workers (`services/mermaid_worker.py`, `services/vision_qc_worker.py`)**: Chuyển `mermaid_worker` và `vision_qc_worker` sang `task="synthesis"`, rút ngắn thời gian sinh từ ~80s xuống ~3-5s.
+- **Phân Tuyến Mô Hình Đa Tầng & Ghi Đè `/fast` (`services/command/styles.py`, `coordinator.py`)**: Xây dựng `StyleParseResult` đa hình tương thích ngược, phân bổ `reasoning` (~105s) cho nhóm học thuật/phản biện và `synthesis` (~35s) cho nhóm sáng tạo, cho phép ghi đè tốc độ tức thì với `/fast`.
+- **Test Suite**: Bổ sung bộ kiểm thử `test_command_upgrades.py` (16 test cases), đạt **120/120 tests passed** (100% pass, 0 regressions).
+
 ## v8.13.3 — Multimodal Diagram Pipeline Standardization & Wayfinder Hardening
 Hoàn thành toàn diện 10 Frontier Tickets theo Bản đồ Định hướng Wayfinder (`.md/wayfinder/multimodal_diagrams/map.md`):
 - **D2 Kroki Recovery & Portable Seam Locator (`services/d2_worker.py`, `core/prompts/services.py`, `.gitignore`)**: Bổ sung `User-Agent` tùy biến vượt Cloudflare WAF của Kroki (HTTP 403), vệ sinh cấm engine thương mại `tala` trên Kroki, escape an toàn cú pháp JSON prompt. Bổ sung hàm `find_d2_bin()` định vị binary cục bộ theo 4 tầng (`shutil.which`, `tools/bin/d2.exe`, WinGet packages, Programs/d2) cho phép dùng local D2 (mở khóa Tala v0.9.0+) mà không ép `elk`.

@@ -74,25 +74,35 @@ def _safe_write_command_file(target_file: Path, content: str, max_retries: int =
     return False
 
 
-def generate_response(query: str, style_name: str, rag_context: str) -> str:
+def generate_response(
+    query: str,
+    style_name: str,
+    rag_context: str,
+    is_fast: bool = False,
+) -> str:
     """Generate LLM response for a user query.
 
     Args:
         query: Query string.
         style_name: Writing style name.
         rag_context: Vault context string.
+        is_fast: If True, overrides model routing to use task="synthesis" for speed.
 
     Returns:
         LLM response text.
     """
-    style = WRITING_STYLES[style_name]
+    style = WRITING_STYLES.get(style_name, WRITING_STYLES["professional"])
     prompt = _RESPONSE_PROMPT.format(
         style_instruction=style["system"],
         rag_context=rag_context or "(Không tìm thấy context liên quan trong vault)",
         query=query,
     )
 
-    task = "synthesis" if style_name in ("fast", "hero-image") else "reasoning"
+    if is_fast or style_name in ("tim-urban", "eli5", "storyteller", "bullet", "socratic", "fast", "hero-image"):
+        task = "synthesis"
+    else:
+        task = "reasoning"
+
     active_call_llm = _get_active_call_llm()
     return active_call_llm(prompt, task=task)
 
@@ -230,7 +240,7 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
             processed_count += 1
             continue
 
-        style_name, clean_query = parse_style(query)
+        style_name, clean_query, is_fast = parse_style(query)
         style = WRITING_STYLES[style_name]
 
         if style_name == "hero-image":
@@ -252,7 +262,7 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
 
         rag_context, rag_refs = build_rag_context(clean_query)
 
-        response = generate_response(clean_query, style_name, rag_context)
+        response = generate_response(clean_query, style_name, rag_context, is_fast=is_fast)
         if not response:
             log("error", "Command response generation failed")
             break
@@ -277,3 +287,8 @@ def handle_command(command_file: Path | None = None, max_queries: int = 10) -> i
             break
 
     return processed_count
+
+
+# Alias for backward-compatibility / alternative calling convention
+process_command = handle_command
+

@@ -71,7 +71,7 @@ def _generate_mermaid(diagram_name: str, source_text: str) -> None:
 
     mermaid_code = call_llm(
         prompt,
-        task="reasoning",
+        task="synthesis",
     )
 
     if not mermaid_code:

@@ -140,10 +140,17 @@ QUY TẮC:
 1. Trả lời bằng tiếng Việt (giữ nguyên thuật ngữ tiếng Anh khi cần).
 2. Tích cực trích dẫn nguồn từ NGỮ CẢNH bằng cách sử dụng cú pháp inline wikilink của Obsidian ngay trong câu văn: `[[file|[id]]]` (ví dụ: `[[tai_tao_to_chuc|[1]]]`, `[[ly_luan_he_sinh_thai|[2]]]`). TUYỆT ĐỐI KHÔNG chỉ viết ngoặc vuông trống không như `[1]`.
 3. KHÔNG TỰ TẠO MỤC "TÀI LIỆU THAM CHIẾU" Ở CUỐI BÀI. Hệ thống sẽ tự động phân tích các liên kết bạn dùng và tạo danh sách này.
-4. Vẽ sơ đồ: chèn ![[tên_sơ_đồ.excalidraw.md|100%]], ![[tên_sơ_đồ.mermaid.md|100%]] hoặc ![[tên_sơ_đồ.d2.svg|100%]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
-5. Tạo báo cáo/hồ sơ Word: chèn ![[tên_file.docx]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
-6. Trích xuất Excel/CSV: chèn ![[tên_file.csv]] hoặc ![[tên_file.xlsx]] (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP)
-7. Cấu trúc bài viết rõ ràng với heading và sections.
+4. QUY TẮC CHÈN SƠ ĐỒ TRỰC QUAN (Artifact Diagrams):
+   - ĐIỀU KIỆN TIÊN QUYẾT: CHỈ chèn sơ đồ khi (1) người dùng yêu cầu trực tiếp, HOẶC (2) nội dung phân tích có quy trình/tiến trình nhiều bước phức tạp hoặc kiến trúc hệ thống đa tầng cần trực quan hóa. TUYỆT ĐỐI KHÔNG tự ý chèn sơ đồ khi chỉ giải thích định nghĩa hay khái niệm đơn thuần.
+   - PHÂN ĐỊNH RÕ LOẠI SƠ ĐỒ (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP):
+     * Excalidraw: dùng cho bản đồ tư duy, mô hình khái niệm trừu tượng, khung so sánh 2x2, ma trận -> chèn `![[tên_sơ_đồ.excalidraw.md|100%]]`
+     * Mermaid: dùng cho lưu đồ tiến trình (Flowchart TD), chuỗi tuần tự (Sequence), cây phân cấp -> chèn `![[tên_sơ_đồ.mermaid.md|100%]]`
+     * D2: dùng cho kiến trúc hạ tầng kỹ thuật, topology mạng, hệ thống phân tán -> chèn `![[tên_sơ_đồ.d2.svg|100%]]`
+5. VĂN BẢN VÀ BẢNG TÍNH (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP):
+   - BẮT BUỘC CHỈ chèn khi người dùng có yêu cầu cụ thể:
+     * Tạo báo cáo/hồ sơ Word: chèn `![[tên_file.docx]]`
+     * Trích xuất bảng kiểm/dữ liệu Excel/CSV: chèn `![[tên_file.csv]]` hoặc `![[tên_file.xlsx]]`
+6. Cấu trúc bài viết rõ ràng với heading và sections.
 """
 
 # ── Diagram Workers ────────────────────────────────────────────────────────

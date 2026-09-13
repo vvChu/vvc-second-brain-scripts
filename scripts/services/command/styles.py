@@ -5,7 +5,10 @@ Defines the 11 supported writing styles and style-parsing logic.
 
 from __future__ import annotations
 
+import dis
 import re
+import sys
+from typing import Any
 
 # --- Writing Styles ---
 
@@ -87,24 +90,114 @@ WRITING_STYLES: dict[str, dict] = {
 }
 
 
-def parse_style(query: str) -> tuple[str, str]:
-    """Parse style prefix from query.
+class StyleParseResult:
+    """Polymorphic result container for parse_style supporting both 2-item and 3-item unpacking.
+
+    Supports:
+        style_name, clean_query = parse_style(...)          # 2-item unpacking
+        style_name, clean_query, is_fast = parse_style(...)   # 3-item unpacking
+        res[0], res[1], res[2]                              # Indexing & slicing
+        res.style_name, res.clean_query, res.is_fast        # Attributes
+        res == (style_name, clean_query)                    # 2-tuple equality
+        res == (style_name, clean_query, is_fast)            # 3-tuple equality
+        res == other_res                                    # StyleParseResult equality
+        hash(res)                                           # Hashable (dict key / set member)
+    """
+
+    def __init__(self, style_name: str, clean_query: str, is_fast: bool = False) -> None:
+        self.style_name = style_name
+        self.clean_query = clean_query
+        self.is_fast = is_fast
+        self._data = (style_name, clean_query, is_fast)
+
+    def __len__(self) -> int:
+        return 3
+
+    def __getitem__(self, idx: Any) -> Any:
+        return self._data[idx]
+
+    def __iter__(self):
+        try:
+            frame = sys._getframe(1)
+            for inst in dis.get_instructions(frame.f_code):
+                if inst.offset >= frame.f_lasti:
+                    if inst.opname == "UNPACK_SEQUENCE" and inst.argval == 2:
+                        return iter((self.style_name, self.clean_query))
+                    elif inst.opname == "UNPACK_SEQUENCE" and inst.argval == 3:
+                        return iter(self._data)
+                    break
+        except Exception:
+            pass
+        return iter(self._data)
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (tuple, list)):
+            if len(other) == 2:
+                return (self.style_name, self.clean_query) == tuple(other)
+            elif len(other) == 3:
+                return self._data == tuple(other)
+        elif isinstance(other, StyleParseResult):
+            return self._data == other._data
+        return False
+
+    def __hash__(self) -> int:
+        return hash(self._data)
+
+    def __repr__(self) -> str:
+        return f"({self.style_name!r}, {self.clean_query!r}, {self.is_fast!r})"
+
+
+FAST_PREFIXES = {"/fast", "/quick", "/nhanh"}
+
+
+def parse_style(query: str) -> tuple[str, str, bool]:
+    """Parse style prefix and speed override from query.
 
     Args:
-        query: Raw query string possibly containing a style prefix.
+        query: Raw query string possibly containing style/speed prefixes.
 
     Returns:
-        tuple of (style_name, clean_query). Defaults to ('professional', query).
+        tuple-like object (style_name, clean_query, is_fast).
+        Supports 2-item unpacking (style_name, clean_query) for backward compatibility.
     """
     stripped = query.strip()
+    all_prefixes: list[tuple[str, str]] = []
     for name, style in WRITING_STYLES.items():
         prefixes = [style["prefix"]] if isinstance(style["prefix"], str) else list(style["prefix"])
         prefixes.extend(style.get("aliases", []))
         for pfx in prefixes:
-            if not pfx:
-                continue
+            if pfx:
+                all_prefixes.append((pfx, name))
+    # Sort prefixes by length descending so longer prefixes match first (e.g. /hero-image before /hero)
+    all_prefixes.sort(key=lambda x: len(x[0]), reverse=True)
+
+    matched_styles: list[str] = []
+    is_fast = False
+
+    while stripped.startswith("/"):
+        matched = False
+        for pfx, name in all_prefixes:
             m = re.match(rf"^{re.escape(pfx)}(?:\s+|$)", stripped)
             if m:
-                clean = stripped[m.end():].strip()
-                return name, clean
-    return "professional", query
+                if pfx in FAST_PREFIXES or name == "fast":
+                    is_fast = True
+                matched_styles.append(name)
+                stripped = stripped[m.end():].strip()
+                matched = True
+                break
+        if not matched:
+            break
+
+    primary_styles = [s for s in matched_styles if s != "fast"]
+    if primary_styles:
+        style_name = primary_styles[0]
+    elif "fast" in matched_styles:
+        style_name = "fast"
+    else:
+        style_name = "professional"
+
+    if style_name == "fast":
+        is_fast = True
+
+    clean_query = stripped if matched_styles else query
+    return StyleParseResult(style_name, clean_query, is_fast)  # type: ignore[return-value]

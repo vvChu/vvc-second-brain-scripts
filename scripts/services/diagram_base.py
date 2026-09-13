@@ -228,37 +228,73 @@ def compute_safe_arrow_endpoints(
 def find_diagram_context(diagram_name: str, source_text: str) -> str:
     """Extract context around a diagram placeholder from the source text.
 
-    Handles wiki-links with optional display pipes: ![[name]] or ![[name|800]].
-    If not found, falls back to searching for the nearest section heading
-    matching diagram name keywords before defaulting to source_text[:1000].
+    Implements Dual-Scope Context:
+    - Locates the section containing the placeholder (tagged with === [TARGET SECTION (Trọng tâm sơ đồ)] ===)
+    - Provides full response context up to 12,000 characters (tagged with === [FULL ARTICLE CONTEXT (Toàn bộ bài viết tham chiếu)] ===)
+    If no headings are found in source_text, falls back to ±500 chars around the placeholder.
+    If placeholder not found, falls back to searching for the nearest section heading matching diagram name keywords before defaulting to source_text[:1000].
 
     Args:
         diagram_name: e.g. "kien_truc.excalidraw.md"
         source_text: Full response text containing the placeholder.
 
     Returns:
-        Surrounding context (±500 chars around the placeholder, or section matching keywords, or first 1000 chars).
+        Dual-scope or surrounding context string.
     """
     target_name = Path(diagram_name).name
     escaped_targets = [re.escape(target_name)]
     if target_name.endswith(".excalidraw.md"):
         escaped_targets.append(re.escape(target_name[:-14] + "_excalidraw_md"))
+        escaped_targets.append(re.escape(target_name[:-3]))  # .excalidraw
     elif target_name.endswith(".mermaid.md"):
         escaped_targets.append(re.escape(target_name[:-11] + "_mermaid_md"))
+        escaped_targets.append(re.escape(target_name[:-3]))  # .mermaid
     elif target_name.endswith(".d2.svg"):
         escaped_targets.append(re.escape(target_name[:-7] + "_d2_svg"))
+        escaped_targets.append(re.escape(target_name[:-4]))  # .d2
+    elif target_name.endswith(".excalidraw"):
+        escaped_targets.append(re.escape(target_name + ".md"))
+        escaped_targets.append(re.escape(target_name + "_md"))
+    elif target_name.endswith(".mermaid"):
+        escaped_targets.append(re.escape(target_name + ".md"))
+        escaped_targets.append(re.escape(target_name + "_md"))
+    elif target_name.endswith(".d2"):
+        escaped_targets.append(re.escape(target_name + ".svg"))
+        escaped_targets.append(re.escape(target_name + "_svg"))
 
     target_pattern = "|".join(escaped_targets)
     pattern = re.compile(rf"!\[\[(?:{target_pattern})(?:\|[^\]]*)?\]\]")
     match = pattern.search(source_text)
     if match:
-        start = max(0, match.start() - 500)
-        end = min(len(source_text), match.end() + 500)
-        return source_text[start:end]
+        headings = list(re.finditer(r"^(#{1,6}\s+.*?)$", source_text, flags=re.MULTILINE))
+        if headings:
+            prev_h = None
+            next_h = None
+            for h in headings:
+                if h.start() <= match.start():
+                    prev_h = h
+                elif h.start() > match.start() and next_h is None:
+                    next_h = h
+                    break
+
+            sec_start = prev_h.start() if prev_h is not None else 0
+            sec_end = next_h.start() if next_h is not None else len(source_text)
+            target_section = source_text[sec_start:sec_end].strip()
+            full_context = source_text[:12000].strip()
+            return (
+                f"=== [TARGET SECTION (Trọng tâm sơ đồ)] ===\n"
+                f"{target_section}\n\n"
+                f"=== [FULL ARTICLE CONTEXT (Toàn bộ bài viết tham chiếu)] ===\n"
+                f"{full_context}"
+            )
+        else:
+            start = max(0, match.start() - 500)
+            end = min(len(source_text), match.end() + 500)
+            return source_text[start:end]
 
     # Fallback: search for the section heading matching the most diagram keywords
     stem = re.sub(
-        r"\.(excalidraw\.md|mermaid\.md|excalidraw|mermaid|md)$",
+        r"\.(excalidraw\.md|mermaid\.md|d2\.svg|excalidraw|mermaid|d2|svg|md)$",
         "",
         target_name,
         flags=re.IGNORECASE,
