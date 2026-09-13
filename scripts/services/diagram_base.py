@@ -178,7 +178,16 @@ def find_diagram_context(diagram_name: str, source_text: str) -> str:
         Surrounding context (±500 chars around the placeholder, or section matching keywords, or first 1000 chars).
     """
     target_name = Path(diagram_name).name
-    pattern = re.compile(rf"!\[\[{re.escape(target_name)}(?:\|[^\]]*)?\]\]")
+    escaped_targets = [re.escape(target_name)]
+    if target_name.endswith(".excalidraw.md"):
+        escaped_targets.append(re.escape(target_name[:-14] + "_excalidraw_md"))
+    elif target_name.endswith(".mermaid.md"):
+        escaped_targets.append(re.escape(target_name[:-11] + "_mermaid_md"))
+    elif target_name.endswith(".d2.svg"):
+        escaped_targets.append(re.escape(target_name[:-7] + "_d2_svg"))
+
+    target_pattern = "|".join(escaped_targets)
+    pattern = re.compile(rf"!\[\[(?:{target_pattern})(?:\|[^\]]*)?\]\]")
     match = pattern.search(source_text)
     if match:
         start = max(0, match.start() - 500)

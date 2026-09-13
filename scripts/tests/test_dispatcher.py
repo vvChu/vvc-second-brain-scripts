@@ -144,3 +144,26 @@ def test_register_custom_artifact_adapter():
 
     assert result == ["vector_diagram.svg"]
     custom_handler.assert_called_once_with("vector_diagram.svg", sample, "render svg")
+
+
+@patch("services.worker_dispatcher.trigger_excalidraw_generation")
+@patch("services.worker_dispatcher.trigger_mermaid_generation")
+@patch("services.worker_dispatcher.trigger_d2_generation")
+def test_trigger_workers_malformed_snake_case_extensions(mock_d2, mock_mermaid, mock_excali):
+    """Should automatically normalize snake_cased extensions like _excalidraw_md into .excalidraw.md."""
+    sample = (
+        "Here is an excalidraw: ![[mo_hinh_to_chuc_ai_agent_excalidraw_md|100%]]\n"
+        "And a mermaid: ![[system_flow_mermaid_md]]\n"
+        "And a d2: ![[arch_diagram_d2_svg|100%]]\n"
+    )
+    result = trigger_workers(sample)
+
+    assert result == [
+        "mo_hinh_to_chuc_ai_agent.excalidraw.md",
+        "system_flow.mermaid.md",
+        "arch_diagram.d2.svg",
+    ]
+    mock_excali.assert_called_once_with("mo_hinh_to_chuc_ai_agent.excalidraw.md", sample)
+    mock_mermaid.assert_called_once_with("system_flow.mermaid.md", sample)
+    mock_d2.assert_called_once_with("arch_diagram.d2.svg", sample)
+

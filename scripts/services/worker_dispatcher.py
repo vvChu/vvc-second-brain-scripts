@@ -116,16 +116,34 @@ def _d2_bridge(name: str, response: str, query: str) -> None:
         trigger_d2_generation(name, response)
 
 
+def normalize_artifact_name(name: str) -> str:
+    """Normalize artifact name by fixing snake_cased extensions from LLMs.
+
+    Examples:
+        "mo_hinh_excalidraw_md" -> "mo_hinh.excalidraw.md"
+        "mo_hinh_mermaid_md" -> "mo_hinh.mermaid.md"
+        "mo_hinh_d2_svg" -> "mo_hinh.d2.svg"
+    """
+    clean = name.strip()
+    if clean.endswith("_excalidraw_md"):
+        return clean[:-14] + ".excalidraw.md"
+    if clean.endswith("_mermaid_md"):
+        return clean[:-11] + ".mermaid.md"
+    if clean.endswith("_d2_svg"):
+        return clean[:-7] + ".d2.svg"
+    return clean
+
+
 def _init_default_registry() -> None:
     """Initialize built-in artifact adapters."""
     _REGISTRY.clear()
     register_artifact_adapter(
-        r"!\[\[([^\]|]+\.excalidraw\.md)(?:\|[^\]]*)?\]\]",
+        r"!\[\[([^\]|]+(?:\.excalidraw\.md|_excalidraw_md))(?:\|[^\]]*)?\]\]",
         _excali_bridge,
         name="excalidraw",
     )
     register_artifact_adapter(
-        r"!\[\[([^\]|]+\.mermaid\.md)(?:\|[^\]]*)?\]\]",
+        r"!\[\[([^\]|]+(?:\.mermaid\.md|_mermaid_md))(?:\|[^\]]*)?\]\]",
         _mermaid_bridge,
         name="mermaid",
     )
@@ -145,7 +163,7 @@ def _init_default_registry() -> None:
         name="qc_matrix",
     )
     register_artifact_adapter(
-        r"!\[\[([^\]|]+\.d2\.svg)(?:\|[^\]]*)?\]\]",
+        r"!\[\[([^\]|]+(?:\.d2\.svg|_d2_svg))(?:\|[^\]]*)?\]\]",
         _d2_bridge,
         name="d2_diagram",
     )
@@ -172,7 +190,8 @@ def trigger_workers(response: str, query: str = "") -> list[str]:
 
     for entry in _REGISTRY:
         matches = entry.pattern.findall(response)
-        for name in matches:
+        for raw_name in matches:
+            name = normalize_artifact_name(raw_name)
             try:
                 entry.handler(name, response, query)
                 triggered.append(name)

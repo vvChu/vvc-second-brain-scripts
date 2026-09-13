@@ -243,7 +243,11 @@ def generate_hero_image(prompt: str, output_path: Path, active_cfg: Any = None) 
             "size": "1792x1024",  # 16:9 cinematic
             "response_format": "b64_json",
         }
-        image_model = os.environ.get("IMAGE_MODEL") or getattr(target_cfg, "gateway_image_model", None)
+        image_model = (
+            os.environ.get("IMAGE_MODEL")
+            or getattr(target_cfg, "gateway_image_model", None)
+            or "gemini-3.1-flash-image"
+        )
         if image_model:
             payload["model"] = image_model
         resp = http_session.post(
