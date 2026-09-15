@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Project Context (v8.15.0)
+# 🧠 VvC Second Brain — Project Context (v8.15.10)
 
 > [!NOTE] Context File Hierarchy
 > | File | Role | Authority |
@@ -16,7 +16,7 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 
 - **Philosophy**: AI agents = **librarians & compilers**. Human = **source provider**.
 - **Core Pattern**: Raw images/books/URLs → OCR → Ground Truth RAG → Atomic Concept Synthesis → Zettelkasten.
-- **Current version**: v8.15.0 — See `CHANGELOG.md` for full history.
+- **Current version**: v8.15.10 — See `CHANGELOG.md` for full history.
 
 ## Directory Structure
 
@@ -34,6 +34,7 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 | Task | Command |
 |---|---|
 | **Main Pipeline** | `pythonw scripts/daemon.py` |
+| **Restart Daemon** | `python scripts/daemon.py --restart` |
 | **Book Watcher** | `pythonw scripts/book_ingest.py` |
 | **Web Clipper** | `python scripts/web_clip.py "https://url"` |
 | **Wiki Maintenance** | `python scripts/wiki_maintain.py` |
@@ -51,5 +52,12 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 - **Quality Gate**: 5 pre-save checks in `post_process.py`. Failed notes are rejected, never saved.
 - **Research Discipline**: Double-Pass Adversarial Review required before proposing changes. See `AGENTS.md` §7.
 - **Topic Backlog**: When asked to write new articles or brainstorm topics, always refer to the existing backlog of potential ideas at [[y_tuong_bai_viet_tiem_nang|Danh Mục Các Bài Viết Tiềm Năng]].
-- **Dual-Rendering Diagrams** (v8.13.0): See `AGENTS.md` §4.9. Standard Excalidraw 2.x wrapper, shared layout seams (`sync_bound_text_translation`, `compute_safe_arrow_endpoints`), and Academic Grayscale styling for Mermaid and Excalidraw.
+- **Dual-Rendering Diagrams** (v8.15.6): See `AGENTS.md` §4.9. Standard Excalidraw 2.x wrapper, Auto-Expand Container ($H \ge H_{text} + 30\text{px}$), Wheel layout multi-tier disambiguation & anchor, Academic Grayscale styling, Executive Typography 16:9 ($W \le 1.150\text{px}$, font floor $\ge 12\text{px}-14\text{px}$) kèm Bảng Đặc Tả Markdown bên dưới, và Arrow-Label Clearance ($\Delta Y \ge 15\text{px}$, gap $\ge 80\text{px}-90\text{px}$).
+- **Markdown Tables** (v8.15.2): See `AGENTS.md` §4.10. Mandatory pipe escaping in table wikilinks (`[[slug\|alias]]`), non-breaking arrow binding (`↳&nbsp;Text`), baseline subtitle anchors `*(...)*`, and 2-tier visual hierarchy ($\le 40$ chars/line).
+- **Zero-ASCII Art Invariant** (v8.15.3): See `AGENTS.md` §4.11. Cấm tuyệt đối vẽ sơ đồ ASCII/Unicode box art trong markdown; bắt buộc dùng Mermaid/Excalidraw và native language code fences (yaml, json) cho config/code.
+- **Mermaid Engineering & 4 Design Patterns** (v8.15.9): See `AGENTS.md` §4.4. Hybrid golden threshold, 5 Mermaid invariants (bất đối xứng trọng số $\Delta W \ge 2$, grayscale base theme, căn lề trái text, cạnh vô hình LTR, Flat Two-Node Invariant cấm subgraph lồng 1 node và cấm `<br/>` trong tiêu đề subgraph), cùng Bộ Tứ Mẫu Thiết Kế Mermaid (Macro Hub-and-Pods với `~~~`, Semantic Decision Tree với Badges, Multi-Tier Funnel, và Cross-Domain Subgraphs).
+- **Clean Wikilinks & Deterministic Defense** (v8.15.7): See `AGENTS.md` §4.4 & §5. Cấm tuyệt đối bọc backticks quanh wikilinks trên mọi bề mặt Markdown; thoát pipe `[[slug\|alias]]` trong bảng nhưng giữ link trần; đồng bộ 100% số trích dẫn trong bảng với danh mục cuối bài; Zero-Fencing Examples trong prompt SLM; và tiền xử lý regex tất định (`clean_wikilink_quotes`) trước khi ghi đĩa.
+- **Stale Daemon & CLI Artifact Ingestion** (v8.15.9): See `AGENTS.md` §5. Cờ `--restart` bắt buộc khi nạp code mới; `_resolve_cli_artifact_content` tự động nuốt toàn văn artifact thay thế summary từ CLI stdout.
+- **Mermaid Edge Labels & HTML Entity Context Isolation** (v8.15.10): See `AGENTS.md` §4.4 & §4.10. Cấm chèn nhãn text vào giữa thân mũi tên (dùng `===>|"label"|`, `-.->|"label"|`, `<===>|"label"|`); chuẩn hóa toán tử `≥`/`≤`; thực thể HTML `#40;` và `#41;` CHỈ dùng bên trong khối ````mermaid`; bảng biểu Markdown bắt buộc dùng dấu ngoặc đơn tròn chuẩn `()`.
+
 

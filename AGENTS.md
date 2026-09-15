@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.13.3)
+# 🧠 VvC Second Brain — Agent Constitution (v8.15.10)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -38,37 +38,14 @@ This vault is a **personal knowledge base** ("Second Brain") that follows the **
 
 **Philosophy**: You (the agent) are the **librarian and compiler**. The human is the **source provider**. Your job is to keep this wiki coherent, well-linked, and up-to-date.
 
----
+### 1.1 Operating Modes
 
-## 1.1 Operating Modes
-
-This vault supports **two distinct operating modes**. Identify your mode and follow the corresponding rules:
-
-### 🟢 Interactive Mode (Default)
-
-When a human is working with you via Gemini CLI, Antigravity, or any interactive session:
-- Act as a **knowledgeable pair programmer and librarian**.
-- Explain your reasoning, ask clarifying questions when needed.
-- Use all available tools (file read/write, shell, search) as appropriate.
-- Follow the full Constitution (sections 2–6 below).
-
-### 🔵 Pipeline Mode (Automated Daemon)
-
-When your prompt begins with `[PIPELINE]` or you are invoked by the daemon scripts in `scripts/`:
-- You are a **text processing engine**, not an assistant.
-- Output **ONLY** the requested content. No explanations, no questions, no preambles.
-- **NEVER** ask for clarification — process whatever input you receive.
-- **NEVER** wrap output in code fences unless explicitly requested.
-- **NEVER** use tools unless the prompt explicitly instructs you to.
-- Respond in the language specified by the prompt. Default: **Vietnamese**.
-- Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML `---`, etc.).
-
-> **How to detect Pipeline Mode:** The `scripts/GEMINI.md` context file is loaded
-> automatically via JIT when operating within the `scripts/` directory.
+- **🟢 Interactive Mode (Default)**: Khi tương tác với con người, hành động như một librarian & pair programmer am hiểu. Giải thích suy luận, đặt câu hỏi làm rõ khi cần, sử dụng công cụ phù hợp.
+- **🔵 Pipeline Mode (Automated Daemon)**: Kích hoạt khi prompt bắt đầu bằng `[PIPELINE]` hoặc trong `scripts/`. Agent đóng vai trò là một pure text processing engine: Output CHỈ nội dung được yêu cầu, KHÔNG giải thích, KHÔNG hỏi, KHÔNG bọc code fences trừ khi được yêu cầu, ngôn ngữ mặc định: **Tiếng Việt**.
 
 ---
 
-## 2. Directory Structure
+## 2. Directory Structure & File Access Rules
 
 ```text
 D:\VvC_Notes\                       ← Vault Root (Obsidian)
@@ -77,28 +54,28 @@ D:\VvC_Notes\                       ← Vault Root (Obsidian)
 │   ├── sources/                    ←    📚 Source MOCs (1 file per book/source)
 │   └── domains/                    ←    🏷️ Domain MOCs (grouped by topic)
 ├── 03 - Resources/                 
-│   ├── books/                      ← 📥 Human drops new books (EPUB/PDF) here
+│   ├── books/                      ← 📥 Human drops new books (EPUB/PDF) here (Read-only)
 │   └── attachments/                ← 🖼️ Output folder for Excalidraw & Mermaid diagrams
 ├── 04 - Permanent/                 ← 🧠 Compiled knowledge layer
 │   ├── concepts/                   ←    Atomic concept notes (1 idea = 1 file)
 │   ├── sources/                    ←    Source summaries (1 book = 1 file)
 │   └── topics/                     ←    📝 AI-generated long-form essays & analyses
 ├── 05 - Fleeting/                  ← 📸 Active ingestion workspace (human drops photos here)
-├── 99 - Archive/                   ← 🗄️ Processed photos are archived here
-├── scripts/                        ← ⚙️ Python automation daemons
+├── 99 - Archive/                   ← 🗄️ Processed photos are archived here (Read-only)
+├── scripts/                        ← ⚙️ Python automation daemons (Backend infrastructure)
 └── templates/                      ← 📝 Obsidian note templates
 ```
 
 ### Rules
 - **NEVER** modify files in `03 - Resources/` or `99 - Archive/`. Only read them.
 - **NEVER** modify `AGENTS.md` unless explicitly asked by the user.
-- **ONLY** write/update files in `04 - Permanent/`, `00 - Maps of Content/`, and `05 - Fleeting/`.
+- **ONLY** write/update files in `04 - Permanent/`, `00 - Maps of Content/`, và `05 - Fleeting/`.
 
 ---
 
-## 3. YAML Frontmatter Schema (Required)
+## 3. Canonical Schemas
 
-Every file in `04 - Permanent/` MUST have this frontmatter:
+### 3.1 YAML Frontmatter Schema (Required for `04 - Permanent/`)
 
 ```yaml
 ---
@@ -127,25 +104,20 @@ confidence: high | medium | low
 ---
 ```
 
----
+### 3.2 `_toc.json` Schema (Canonical v8.0)
 
-## 3.1 `_toc.json` Schema (Canonical v8.0)
-
-Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file that maps the Vietnamese photo source to the English ground truth corpus. This is the **single source of truth** for chapter resolution during the ingestion pipeline.
+Mỗi thư mục sách trong `05 - Fleeting/<Book_Name>/` bắt buộc có `_toc.json` làm SSOT ánh xạ trang ảnh tiếng Việt sang corpus bản gốc tiếng Anh:
 
 ```jsonc
 {
-  "book_title_vi": "Tiêu đề tiếng Việt",              // REQUIRED — used by _sync_source_note()
-  "book_title_original": "Original title (EN/other)",   // RECOMMENDED — human readability
+  "book_title_vi": "Tiêu đề tiếng Việt",              // REQUIRED
+  "book_title_original": "Original title (EN/other)",   // RECOMMENDED
   "author": "Tác giả",                                   // OPTIONAL
-  "translator": "Dịch giả",                              // OPTIONAL (null nếu sách gốc)
-  "publisher": "NXB",                                    // OPTIONAL
-  "chapters": [                                           // REQUIRED
+  "chapters": [
     {
-      "chapter_num": 1,              // REQUIRED — int, sequential index (NOT book chapter number)
-      "title_vi": "Tiêu đề VN",     // REQUIRED — used by _sync_source_note()
-      "title_original": "EN title",  // RECOMMENDED — for BM25 search & readability
-      "description_vi": null,        // OPTIONAL — null nếu không có
+      "chapter_num": 1,              // REQUIRED — int, sequential index (1, 2, 3...)
+      "title_vi": "Tiêu đề VN",     // REQUIRED
+      "title_original": "EN title",  // RECOMMENDED
       "epub_file": "04_Ch1.md",     // REQUIRED — filename in *_MD corpus (must end with .md)
       "page_start": 19,             // OPTIONAL — trang ấn bản VN (int or null)
       "page_end": 34                // OPTIONAL — auto-calculated if missing
@@ -154,267 +126,74 @@ Every book workspace in `05 - Fleeting/<Book_Name>/` contains a `_toc.json` file
 }
 ```
 
-### Rules
-- `chapter_num` is a **sequential index** (1, 2, 3...), NOT the book's actual chapter number. The real chapter number is embedded in `title_original` or `title_vi`.
-- `epub_file` MUST always include the `.md` extension.
-- `page_start`/`page_end` are always `int` or `null`. Never strings.
-- For English-only books (no Vietnamese translation), copy `title_original` into `title_vi` so `_sync_source_note()` always has display data.
-- **Producers**: `epub_convert.py`, `pdf_convert.py`, `ocr.py` (Vision API), `heal_existing_tocs.py`.
-- **Consumers**: `ground_truth.py` (`resolve_chapter()`), `ocr.py` (`_sync_source_note()`).
-
 ---
 
-## 4. Note Types & Guidelines
+## 4. Note Types & Architectural Invariants
 
 ### 4.1 Concept Notes (`04 - Permanent/concepts/`)
-- **One concept per file** (atomic notes).
-- Filename: `snake_case_concept_name.md` (e.g., `transformer_architecture.md`).
-- **YAML Frontmatter**: Must include the `source` reference. Must proactively populate `aliases`, `tags` (domain specific), and `related` (for Obsidian Graph integration).
-- **Body Structure**: Must strictly follow the minimalist template without any extra headers (No `Implications`, `Connections`, or extra `# H1`). Exact order:
-  1. **Evidence Hook** — `> "Trích dẫn nguyên văn tiếng Việt"` (blockquote đứng độc lập, không nằm trong section nào). **BẮT BUỘC bằng tiếng Việt** — nếu nguồn thô là tiếng Anh, phải dịch sát nghĩa sang tiếng Việt.
-  2. **Citation Line** — `> — **Tên Tác Giả**, trích dẫn trong sách/bài viết *Tên Sách* (Nguồn phụ, [[file_nguồn_thô|Tên Nguồn, Năm]])` (nằm liền ngay dưới Evidence Hook, cùng khối blockquote). Ghi rõ chủ thể phát biểu chính thức và nguồn gián tiếp kèm wiki-link trỏ về file nguồn thô.
-  3. **`## Core Idea`** — Phân tích thuần tiếng Việt. KHÔNG lồng thêm quote thứ hai bên trong. KHÔNG lặp nội dung Evidence Hook.
-  4. **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`** — **BẮT BUỘC bằng tiếng Anh nguyên bản** lấy từ nguồn thô làm căn cứ học thuật. Nằm ngay sau Core Idea để người đọc kiểm chứng liên tục. Nếu nguồn hoàn toàn bằng tiếng Việt, ghi `(không có)`.
-  5. **`---`** — Dấu phân tách ngang (visual separator: nội dung tri thức / hạ tầng tra cứu)
-  6. **`## References`** — CHỈ chứa tối đa 2-3 wiki-link `[[source_note]]`. KHÔNG lặp lại thông tin trang/chương (đã có trong YAML frontmatter).
+- **Nguyên tử hóa (Atomic)**: 1 concept = 1 file. Đặt tên: `snake_case_concept_name.md`.
+- **Cấu trúc Thân bài Chuẩn mực (Canonical v8.3 Body Order)**:
+  1. **Evidence Hook**: `> "Trích dẫn nguyên văn tiếng Việt"` (blockquote độc lập, không tiêu đề H1/H2). BẮT BUỘC tiếng Việt (dịch sát nghĩa nếu nguồn là tiếng Anh).
+  2. **Citation Line**: `> — **Tên Tác Giả**, trích dẫn trong *Tên Sách* (Nguồn phụ, [[file_nguồn_thô|Tên Nguồn, Năm]])` (liền ngay dưới Hook).
+  3. **`## Core Idea`**: Phân tích thuần tiếng Việt. KHÔNG lồng quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook.
+  4. **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: BẮT BUỘC bằng **tiếng Anh nguyên bản** từ nguồn thô để kiểm chứng học thuật. Nếu nguồn thuần Việt ghi `(không có)`.
+  5. **`---`**: Dấu phân cách ngang.
+  6. **`## References`**: Tối đa 2-3 wiki-links `[[source_note]]`.
 
-### 4.2 Source Summaries (`04 - Permanent/sources/`)
-- One file per ingested book.
-- Filename: `YYYY-MM-DD_Book_Title_Author.md`.
-- Contains: metadata about the source and full summary.
-- **Important**: Must contain an `aliases` array (e.g., `aliases: ["Book Title"]`) so the wiki maintainer can extract a clean MOC name.
+### 4.2 Other Note Types
+- **Source Summaries (`04 - Permanent/sources/`)**: Tên `YYYY-MM-DD_Book_Title_Author.md`. Bắt buộc có `aliases` để trích xuất tên MOC.
+- **Maps of Content (`00 - Maps of Content/sources/MOC_*.md`)**: Tự động sinh cho nguồn có $\ge 1$ concept note. Empty MOCs tự động bị dọn dẹp.
+- **Domain MOCs (`00 - Maps of Content/domains/Domain_*.md`)**: Tự động gom nhóm khi có $\ge 15$ concepts cùng domain.
+- **Master Index (`00 - Maps of Content/index.md`)**: Bảng điều khiển thống kê toàn bộ Vault.
+- **Topic Articles (`04 - Permanent/topics/`)**: Bài luận dài, phân tích kiến trúc (>500 từ) tự động lưu tại đây. Bắt buộc gắn relative link tới tài liệu nội bộ đã tải về (`[📄 Bản PDF cục bộ](../../.md/extracted_docs/papers/<file>.pdf)`) bên cạnh URL/DOI trực tuyến.
 
-### 4.3 Maps of Content (`00 - Maps of Content/sources/MOC_*.md`)
-- Auto-generated overview pages that link together all concepts belonging to a specific source.
-- Filename dynamically generated based on the Source Note's alias (Title Cased), stored neatly in `sources/`.
-- **Zero-Concept Filtering**: MOC pages are only generated for sources that have at least 1 linked concept. Stale empty MOCs are automatically purged by the self-healing routine.
+### 4.3 Human-AI Alignment & Graph Health Invariants
+- **Aesthetic Alignment (v8.10.0)**: Siêu dữ liệu máy móc, marker ảnh thô phải bọc trong Callout ẩn (`> [!info]- 🖼️ Tiêu đề`). Ảnh minh họa nhúng bằng cú pháp wiki-link `![[filename.webp]]` ngay dưới ngữ cảnh phân tích tương ứng.
+- **Alias-First Resolution (v8.12.6)**: Khi xử lý broken links do lệch slug, thêm biến thể gọi vào `aliases` của DUY NHẤT note đích. Tuyệt đối không sửa hàng loạt hàng chục concept notes nguồn.
+- **Zero-Graph Contamination**: Báo cáo meta, diagnostic reports (như `Weekly_Synthesis.md`, lint logs) tuyệt đối KHÔNG chứa live wikilinks trỏ vào broken links hay orphan notes. Bọc tên slug lỗi trong backticks `` `slug` ``.
+- **Linter Scope**: Linter nạp đầy đủ 6 bề mặt (concepts, sources, topics, chapters, fleeting, MOCs); phân biệt rõ `broken_body_links` (cần sửa ngay) và `prospective_related_seeds` (trong YAML related).
 
-### 4.4 Domain MOCs (`00 - Maps of Content/domains/Domain_*.md`)
-- Auto-generated cross-source topic maps that group concepts by `domain/` tag, stored neatly in `domains/`.
-- Created automatically when ≥15 concepts share the same domain tag (eliminates fragmented sub-domains).
-- Structure: stats header → concepts grouped by source book.
+### 4.4 Document Ergonomics & Visual Invariants (v8.15.10)
+Toàn bộ tài liệu tri thức trong Vault bắt buộc tuân thủ 10 bộ quy chuẩn công thái học:
+1. **Hybrid Golden Threshold**: Sơ đồ $\ge 3$ layers, hoặc $\ge 9$ nodes, hoặc kết nối chéo phức tạp $\ge 3$ subgraphs $\rightarrow$ BẮT BUỘC tạo Excalidraw 16:9 (`![[...excalidraw.md|100%]]`). Mermaid inline chỉ dùng cho luồng tuyến tính, tương tác song phương, hoặc chu trình $\le 8$ nodes.
+2. **Excalidraw 16:9 Standards**: Khóa canvas width $1.000\text{px} \le W \le 1.150\text{px}$ (đảm bảo scale khi nhúng $\ge 65\%-70\%$), cỡ chữ sàn hiển thị $\ge 8.5\text{px}-11.5\text{px}$ (Executive Typography 16:9), bắt buộc tạo **Bảng Đặc Tả Ma Trận Kiến Trúc Markdown** ngay dưới sơ đồ; Auto-Expand Container ($H \ge H_{text} + 30\text{px}$); Wheel layout multi-tier anchor ($Y_{header}=30\text{px}, Y_{wheel}\ge 120\text{px}$); Arrow-Label Clearance ($\Delta Y \ge 15\text{px}$, khoảng cách ngang $\ge 80-90\text{px}$).
+3. **Mermaid 5 Invariants**: (1) Bất đối xứng trọng số cạnh ($\Delta W = W_{down} - W_{up} \ge 2$) khóa cứng Hub ở đỉnh; (2) Directive `%%{init}%%` Grayscale Base Theme khử màu vàng mù tạt `#ffffde`; (3) `<div align='left'>` căn lề trái bullet points và thoát HTML entity (`#40;`, `#41;`); (4) Cạnh vô hình `~~~` cưỡng chế thứ tự đọc LTR; (5) Flat Two-Node Invariant cấm subgraph lồng 1 node và cấm `<br/>` trong tiêu đề subgraph.
+4. **The 4 Mermaid Ergonomic Design Patterns (v8.15.9)**: Chuẩn hóa 4 mẫu thiết kế cấu trúc: (1) Macro Hub-and-Pods Layout với `HUB ===> POD` và `POD1 ~~~ POD2 ~~~ POD3` khóa chặt trục ngang; (2) Semantic Decision Tree với Badges pastel ngữ nghĩa (Xanh lá `REUSE`, Xanh dương `EXTEND`, Vàng hổ phách `CREATE NEW`); (3) Multi-Tier Governance Funnel trực quan hóa 3 tầng lọc ADR-0057 & GPI; (4) Cross-Domain Subgraphs phân vùng lãnh thổ SpokeZone vs HubZone với luồng đóng góp xuôi `==>` và phản hồi ngược `-.->` phân cấp trọng số.
+5. **Markdown Table Invariants (v8.15.2)**: Bắt buộc escape pipe trong wikilinks (`[[slug\|alias]]`), non-breaking arrow (`↳&nbsp;Text`), subtitle baseline width stabilization `*(...)*`, và phân tầng 2 nhịp ($\le 40$ ký tự/dòng).
+6. **Zero-ASCII Art Invariant (v8.15.3)**: Cấm tuyệt đối vẽ sơ đồ bằng ký tự ASCII/Unicode box art; dùng native language fences (```yaml, ```json) với comment dividers (`# ---`).
+7. **Two-Track Callout Ergonomics (v8.15.5)**: Khối code $> 15$ dòng bọc trong Callout (`> [!abstract]+` cho code/schema, `> [!info]-` cho logs/metadata); Clean Callout Header (cấm emoji và backticks trong tiêu đề callout); Target Language Syntax Alignment (`#`, `//`, `<!-- -->`, `--`); Minimal Banner (`# --- SECTION ---`).
+8. **Clean Wikilink & Zero-Code-Pill Invariant (v8.15.7)**: Cấm tuyệt đối bọc backticks quanh wikilinks trên mọi bề mặt Markdown (thân bài, bảng biểu, callouts, footnotes, danh mục tham chiếu). Backtick biến liên kết tương tác thành code pill xám và làm gãy đồ thị Graph View trong Obsidian. Trong bảng Markdown, bắt buộc escape pipe (`[[slug\|alias]]`) nhưng giữ nguyên liên kết trần; số thứ tự trích dẫn trong bảng phải đồng bộ 1-1 với danh mục tham chiếu cuối bài.
+9. **Mermaid Edge Label Invariant (v8.15.10)**: Cấm tuyệt đối chèn nhãn text vào giữa thân mũi tên (`===="text"====>`, `-."text".->`, `<===="text"====>`); bắt buộc dùng cú pháp pipe chuẩn `===>|"label"|`, `-.->|"label"|`, `<===>|"label"|` hoặc `-- "label" -->`. Khi nhãn chứa toán tử so sánh, bắt buộc dùng ký tự Unicode (`≥`, `≤`) thay vì ký tự toán tử ASCII thô (`>=`, `<=`) để triệt tiêu xung đột token phân tích cú pháp.
+10. **Strict HTML Entity Context Isolation Invariant (v8.15.10)**: Các thực thể HTML thoát ký tự như `#40;` và `#41;` CHỈ được phép tồn tại bên trong khối ````mermaid` (nơi chúng ngăn chặn lỗi parser node shape). CẤM TUYỆT ĐỐI để rò rỉ `#40;`/`#41;` ra ngoài các bảng biểu Markdown hoặc văn bản thông thường (nơi Obsidian không giải mã và hiển thị thô); bảng Markdown bắt buộc sử dụng dấu ngoặc đơn tròn thông thường `()`.
 
-### 4.5 Master Index (`00 - Maps of Content/index.md`)
-- Auto-generated dashboard with statistics, Source MOCs, Domain MOCs, and recently added concepts.
-- Updated every time a new note is compiled.
-
-### 4.6 Topic Articles (`04 - Permanent/topics/`)
-- **AI-generated long-form essays**, architecture reviews, research reports, and thematic analyses.
-- Filename: `snake_case_topic_name.md` (e.g., `ai_friendly_codebase.md`, `vvc_architecture_review.md`).
-- **Auto-save rule**: Whenever the agent produces a substantive article, report, or essay (>500 words) during an interactive session, it **MUST** also save a copy to `04 - Permanent/topics/` in addition to the conversation artifacts directory. This ensures all generated knowledge persists in the vault.
-- Unlike concept notes, topic articles are **free-form** — they do not require the Evidence Hook → Core Idea → Ground Truth body structure. However, YAML frontmatter with `type: topic` is recommended.
-- Topic articles may reference concept notes via wiki-links `[[concept_name]]`.
-
-### 4.7 Triết lý Thiết kế: Human-AI Alignment in Document Aesthetics (v8.10.0)
-Để tối ưu hóa trải nghiệm đọc của con người đồng thời bảo toàn năng lực phân tích tối đa cho AI Agent khi thực hiện các tác vụ RAG và tổng hợp tri thức, toàn bộ các tệp tài liệu trong Vault phải tuân thủ nghiêm ngặt nguyên tắc **Căn chỉnh Thẩm mỹ Song phương**:
-- **Đối với Con người (Thẩm mỹ & Trực quan)**:
-  - Tất cả các siêu dữ liệu trung gian, thẻ đánh dấu kỹ thuật thô của hệ thống (như danh sách các marker hình ảnh `[IMG:...]` hoặc các log phụ trợ) **bắt buộc phải được đóng gói gọn gàng bên trong Callout ẩn của Obsidian** dạng đóng mở (`> [!info]- 🖼️ Tiêu đề\n> - [IMG:...]`).
-  - Hình ảnh minh họa phải được nhúng trực tiếp bằng cú pháp wiki-link tiêu chuẩn `![[filename.webp]]` ngay dưới các đoạn văn bản chứa ngữ cảnh phân tích tương ứng của bài viết (không dồn ảnh thô kệch xuống cuối trang).
-- **Đối với AI (Bảo toàn Ngữ cảnh & RAG)**:
-  - Tuyệt đối không xóa hoặc lược bỏ siêu dữ liệu bối cảnh (như tên tệp ảnh và `alt-text` mô tả chi tiết nội dung thị giác). Khối Callout ẩn mặc định co lại đối với con người nhưng text thô bên trong vẫn được LLM đọc trọn vẹn khi parse tệp markdown, giúp AI Agent dễ dàng nắm bắt "bản đồ tri thức" và tự động phân phối, liên kết hình vẽ vào các Concept Notes mới một cách chính xác trong pha Map-Reduce tiếp theo.
-
-### 4.8 Graph Health & Link Healing Invariants (v8.12.6)
-Để duy trì độ toàn vẹn và sạch sẽ của đồ thị tri thức Zettelkasten (>2,200 notes), hệ thống tuân thủ 5 quy tắc bất biến:
-- **Nguyên tắc "Alias-First Resolution" khi xử lý Broken Links**:
-  Khi phát hiện liên kết gãy do lệch slug, viết tắt, hoặc gõ nhầm trích dẫn nguồn (ví dụ: `[[BigBIM_Source]]`, `[[shared_service_platform]]`...), **TUYỆT ĐỐI KHÔNG** sửa đổi hàng loạt hàng chục concept notes nguồn. Thay vào đó, bổ sung tên gọi biến thể hoặc slug bị gọi vào trường `aliases` của **duy nhất tệp mục tiêu (Target Note)**. Sửa 1 file giải quyết hàng chục liên kết gãy mà không làm thay đổi nội dung học thuật gốc.
-- **Bề Mặt Tra Cứu Toàn Diện của Vault Linter (Zero False Alarms)**:
-  Mọi công cụ linter/health check kiểm tra wiki-links **bắt buộc** phải nạp đầy đủ toàn bộ 6 bề mặt tri thức: `concepts` (+ aliases), `sources` (+ transcripts + aliases), `topics`, `book chapters` (`resources/books/*_MD/`), `fleeting notes` (`Brain_Dump.md`, `Command.md`), và `MOCs`. Mọi tệp có phần mở rộng media (`.webp`, `.png`, `.jpg`, `.svg`, `.mp3`...) phải được lọc bỏ khỏi kiểm tra broken links. Concept sau khi gộp học thuật (Academic Merge) hợp lệ với cả trường `source` hoặc `sources`.
-- **Nguyên tắc "Zero-Graph Contamination" trong Báo cáo Meta & Linter (Diagnostic Report Hygiene)**:
-  Mọi tệp báo cáo tổng hợp, kiểm tra sức khỏe hệ thống (như `Weekly_Synthesis.md`, lint logs, error reports) **tuyệt đối không được chứa live wikilinks `[[target]]` trỏ tới các liên kết gãy hoặc ghi chú mồ côi**. Tất cả tên tệp/slug lỗi phải được bọc trong inline code backticks `` `target` ``. Chỉ các ghi chú gốc làm ngữ cảnh tham chiếu (`from`) mới được liên kết `[[from]]`. Điều này ngăn chặn việc biến file báo cáo thành một Mega-Hub giả mạo làm méo mó đồ thị tri thức Obsidian.
-- **Bóc Tách Tường Minh giữa Broken Body Citations và Prospective YAML Seeds**:
-  Linter phải phân biệt rõ ràng giữa liên kết gãy thực sự trong phần thân Markdown (`broken_body_links` - mức độ khẩn cấp, cần chữa lành ngay) và các hạt giống tri thức do AI gợi mở trong trường YAML `related:` (`prospective_related_seeds` - ý tưởng mở rộng tương lai). Không gộp chung làm sai lệch chỉ số sức khỏe của Vault.
-- **Tính Toàn Diện Của Mạng Lưới Đi Tới Khi Phát Hiện Orphan Notes**:
-  Khi xác định Ghi chú mồ côi (Orphans), linter bắt buộc phải nạp toàn bộ liên kết đi ra (outgoing links) từ cả 3 tầng: MOCs (`00 - Maps of Content/`), Sources (`04 - Permanent/sources/`), và Topics (`04 - Permanent/topics/`). Việc chỉ quét liên kết giữa các concepts nội bộ sẽ tạo ra hàng nghìn báo động giả (False Orphans).
-
-### 4.9 Dual-Rendering Diagram Standards (v8.13.0)
-Hệ thống hỗ trợ cơ chế sinh và hiển thị sơ đồ song song (Excalidraw + Mermaid) đạt chuẩn thẩm mỹ học thuật Academic Grayscale (sách xuất bản):
-- **Cấu trúc bao đóng Obsidian Excalidraw 2.x**:
-  Mọi tệp `.excalidraw.md` tuân thủ nghiêm ngặt cấu trúc tiêu chuẩn plugin Excalidraw:
-  - Header `# Excalidraw Data`
-  - Section `## Text Elements` chứa danh sách nhãn dạng văn bản
-  - Section `%% \n ## Drawing \n ```json ... ``` \n %%` chứa dữ liệu đồ họa JSON
-- **Shared Layout Seams & Safe Arrow Geometry**:
-  - `sync_bound_text_translation`: Đồng bộ dịch chuyển các khối text liên kết theo cả hai cơ chế `boundElements` và `containerId == shape["id"]`, bảo toàn vị trí nhãn khi dời hình dạng.
-- **Excalidraw ID Invariant & Universal Bounding Box (v8.13.3)**:
-  - Mọi Text Element ID bắt buộc phải có độ dài chính xác 8 ký tự `[a-zA-Z0-9_-]` để ăn khớp hoàn hảo với regex `/\s\^(.{8})[\n]+/g` và bước nhảy con trỏ 12 ký tự của Obsidian Excalidraw plugin, khử trùng lặp qua `seen_ids`.
-  - Mọi layout engine đều tự động chuẩn hóa canvas về toạ độ dương an toàn ($x \ge 80, y \ge 60$) qua `normalize_canvas_bounding_box`, tính cả toạ độ uốn của các mũi tên liên kết.
-- **Container Header Anchoring & Spatial Clustering Guard (v8.13.3)**:
-  - Tiêu đề container bao bọc (enclosing containers) được tách khỏi bound text và neo ở đỉnh khung (`containerHeaderOf`) để ngăn engine tự động kéo về trung tâm làm đè chữ lên node con; đồng bộ dịch chuyển theo khung.
-  - Bổ sung Container Guard trong bộ định tuyến layout (`layout_router.py`) để bảo toàn nguyên vẹn bố cục cụm không gian (spatial clusters) do LLM thiết kế, ngăn Sugiyama làm phẳng hoặc méo mó các phân nhóm logic.
-- **D2 & Hero Image Production Standards (v8.13.3)**:
-  - D2 worker gửi `User-Agent` tùy biến vượt Cloudflare WAF của Kroki (HTTP 403), vệ sinh cấm layout engine thương mại `tala`, escape an toàn cú pháp JSON prompt.
-  - Hero Image tuân thủ cấu hình Gateway SSOT (`gateway_image_model`) và áp dụng Rào cản Phủ định (Negative Constraints) triệt tiêu phong cách tranh hoạt hình, anime, hoặc 3D nhựa đồ chơi, bảo đảm chất lượng điện ảnh học thuật tối giản.
-- **Mermaid Academic Theme & Semantic Class Preservation**:
-  - Chỉ tiêm lớp CSS Academic Theme (`classDef principal/standard/auxiliary`) cho sơ đồ loại `flowchart` và `graph`. Bảo tồn nguyên vẹn các class ngữ nghĩa tùy biến (`alert`, `law`, `accent`).
-  - Mã hóa ký tự phá vỡ cú pháp trên nhãn node bằng thực thể HTML tiêu chuẩn (`#40;`, `#41;`, `#124;`) thay vì ký tự unicode lạ.
-  - Nhận diện `subgraph` bằng regex, loại trừ khỏi việc gán `class standard;` và áp dụng styling riêng bằng `style <sg_id> fill:#f8fafc,stroke:#334155,stroke-width:1px;`.
-- **Thư viện mẫu thị giác đa dạng**:
-  Bổ sung và hỗ trợ đầy đủ các visual patterns: Wheel / Star-Cycle (`#layout:wheel`), 2x2 Matrix Quadrant Grid (`#layout:matrix`), Sugiyama Layered (`#layout:sugiyama`), Radial Hub-and-Spoke, Value Chain, Cycle, Tree, Concentric.
+> [!TIP] Progressive Disclosure — Tra Cứu Trực Quan Nâng Cao
+> Khi cần vẽ sơ đồ Excalidraw/Mermaid phức tạp, căn chỉnh layout hình học hoặc cấu hình D2/Kroki, Agent tra cứu cẩm nang kỹ thuật đầy đủ tại:
+> 📖 [`.agents/rules/diagramming_hygiene.md`](file:///d:/VvC_Notes/.agents/rules/diagramming_hygiene.md) và [Master Skill `ccba-markdown-document-processing`](file:///d:/VvC_Notes/.agents/skills/ccba-markdown-document-processing/SKILL.md).
 
 ---
 
-## 5. Autonomous Ingestion Pipeline (LLM OS v7.0 — Lean Compiler)
+## 5. Autonomous Pipeline & AI Infrastructure (Backend Reference)
 
-The vault operates via Python background daemons. Entry point: `scripts/daemon.py`.
+Vault vận hành thông qua các Python background daemons theo mô hình **LLM Compiler Pattern**:
+- **Entry Points**: `scripts/daemon.py` (Watchdog xử lý ảnh và truy vấn), `book_ingest.py` (Watcher sách mới), `sleep.py` (Consolidation hàng tuần), `wiki_maintain.py` (Tái tạo MOCs).
+- **5-Stage Pipeline**: Stage 1 OCR (Vision API) $\rightarrow$ Stage 2 Ground Truth (BM25 chapter-scoped search) $\rightarrow$ Stage 3 Synthesis (LLM Concept Note) $\rightarrow$ Stage 4 Self-Correction (Blockquote verification) $\rightarrow$ Stage 5 Post-Process & Semantic Knowledge Merger (3-Tier Merge Control, Cosine $\ge 0.88$, Consolidated Pruning).
+- **AI Infrastructure (3-Tier Routing & Local Antigravity CLI Opus Tier 1)**:
+  - **Tier 1 (Primary)**: Antigravity CLI Driver cục bộ (`agy.exe` — `claude-opus-4-6-thinking` cho suy luận sâu, `gemini-3.8-flash-high` cho tổng hợp concept note; Zero VPN, Zero 429).
+  - **Tier 2 (Fallback)**: AI Gateway (ccba-ai SDK, LiteLLM trên Server Spark qua Tailscale VPN: `claude-opus-4-6-thinking` trên Port 8045 / `gemini-3.8-flash-high` trên Port 8090).
+  - **Tier 3 (Fallback)**: GitHub Copilot CLI (`claude-sonnet-4.6`, `gpt-5-mini`) & Direct REST API (`gemini-3.1-flash-lite-preview`).
+  - **WinError 206 Safeguard**: CLI payload limits an toàn đến 30,000 ký tự qua `CreateProcessW` và stream qua `stdin` (`--input-format stream-json`).
+- **Stale Daemon Invariant (v8.15.9)**: Python nạp mã nguồn vào RAM khi khởi động; khi nâng cấp mã nguồn trong `scripts/` hoặc `config.yaml`, các tiến trình daemon chạy ngầm (`daemon.py`, `book_ingest.py`) vẫn giữ code cũ trong bộ nhớ, gây xung đột và xử lý sai lệch. Agent BẮT BUỘC phải hạ daemon cũ (dùng `python scripts/daemon.py --restart` hoặc PowerShell) trước khi kiểm thử hoặc chạy tác vụ downstream.
+- **CLI Autonomous Artifact Ingestion Invariant (v8.15.9)**: Khi gọi `agy.exe` (Antigravity CLI Tier 1) với chuyên luận dài, LLM Opus có thể tự kích hoạt Agent mode tạo tệp artifact `.md` trên đĩa và chỉ xuất đường dẫn URI `file:///...` ra `stdout`. Lớp client (`gemini_client.py`) bắt buộc phải tự động phát hiện URI, nạp toàn văn artifact thay thế cho tệp tóm tắt trước khi bàn giao cho downstream (`topic_saver.py`, `coordinator.py`).
+- **Deterministic Defense-in-Depth & SLM Prompt Anti-Literalism (v8.15.7 / v8.15.10)**: Tuyệt đối không dùng backticks bao quanh ví dụ cú pháp trong prompt LLM nếu output không được phép chứa backticks (dùng thẻ XML `<example>` thay thế) nhằm ngăn chặn hiện tượng sao chép máy móc từng ký tự (token literalism) của các mô hình nhẹ (SLMs/Flash); bắt buộc có điều khoản cấm tường minh trong `<rules>`; và mọi pipeline sinh text phải có lớp lọc tất định (deterministic regex sanitization: `clean_wikilink_quotes` bóc tách code-pill wikilinks, tự động chữa chimeric Mermaid edges thành pipe syntax `===>|"label"|`, đảo ngược thực thể `#40;` và `#41;` bị rò rỉ ngoài Mermaid thành `()`, và chuẩn hóa toán tử `≥`/`≤`) ở tầng Python runtime trước khi ghi đĩa.
 
-```text
-scripts/
-├── daemon.py                  ← Main watchdog: queue + temporal batching + worker loop
-├── book_ingest.py             ← Book watcher: EPUB/PDF → workspace setup
-├── sleep.py                   ← Weekly consolidation (lint, heal, MOC rebuild)
-├── wiki_maintain.py           ← Source MOC + Domain MOC + Master Index (w/ Zero-Concept filter)
-├── epub_convert.py            ← EPUB → Markdown converter
-├── web_clip.py                ← CLI tool: URL → Fleeting Markdown
-├── config.yaml                ← Centralized configuration
-│
-├── .state/                    ← Operational state & journal data (Zero Cloud Contamination)
-├── logs/                      ← Operational log files (daemon.log, sleep_daemon.log, etc.)
-│
-├── core/                      ← Shared infrastructure
-│   ├── config.py              ← VaultConfig dataclass (singleton)
-│   ├── types.py               ← Central type definitions & strict type checking
-│   ├── daemon_utils.py        ← Watchdog helper & file stability guards
-│   ├── media.py               ← Media utility seam (FFmpeg/FFprobe locator & transcode SSOT)
-│   ├── prompts/               ← Prompts Registry (modularized text templates)
-│   ├── llm/                   ← 3-tier LLM Modular Package + JIT Dynamic Model Resolver (Gemini 3.8)
-│   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
-│   ├── layout_router.py       ← Topology auto-detection → engine dispatch
-│   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
-│   └── log.py                 ← Append-only logger → log.md (weekly rotation)
-│
-├── pipeline/                  ← Ingestion stages (7 files)
-│   ├── image_processor.py     ← 5-stage pipeline orchestrator (single + Map-Reduce batch)
-│   ├── ocr.py                 ← Vision API: auto-orient → OCR → highlight parsing
-│   ├── ground_truth.py        ← BM25 chapter-scoped matching + OCR correction
-│   ├── synthesize.py          ← LLM concept note generation (Format v7.7 Cognitive Flow)
-│   ├── self_correct.py        ← Independent blockquote accuracy verification
-│   ├── post_process.py        ← Save concept (unicodedata strict snake_case), archive image
-│   └── semantic_merger.py     ← Semantic Knowledge Merger (3-Tier Merge Control, cross-linking)
-│
-├── services/                  ← Interactive services & Micro-modules (~20 files)
-│   ├── command/               ← Interactive Command Deep Module Package (11 writing styles, Zero I/O inbox, Multi-Query Drainage Loop)
-│   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
-│   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
-│   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
-│   ├── article_images.py      ← Web article image downloader & WebP compressor
-│   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
-│   ├── chat_history.py        ← Backward-compat shim (absorbed into command/inbox.py)
-│   ├── rag_builder.py         ← RAG Context XML formatter
-│   ├── url_fetcher.py         ← Trafilatura & BeautifulSoup web scraping (no truncation limits)
-│   ├── text_chunker.py        ← Semantic chunking (25K/chunk) & AI orthographic correction
-│   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
-│   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment
-│   ├── moc_mermaid.py         ← MOC Mermaid diagram generators (Source + Domain, w/ chapter grouping)
-│   ├── diagram_base.py        ← Shared diagram infrastructure
-│   ├── excalidraw_worker.py   ← Excalidraw JSON via Copilot CLI (claude-sonnet) (w/ Text Auto-Sync)
-│   ├── mermaid_worker.py      ← Mermaid diagram generation
-│   ├── d2_worker.py           ← D2 vector diagram worker (local CLI + Kroki fallback)
-│   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
-│
-└── tests/                     ← 393 unit tests (pytest) — coverage ≥ 50%
-```
-
-### 1. Setup & Ingestion (`book_ingest.py` & `epub_convert.py`)
-- Watches `03 - Resources/books/`.
-- Converts EPUB to chunked markdown corpus for BM25 matching.
-- Creates Source Notes and workspaces in `05 - Fleeting/`.
-
-### 2. 5-Stage Pipeline (`daemon.py` v7.5)
-- Watches `05 - Fleeting/` for images and `Command.md` / `Brain_Dump.md` for queries.
-- **File Stability Guard**: Before enqueuing, `_is_file_stable()` verifies the image file size is stable (1.5s gap), preventing processing of partially-synced files from cloud junction.
-- **Temporal Batching Engine**: Images dropped in the same workspace within a 10-second cooldown window are grouped into a single batch task → synthesized as one Concept Note (prevents multi-page fragmentation).
-- **Stage 1 — OCR** (`pipeline/ocr.py`): Vision API → highlight parsing → page detection. When a TOC image is processed, **Reverse Metadata Sync** automatically updates the matching Source Note with the Vietnamese title and chapter table from `_toc.json`.
-- **Stage 2 — Ground Truth** (`pipeline/ground_truth.py`): BM25 chapter-scoped search → OCR auto-correction.
-- **Stage 3 — Synthesis** (`pipeline/synthesize.py`): LLM generates atomic Concept Note (Format v7.7 — Evidence Hook → Core Idea → Ground Truth → `---` → References).
-- **Stage 4 — Self-Correction** (`pipeline/self_correct.py`): Independent blockquote verification.
-- **Stage 5 — Post-Process** (`pipeline/post_process.py`): Save to concepts/, archive image (public `archive_image()` for batch archiving of extra pages), trigger MOC.
-- **Stage 6 — Semantic Knowledge Merger** (`pipeline/semantic_merger.py` v8.9.9): Runs automatically before saving. Calculates Cosine similarity with existing concepts via AI Gateway `/embeddings`. If similarity $\ge 0.88$, passes through a **3-Tier Merge Control** before deciding:
-  - **Tier 1 — Hook Count Gate**: If existing note has ≥4 Evidence Hooks (blockquotes `> "`), activate **Consolidated Pruning** (Tỉa cành củng cố) rather than forcing separate. The merger instructs the LLM to selectively prune and consolidate redundant or similar quotes, maintaining a strict maximum limit of 4 (preferably 3) high-value Vietnamese hooks.
-  - **Tier 2 — Dynamic Size Limit**:
-    - For notes under Consolidated Pruning (≥4 hooks): calculates `core_size` by stripping all blockquotes. Merges are allowed if `core_size` ≤ 6,000 bytes (protecting analysis limits) AND overall `file_size` ≤ 10,000 bytes. If either limit is exceeded, forces `SEPARATE` + cross-link.
-    - For normal notes (<4 hooks): forces `SEPARATE` if `file_size` > 7,700 bytes (derived from vault-wide statistics).
-  - **Tier 3 — LLM Arbitrator**: Consults LLM with 3-way decision: `MERGE`, `SEPARATE`, or `SUBSUME`. Bias toward `SEPARATE`. If `MERGE`, triggers **Academic Merge Synthesis** (combining and pruning Evidence Hooks bilingual v8.9.9, and deep rewriting of `## Core Idea`). If `SEPARATE`, saves the new file and automatically establishes two-way cross-links on the Obsidian Graph. If `SUBSUME`, the new concept is **dropped entirely** — source image is archived, event is logged to `.state/.subsume_journal.jsonl` for weekly review in `Weekly_Synthesis.md`.
-
-### 3. Interactive Services
-- **Command.md** (`services/command/`): Deep Module Package với 11 writing styles qua `/prefix` (kèm `🥊 /phan-bien` sparring, `fast`, `hero-image`), Multi-Query Drainage Loop (vét cạn toàn bộ truy vấn trong chu kỳ poller), RAG-enhanced responses, tự động lưu bài viết sâu $\ge 2500$ ký tự vào `04 - Permanent/topics/`, forces `|100%` on embedded diagrams.
-- **Brain Dump** (`services/brain_dump/`): Bóc tách ý tưởng từ native `## Inbox` markdown header, ghi kết quả vào `## Processed`. Vận hành theo kiến trúc Map-Reduce:
-  - **No Truncation Limits**: `url_fetcher.py` trích xuất toàn bộ văn bản gốc không cắt cụt; bài viết dài được phân đoạn ngữ nghĩa qua `text_chunker.py` (25K ký tự/chunk).
-  - **Image Pipeline**: `article_images.py` tự động tải và nén ảnh WebP song song (max 1536px, Q=80), hỗ trợ tải nguyên bản vector SVG (`.svg`), đóng gói vào `04 - Permanent/sources/assets/<domain>/` và nhúng markers vào callout ẩn.
-  - **Map Step**: Phân tích ngữ nghĩa trích xuất Atomic Concepts theo **Proportional Dynamic Limit** (1-3 concepts cho bài ngắn <5k ký tự, 8-18 concepts cho bài dài >50k ký tự).
-  - **Reduce Step**: Tổng hợp Concept Notes chuẩn chỉnh với giới hạn 4096 tokens, tự động nhúng tối đa 3 hình minh họa `![[filename.webp]]` vào `## Core Idea`.
-- **Hybrid RAG** (`services/rag_search.py`): BM25 + Gemini Embeddings + RRF fusion.
-
-### 4. Wiki Health (`services/wiki_health.py`) — OOP Architecture (v7.4)
-- **3 classes**: `VaultLinter` (single-pass lint), `LinkHealer` (broken link repair), `DomainEnricher` (tag enrichment).
-- **Facade pattern**: Public functions `lint_vault()`, `heal_broken_links()`, `enrich_domains()` maintain backward compatibility.
-- **Semantic Arbitrator**: LLM gatekeeper in `_is_valid_concept()` — only creates stubs for high-value academic concepts. Explicitly accepts short boolean bypasses (`YES`/`NO`) to prevent false-rejections.
-- **Strict Abort & Auto-Unlink**: Broken links rejected by Arbitrator are cached in `.rejected_stubs.json` and permanently unlinked (brackets stripped) from source files to prevent Infinite Retry Loops.
-- **API Protection**: Enforces 20 RPM via 3.0s throttling, 30s backoff for failures, and a 3-consecutive-error Circuit Breaker.
-- Runs weekly via `sleep.py` (Task Scheduler).
-
-### 5. Diagram Generation
-Hệ thống hỗ trợ sinh sơ đồ song song (Excalidraw, Mermaid, D2 Vector) tuân thủ tiêu chuẩn học thuật Academic Grayscale — xem quy tắc kiến trúc chi tiết tại **§4.9 Dual-Rendering Diagram Standards**.
-- **Topology Router** (`core/layout_router.py`): Tự động phân tích đồ thị hoặc nhận diện thẻ `#layout:` để điều phối 7 deterministic layout engines (`sugiyama`, `radial`, `cycle`, `matrix`, `concentric`, `value_chain`, `tree`, `wheel`).
-- **Excalidraw** (`services/excalidraw_worker.py`): Copilot CLI sinh mã JSON bao đóng Obsidian Excalidraw 2.x, tích hợp Text Element Auto-Sync (`# Text Elements`) và `compute_safe_arrow_endpoints`.
-- **Mermaid** (`services/mermaid_worker.py`): Sinh Mermaid tự động với Academic Theme hygiene, ngắt dòng nhãn và khử ký tự đặc biệt.
-- **D2 Worker** (`services/d2_worker.py`): Biên dịch D2 sang SVG vector qua local CLI hoặc Kroki HTTP fallback (zero-dependency).
+> [!TIP] Progressive Disclosure — Tra Cứu Mã Nguồn & Vận Hành Pipeline
+> Khi làm việc, phát triển hoặc sửa lỗi trong thư mục `scripts/`, Agent chuyển sang **Pipeline Mode** và tra cứu tài liệu chuyên sâu tại:
+> ⚙️ [`scripts/README.md`](file:///d:/VvC_Notes/scripts/README.md) (Kiến trúc micro-services, danh mục script) và [`scripts/GEMINI.md`](file:///d:/VvC_Notes/scripts/GEMINI.md) (Quy tắc override vận hành pipeline).
 
 ---
 
-## 6. Maintenance & Linting
-- **Wiki Lint**: 6 automated health checks run during Sleep Consolidation (weekly via Task Scheduler).
-- Always check for the string `Error connecting` in LLM outputs to prevent timeout errors from poisoning the Zettelkasten.
-- When restarting daemons, always kill previous Ghost Processes to prevent race conditions. Note: Windows `.venv` uses a Shim Launcher architecture. It is normal to see 4 `pythonw.exe` processes (2 Shim Launchers + 2 Global Python Workers) for 2 running daemons. They are not Ghost Processes.
-- Web-imputed stubs (`confidence: low`) should be reviewed and upgraded by the user.
-- **Vault Sync**: Handled transparently by Google Drive Desktop via Windows Directory Junctions. The `D:\VvC_Notes` vault folders (e.g. `04 - Permanent`) are `mklink /J` junctions pointing directly to `G:\My Drive\VvC_Vault\...`. Python environments (`.venv`, `scripts`) remain isolated locally to prevent cloud contamination.
-- **Code Standards**: All scripts use top-level `try/except` imports (no local imports in hot paths). Shutdown signals use `threading.Event` (not global bool). State tracking uses `@dataclass`.
-- **PowerShell stdout fix**: Scripts with `__main__` block phải dùng `logging.basicConfig(stream=sys.stdout)`. Python mặc định ghi log vào `stderr` — PowerShell sẽ tự động return exit code 1 khi có bất kỳ output nào trên stderr, dù không có lỗi thực sự. Đồng thời, nếu script in ký tự Unicode (tiếng Việt có dấu) ra terminal Windows, bắt buộc gọi `sys.stdout.reconfigure(encoding='utf-8')` ở đầu để ngăn lỗi `UnicodeEncodeError` (charmap).
----
+## 6. Governance & Skills Standards
 
-## 7. Research & Proposal Discipline — Double-Pass Adversarial Review
-
-Mọi đề xuất kỹ thuật (tối ưu hiệu suất, refactor, tính năng mới, thay đổi kiến trúc) bắt buộc phải tuân thủ nghiêm ngặt quy trình **Double-Pass Adversarial Review** đã được chuẩn hóa tại **Global Memory & Context (§8)**:
-1. **Vòng 1 — Code-First Research**: Đọc implementation thực tế, grep codebase để xác nhận chưa tồn tại, kiểm tra end-to-end data flow, đo lường số liệu thực tế thay vì ước lượng.
-2. **Vòng 2 — Self-Adversarial Review**: Tự phản biện ít nhất 3 giả định cốt lõi, kiểm tra ràng buộc thiết kế trong `AGENTS.md`, phân loại rõ "đã tồn tại" vs "cần triển khai mới" vs "cần thay đổi code hiện có".
-3. **Quy tắc số liệu & Trình bày**: Mọi con số phải kèm nguồn (`[đo thực tế]`, `[phân tích log]`). Đánh giá theo ma trận Giá trị × Độ phức tạp × Rủi ro × KISS. Loại bỏ ngay đề xuất nếu kiểm chứng thấy sai.
-
----
-
-## 8. AI Infrastructure — 3-Tier Routing (v8.12.3)
-
-```
-Tier 1 (Primary):  Antigravity CLI Driver (gemini-3.8-flash-high) / AI Gateway (ccba-ai SDK)  ← 22 models via LiteLLM
-Tier 2 (Fallback): Gateway / Copilot CLI
-Tier 3 (Direct):   Gemini REST API
-```
-
-| Task | Routing | Model |
-|---|---|---|
-| OCR / Vision | Gemini REST API / Gateway | `gemini-3.1-flash-lite-preview` |
-| Text synthesis (Reduce) | Antigravity CLI → Gateway fallback | `gemini-3.8-flash-high` (Think ~3k-4.5k tokens, ~17-23s) |
-| OCR correction | Gateway → Copilot CLI fallback | `gemini-3.1-flash-lite` |
-| Concept Extraction (Map Step) | Antigravity CLI → Gateway fallback | `gemini-3.8-flash-high` (Cached ~8k tokens, ~13s) |
-| Strategic Reasoning & Plan | Copilot CLI (CLI Tier) | `claude-opus-4-6-thinking` (Reserved for high-stakes decisions) |
-| Audio / Transcription | AI Gateway | `audio-primary` (`faster-whisper-large-v3-turbo-ct2`) |
-| Excalidraw diagrams | Copilot CLI | `claude-sonnet-4.6` (w/ LZString Safe Healer) |
-
-- **Config**: `scripts/config.yaml`
-- **Client Package**: `scripts/core/llm/` (Separated into `gateway_client`, `copilot_client`, `gemini_client`, `vision_client`, `audio_client`)
-- **Round-Robin Load Balancing**: For bulk operations (e.g. `LinkHealer`), `call_llm(strategy="round_robin")` rotates the primary tier across all backends to evenly distribute load, effectively multiplying the overall system RPM limit by 4x.
-- **Tier-Specific Routing**: Models are dynamically resolved by tier (Gateway proxy vs Copilot models) avoiding global overrides. Copilot correction model defaults to `""` to prevent Quota Exceeded errors.
-- **WinError 206 Safeguard**: CLI payload limits are safely raised to **30,000 characters** by natively invoking `CreateProcessW` (bypassing `cmd.exe` wrappers like `gemini.cmd` via `node.exe`). Payloads exceeding this limit bypass CLI directly to HTTP REST APIs.
-- **VAD Filter**: Audio transcription (Whisper) automatically injects `"vad_filter": true` via `extra_body` to remove silences.
-- **Unconditional think-tag stripping**: `strip_think_tags()` runs on ALL LLM outputs before saving
-
----
-
-## 9. Agent Skills
-
-### Issue Tracker
-Các lỗi (bugs) và yêu cầu tính năng (Specs) của dự án này được theo dõi trên GitHub Issues. Sử dụng công cụ `gh` CLI cho mọi thao tác. Xem `.md/knowledge/agents/issue_tracker.md`.
-
-### Domain Docs
-Dự án sử dụng cấu trúc Single-context. Tra cứu `CONTEXT.md` và `docs/adr/` tại thư mục gốc. Xem `.md/knowledge/agents/domain.md`.
-
-### Skills Governance
-Tuân thủ Khung Quyết Định Hai Giai Đoạn (ADR-0057 & RES-2026-ARCH-001 v1.2) với kiến trúc 3 tầng (Tier 1: Package Function, Tier 2A: Progressive Reference, Tier 2B: Standalone Kernel Skill, Tier 3: Composite Orchestrator). Mọi kỹ năng độc lập bắt buộc đạt $GPI \ge 12.0$ và vượt qua `python scripts/validate_skills.py --file <path> --enforce-gpi`.
+- **Research & Proposal Discipline**: Mọi đề xuất kỹ thuật hoặc thay đổi kiến trúc bắt buộc tuân thủ quy trình **Double-Pass Adversarial Review** (Vòng 1 Code-First Research $\rightarrow$ Vòng 2 Self-Adversarial Review) theo quy định tại **Global Memory & Context (§8)**.
+- **Skills Governance**: Mọi kỹ năng Agent độc lập thuộc namespace `ccba-*` phải tuân thủ Khung Quyết Định Hai Giai Đoạn (ADR-0057), đạt điểm $GPI \ge 12.0$ và vượt qua `python scripts/validate_skills.py --file <path> --enforce-gpi`.
+- **Platform Hub Invariant**: Khi task liên quan đến CCBA, Agent đọc `platform-loader/SKILL.md` và kiểm tra catalog trước khi tạo công cụ mới (Reuse-First Gate).

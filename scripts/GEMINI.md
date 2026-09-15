@@ -38,14 +38,18 @@ In this mode, enforce these rules with maximum strictness:
 - Single-shot response (no follow-ups)
 - Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML frontmatter, etc.)
 
-## Architecture Reference (v8.13.3 — Multimodal Diagram Standardization & Wayfinder Hardening)
+## Architecture Reference (v8.15.10 — Mermaid Edge Label & Strict HTML Entity Context Isolation Invariants)
 
-### LLM Routing (3-Tier)
-- **Tier 1 (Primary)**: AI Gateway (ccba-ai SDK) — 22 models via LiteLLM on Server Spark
-- **Tier 2 (Fallback)**: Copilot CLI (`copilot --model <model> -p "<prompt>"`)
-- **Tier 3 (Direct & CLI)**: Gemini REST API & Antigravity/Gemini CLI (`agy.exe --model ... --print ...` / `gemini.cmd`)
+### LLM Routing (3-Tier Cascade)
+- **Reasoning Tier 1 (Primary)**: Antigravity CLI cục bộ (`agy.exe`) — `claude-opus-4-6-thinking` (Zero VPN, Zero 429, ~6.5s)
+- **Synthesis Tier 1 (Primary)**: Antigravity CLI (`agy.exe`) — `gemini-3.8-flash-high`
+- **CLI Artifact Ingestion (v8.15.9)**: `_resolve_cli_artifact_content()` tự động phát hiện đường dẫn `file:///...` trong stdout khi CLI kích hoạt agent mode, nạp toàn văn tệp artifact `.md` vào memory thay thế bản tóm tắt ngắn.
+- **Stale Daemon Invariant (v8.15.9)**: Sau khi chỉnh sửa code hoặc config, bắt buộc tái khởi động daemon bằng cờ `--restart` (`python scripts/daemon.py --restart`) để hạ các tiến trình cũ đang lưu code cũ trong RAM.
+- **Fallback Tier 2**: AI Gateway (Port 8045/8090 trên Server Spark qua Tailscale VPN)
+- **Fallback Tier 3**: GitHub Copilot CLI (`claude-sonnet-4.6`, `gpt-5-mini`) & Google Direct API
 - **WinError 206 Safeguard**: CLI payload limits are safely raised to **30,000 chars** by natively invoking `CreateProcessW` (bypassing `cmd.exe`). Only payloads > 30,000 chars bypass CLI to HTTP REST APIs.
 - **Round-Robin Load Balancing**: For bulk tasks, `call_llm(strategy="round_robin")` rotates the primary tier across all 3 tiers to multiply the total RPM capacity and avoid rate-limiting.
+- **Deterministic Defense-in-Depth (v8.15.7 / v8.15.10)**: Pre-save regex sanitizer `clean_wikilink_quotes()` bóc tách triệt để backticks bao quanh wikilinks, tự động chữa chimeric Mermaid edge labels thành pipe syntax `===>|"label"|`, đảo ngược thực thể `#40;` và `#41;` bị rò rỉ ngoài Mermaid về `()` chuẩn, và chuẩn hóa toán tử `≥`/`≤`; prompt cấm dùng backticks trong ví dụ cú pháp (dùng thẻ `<example>`).
 
 ### Model Assignments
 - **Vision/OCR**: Gemini REST API (`gemini-3.1-flash-lite-preview`) — `google-genai` SDK
