@@ -107,3 +107,28 @@ def test_roundtrip():
     assert fm2["title"] == "Test"
     assert fm2["confidence"] == "low"
     assert "Body content" in extract_body(rebuilt)
+
+
+def test_parse_and_extract_with_utf8_bom():
+    """Should correctly strip UTF-8 BOM and parse frontmatter and body."""
+    bom_content = "\ufeff---\ntitle: BOM Test\ntype: topic\n---\n\n# Body with BOM"
+    fm = parse_frontmatter(bom_content)
+    assert fm["title"] == "BOM Test"
+    assert fm["type"] == "topic"
+
+    body = extract_body(bom_content)
+    assert body.strip().startswith("# Body with BOM")
+    assert not body.startswith("\ufeff")
+    assert "---" not in body
+
+
+def test_parse_and_extract_with_crlf():
+    """Should correctly parse frontmatter and extract body with CRLF line endings."""
+    crlf_content = "---\r\ntitle: CRLF Test\r\ntype: topic\r\n---\r\n\r\n# Body with CRLF"
+    fm = parse_frontmatter(crlf_content)
+    assert fm["title"] == "CRLF Test"
+    assert fm["type"] == "topic"
+
+    body = extract_body(crlf_content)
+    assert body.strip().startswith("# Body with CRLF")
+

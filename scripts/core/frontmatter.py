@@ -20,8 +20,8 @@ try:
 except ImportError:
     from yaml import SafeLoader as _SafeLoader
 
-# Regex to match YAML frontmatter block
-_FM_PATTERN = re.compile(r"^---\s*\n(.*?)\n---\s*\n?", re.DOTALL)
+# Regex to match YAML frontmatter block (supporting both LF and CRLF)
+_FM_PATTERN = re.compile(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n?", re.DOTALL)
 
 
 def parse_frontmatter(content: str) -> dict[str, Any]:
@@ -33,6 +33,7 @@ def parse_frontmatter(content: str) -> dict[str, Any]:
     Returns:
         Parsed frontmatter dict, or empty dict if no frontmatter found.
     """
+    content = content.lstrip("\ufeff")
     match = _FM_PATTERN.match(content)
     if not match:
         return {}
@@ -51,6 +52,7 @@ def extract_body(content: str) -> str:
     Returns:
         Body content without frontmatter.
     """
+    content = content.lstrip("\ufeff")
     match = _FM_PATTERN.match(content)
     if not match:
         return content
