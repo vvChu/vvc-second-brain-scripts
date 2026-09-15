@@ -886,4 +886,130 @@ def test_mermaid_academic_theme_with_responsive_direction():
     assert "class Step1 principal;" in themed
 
 
+def test_wheel_layout_header_banner_anchored_and_clearance():
+    """apply_wheel_layout must anchor header banner at y=30 and position wheel belt at y>=120."""
+    from core.layouts.wheel_layout import apply_wheel_layout
 
+    # Wheel elements: 1 hub + 4 outer nodes
+    elements = _wheel_elements(4)
+    # Add wide header banner (width >= 600, degree == 0, y <= center_y)
+    header = _make_shape("bx_head", x=200.0, y=10.0, w=1000.0, h=70.0)
+    header_text = {
+        "id": "tx_head",
+        "type": "text",
+        "containerId": "bx_head",
+        "text": "Header Banner Title",
+        "x": 200.0,
+        "y": 10.0,
+        "width": 1000.0,
+        "height": 70.0,
+    }
+    elements.extend([header, header_text])
+
+    res = apply_wheel_layout(elements, center_x=600.0, center_y=400.0)
+    assert res is True
+
+    # Header banner must be anchored at y=30
+    assert abs(header["y"] - 30.0) < 1.0
+    # Header text must be translated synchronously
+    assert abs(header_text["y"] - 30.0) < 1.0
+
+    # All wheel shapes must be positioned at y >= 120
+    wheel_shapes = [e for e in elements if e.get("type") == "rectangle" and e["id"] != "bx_head"]
+    for ws in wheel_shapes:
+        assert ws["y"] >= 120.0, f"Shape {ws['id']} is at y={ws['y']}, expected >= 120"
+
+
+def test_layout_router_active_nodes_wheel_detection_with_header_banner():
+    """apply_smart_layout must detect wheel topology even when an isolated header banner exists."""
+    from core.layout_router import apply_smart_layout
+
+    elements = _wheel_elements(4)
+    header = _make_shape("bx_head", x=200.0, y=30.0, w=1000.0, h=70.0)
+    elements.append(header)
+
+    apply_smart_layout(elements)
+
+    # Hub should have strokeWidth = 3 (from wheel layout)
+    hub = next(e for e in elements if e.get("id") == "hub")
+    assert hub["strokeWidth"] == 3
+    # Header should be anchored at y=30 and not in the wheel
+    assert abs(header["y"] - 30.0) < 1.0
+
+
+def test_wheel_layout_with_auxiliary_badges_preserves_outer_nodes():
+    """apply_wheel_layout must exclude auxiliary degree-0 shapes (e.g. badges) from the wheel cycle."""
+    from core.layouts.wheel_layout import apply_wheel_layout
+
+    # 4-node wheel: 1 hub + 4 cycle nodes (w0..w3)
+    elements = _wheel_elements(4)
+    # Add wide header banner
+    header = _make_shape("bx_head", x=200.0, y=10.0, w=1000.0, h=70.0)
+    elements.append(header)
+
+    # Add 4 quadrant badges (degree == 0, width < 600)
+    b1 = _make_shape("bx_bg1", x=920.0, y=200.0, w=240.0, h=40.0)
+    b2 = _make_shape("bx_bg2", x=920.0, y=720.0, w=240.0, h=40.0)
+    b3 = _make_shape("bx_bg3", x=240.0, y=720.0, w=240.0, h=40.0)
+    b4 = _make_shape("bx_bg4", x=240.0, y=200.0, w=240.0, h=40.0)
+    elements.extend([b1, b2, b3, b4])
+
+    res = apply_wheel_layout(elements, center_x=600.0, center_y=400.0)
+    assert res is True
+
+    # Outer nodes must remain exactly 4, positioned at 12h, 3h, 6h, 9h
+    w0 = next(e for e in elements if e["id"] == "w0")
+    w1 = next(e for e in elements if e["id"] == "w1")
+    w2 = next(e for e in elements if e["id"] == "w2")
+    w3 = next(e for e in elements if e["id"] == "w3")
+    hub = next(e for e in elements if e["id"] == "hub")
+
+    hub_cx = hub["x"] + hub["width"] / 2.0
+    hub_cy = hub["y"] + hub["height"] / 2.0
+
+    w0_cx = w0["x"] + w0["width"] / 2.0
+    w0_cy = w0["y"] + w0["height"] / 2.0
+    w1_cx = w1["x"] + w1["width"] / 2.0
+    w1_cy = w1["y"] + w1["height"] / 2.0
+    w2_cx = w2["x"] + w2["width"] / 2.0
+    w2_cy = w2["y"] + w2["height"] / 2.0
+    w3_cx = w3["x"] + w3["width"] / 2.0
+    w3_cy = w3["y"] + w3["height"] / 2.0
+
+    # w0 is directly above hub (12 o'clock)
+    assert abs(w0_cx - hub_cx) < 2.0
+    assert w0_cy < hub_cy
+
+    # w1 is directly to right of hub (3 o'clock)
+    assert abs(w1_cy - hub_cy) < 2.0
+    assert w1_cx > hub_cx
+
+    # w2 is directly below hub (6 o'clock)
+    assert abs(w2_cx - hub_cx) < 2.0
+    assert w2_cy > hub_cy
+
+    # w3 is directly to left of hub (9 o'clock)
+    assert abs(w3_cy - hub_cy) < 2.0
+    assert w3_cx < hub_cx
+
+
+def test_layout_router_arrow_binding_non_shape_does_not_create_phantom_nodes():
+    """apply_smart_layout must not add phantom nodes to G when arrow binds to non-shape."""
+    from core.layout_router import apply_smart_layout
+
+    # 4-node wheel
+    elements = _wheel_elements(4)
+    # Add an arrow bound to a text element or ghost ID
+    ghost_arrow = {
+        "id": "ghost_arr",
+        "type": "arrow",
+        "startBinding": {"elementId": "hub"},
+        "endBinding": {"elementId": "non_existent_shape"},
+        "points": [[0.0, 0.0], [50.0, 50.0]],
+    }
+    elements.append(ghost_arrow)
+
+    # Should still correctly detect wheel and layout without error
+    apply_smart_layout(elements)
+    hub = next(e for e in elements if e.get("id") == "hub")
+    assert hub["strokeWidth"] == 3

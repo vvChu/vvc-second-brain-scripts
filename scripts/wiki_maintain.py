@@ -616,6 +616,7 @@ maintain_wiki = rebuild_all
 
 
 if __name__ == "__main__":
+    import argparse
     import sys
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -623,5 +624,25 @@ if __name__ == "__main__":
     except AttributeError:
         pass
     logging.basicConfig(level=logging.INFO, stream=sys.stdout)
-    rebuild_all()
-    print("Wiki maintenance complete.")
+
+    parser = argparse.ArgumentParser(description="VvC Second Brain — Wiki Maintainer")
+    parser.add_argument("--check-only", action="store_true", help="Dry-run vault health check without modifying MOCs")
+    parser.add_argument("--fix-code-pills", action="store_true", help="Automatically heal code-pill wikilinks")
+    args = parser.parse_args()
+
+    if args.check_only:
+        from services.wiki_health import scan_wikilink_code_pills
+        concepts = scan_all_concepts()
+        sources = scan_all_sources()
+        code_pills = scan_wikilink_code_pills(fix=args.fix_code_pills)
+        print(f"Vault Verification: {len(concepts)} concepts, {len(sources)} sources.")
+        if code_pills:
+            print(f"WARNING: Found {len(code_pills)} files with code-pill wikilinks (total matches: {sum(c['count'] for c in code_pills)}):")
+            for item in code_pills:
+                print(f"  - {item['file']}: {item['count']} pills")
+        else:
+            print("Clean Wikilink Invariant check: PASS (0 code-pill wikilinks found).")
+        print("Vault health check complete.")
+    else:
+        rebuild_all()
+        print("Wiki maintenance complete.")

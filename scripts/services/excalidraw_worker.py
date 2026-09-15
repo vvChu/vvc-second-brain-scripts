@@ -172,12 +172,12 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
         def _is_enclosing_container(shape: dict) -> bool:
             if shape.get("type") not in ("rectangle", "ellipse", "diamond"):
                 return False
-            sx, sy = shape.get("x", 0), shape.get("y", 0)
-            sw, sh = shape.get("width", 100), shape.get("height", 100)
+            sx, sy = float(shape.get("x") or 0), float(shape.get("y") or 0)
+            sw, sh = float(shape.get("width") or 100), float(shape.get("height") or 100)
             for o in elements:
                 if o is not shape and o.get("type") in ("rectangle", "ellipse", "diamond"):
-                    ox, oy = o.get("x", 0), o.get("y", 0)
-                    ow, oh = o.get("width", 50), o.get("height", 50)
+                    ox, oy = float(o.get("x") or 0), float(o.get("y") or 0)
+                    ow, oh = float(o.get("width") or 50), float(o.get("height") or 50)
                     if sx <= ox and sy <= oy and (sx + sw) >= (ox + ow) and (sy + sh) >= (oy + oh) and (sw * sh > ow * oh * 1.5):
                         return True
             return False
@@ -194,7 +194,7 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                         "type": "text",
                         "id": text_id,
                         "x": elem.get("x", 0),
-                        "y": elem.get("y", 0) + 14,
+                        "y": (elem.get("y") or 0) + 14,
                         "width": elem.get("width", 100),
                         "height": 36,
                         "text": text_val,
@@ -210,9 +210,9 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                     text_elem = {
                         "type": "text",
                         "id": text_id,
-                        "x": elem.get("x", 0) + 10,
-                        "y": elem.get("y", 0) + 10,
-                        "width": elem.get("width", 100) - 20,
+                        "x": (elem.get("x") or 0) + 10,
+                        "y": (elem.get("y") or 0) + 10,
+                        "width": (elem.get("width") or 100) - 20,
                         "height": 20,
                         "text": text_val,
                         "fontSize": 16,
@@ -229,24 +229,32 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
             
             # 2. Heal: Ensure all text elements have required properties
             if elem.get("type") == "text":
-                if "fontSize" not in elem: elem["fontSize"] = 16
-                if "fontFamily" not in elem: elem["fontFamily"] = 3
-                if "textAlign" not in elem: elem["textAlign"] = "center"
-                if "verticalAlign" not in elem: elem["verticalAlign"] = "middle"
-                if "width" not in elem: elem["width"] = 100
-                if "height" not in elem: elem["height"] = 20
-                if "x" not in elem: elem["x"] = 0
-                if "y" not in elem: elem["y"] = 0
+                if not elem.get("fontSize"): elem["fontSize"] = 16
+                if not elem.get("fontFamily"): elem["fontFamily"] = 3
+                if not elem.get("textAlign"): elem["textAlign"] = "center"
+                if not elem.get("verticalAlign"): elem["verticalAlign"] = "middle"
+                if not elem.get("width"): elem["width"] = 100
+                if not elem.get("height"): elem["height"] = 20
+                if elem.get("x") is None: elem["x"] = 0
+                if elem.get("y") is None: elem["y"] = 0
 
                 # Auto-bind if not bound properly
                 c_id = elem.get("containerId")
+                if not c_id:
+                    for cid, c_cand in containers.items():
+                        b_list = c_cand.get("boundElements") or []
+                        if any((b.get("id") if isinstance(b, dict) else b) == elem.get("id") for b in b_list):
+                            c_id = cid
+                            elem["containerId"] = cid
+                            break
+
                 if c_id and c_id in containers:
                     c = containers[c_id]
                     # If container is an enclosing subgraph frame, unbind to prevent middle centering
                     if _is_enclosing_container(c):
                         elem["containerId"] = None
                         elem["verticalAlign"] = "top"
-                        elem["y"] = c.get("y", 0) + 14
+                        elem["y"] = (c.get("y") or 0) + 14
                         elem["containerHeaderOf"] = c.get("id")
                         if "boundElements" in c and isinstance(c["boundElements"], list):
                             c["boundElements"] = [b for b in c["boundElements"] if (b.get("id") if isinstance(b, dict) else b) != elem["id"]]
@@ -301,7 +309,7 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
         for elem in new_elements:
             if elem.get("type") == "text" and "text" in elem:
                 text = elem["text"]
-                w = float(elem.get("width", 150))
+                w = float(elem.get("width") or 150)
                 max_chars = max(10, int(w / 8))
                 
                 lines = text.split("\n")
@@ -314,9 +322,18 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
                 elem["text"] = "\n".join(wrapped_lines)
 
                 num_lines = len(wrapped_lines)
-                font_size = elem.get("fontSize", 16)
-                line_height = font_size * 1.25
+                font_size = float(elem.get("fontSize") or 16)
+                line_height = font_size * 1.35
                 elem["height"] = num_lines * line_height
+
+                # Ensure container shape is tall enough to contain text with safe padding
+                c_id = elem.get("containerId")
+                if c_id and c_id in containers:
+                    c = containers[c_id]
+                    min_needed_h = elem["height"] + 30.0
+                    c_h = float(c.get("height") or 0.0)
+                    if c_h < min_needed_h:
+                        c["height"] = min_needed_h
             
         # Apply deterministic layout engine via Central Router
         from core.layout_router import apply_smart_layout
@@ -339,3 +356,7 @@ def _validate_excalidraw_json(raw: str) -> tuple[str, str] | None:
     except (json.JSONDecodeError, TypeError) as e:
         _logger.warning(f"Excalidraw JSON invalid: {e}")
         return None
+
+
+# Canonical public alias for validating and repairing Excalidraw JSON
+clean_and_repair_excalidraw_json = _validate_excalidraw_json

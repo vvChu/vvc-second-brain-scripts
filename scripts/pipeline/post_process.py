@@ -31,6 +31,7 @@ from pipeline.semantic_merger import (
     execute_cross_linking,
     log_subsume,
 )
+from services.command.citations import clean_wikilink_quotes
 
 # Backward-compatible aliases for internal callers & tests
 _find_md_dir = find_book_md_dir
@@ -145,6 +146,9 @@ def save_concept(
     if not content or len(content) < 100:
         _logger.error("Content too short to save")
         return None
+
+    # Deterministic Pre-Save Sanitization (v8.15.7 / v8.15.10)
+    content = clean_wikilink_quotes(content)
 
     # JIT Image Alignment
     if book_name:

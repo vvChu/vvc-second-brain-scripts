@@ -33,6 +33,8 @@ def test_service_prompts_exist():
     assert sv.LEGAL_CONCEPT
     assert sv.QC_MATRIX
     assert sv.DIAGRAM_CLASSIFY
+    assert sv.LARGE_DOC_MAP
+    assert sv.LARGE_DOC_REDUCE
 
 
 def test_pipeline_prompts_placeholders():
@@ -111,3 +113,64 @@ def test_service_prompts_placeholders():
     # LEGAL_CONCEPT
     assert "{registry_data}" in sv.LEGAL_CONCEPT
     assert "{date}" in sv.LEGAL_CONCEPT
+
+    # LARGE_DOC_MAP
+    assert "{idx}" in sv.LARGE_DOC_MAP
+    assert "{total_chunks}" in sv.LARGE_DOC_MAP
+    assert "{chunk}" in sv.LARGE_DOC_MAP
+
+    # LARGE_DOC_REDUCE
+    assert "{total_chars:,}" in sv.LARGE_DOC_REDUCE
+    assert "{total_chunks}" in sv.LARGE_DOC_REDUCE
+    assert "{combined_notes}" in sv.LARGE_DOC_REDUCE
+
+
+def test_command_response_invariants():
+    assert "ZERO-ASCII INVARIANT" in sv.COMMAND_RESPONSE
+    assert "NATIVE FENCED BLOCKS" in sv.COMMAND_RESPONSE
+    assert "\\|" in sv.COMMAND_RESPONSE
+    assert "HYBRID GOLDEN THRESHOLD" in sv.COMMAND_RESPONSE
+    assert "THE 5 MERMAID INVARIANTS" in sv.COMMAND_RESPONSE
+    assert "EXECUTIVE TYPOGRAPHY 16:9" in sv.COMMAND_RESPONSE
+    assert "FLAT TWO-NODE INVARIANT" in sv.COMMAND_RESPONSE
+    assert "ARROW-LABEL CLEARANCE" in sv.COMMAND_RESPONSE
+    assert "TWO-TRACK DOCUMENT ERGONOMICS" in sv.COMMAND_RESPONSE
+    assert "CLEAN CALLOUT HEADER INVARIANT" in sv.COMMAND_RESPONSE
+    assert "TARGET LANGUAGE SYNTAX ALIGNMENT" in sv.COMMAND_RESPONSE
+    assert "MINIMAL BANNER INVARIANT" in sv.COMMAND_RESPONSE
+    assert "CẤM BỌC DẤU BACKTICK" in sv.COMMAND_RESPONSE
+    assert "`[[file|[id]]]`" not in sv.COMMAND_RESPONSE
+    assert "⚙️" not in sv.COMMAND_RESPONSE
+    assert "📋" not in sv.COMMAND_RESPONSE
+    # Diagram prompt tests
+    assert "FLAT TWO-NODE & SUBGRAPH INVARIANT" in sv.MERMAID_GENERATE
+    assert "EXECUTIVE TYPOGRAPHY 16:9 & ARROW CLEARANCE" in sv.EXCALIDRAW_GENERATE
+
+
+def test_pipeline_prompts_invariants():
+    assert "TUYỆT ĐỐI KHÔNG bọc ngoài wikilink bằng dấu backtick" in pl.CONCEPT_SYNTHESIS
+    assert "TUYỆT ĐỐI KHÔNG bọc ngoài wikilink bằng dấu backtick" in pl.MARKDOWN_SYNTHESIS
+    assert "`[[slug" not in pl.CONCEPT_SYNTHESIS
+    assert "`[[source" not in pl.MARKDOWN_SYNTHESIS
+
+
+def test_scan_wikilink_code_pills(tmp_path):
+    from services.wiki_health import scan_wikilink_code_pills
+
+    fake_concept_dir = tmp_path / "concepts"
+    fake_concept_dir.mkdir(parents=True)
+    test_file = fake_concept_dir / "test_note.md"
+    test_file.write_text("This has a `[[some_concept|[1]]]` and regular [[other_concept]].\n", encoding="utf-8")
+
+    findings = scan_wikilink_code_pills(fix=False, target_dirs=[fake_concept_dir])
+    assert len(findings) == 1
+    assert findings[0]["count"] == 1
+    assert findings[0]["matches"] == ["[[some_concept|[1]]]"]
+
+    # Now run with fix=True
+    scan_wikilink_code_pills(fix=True, target_dirs=[fake_concept_dir])
+    fixed_content = test_file.read_text(encoding="utf-8")
+    assert "`[[some_concept|[1]]]`" not in fixed_content
+    assert "[[some_concept|[1]]]" in fixed_content
+
+

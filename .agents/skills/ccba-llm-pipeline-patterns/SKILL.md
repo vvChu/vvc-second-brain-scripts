@@ -10,7 +10,7 @@ bundle: _core
 tier: kernel
 command: /ccba-llm-pipeline-patterns
 metadata:
-  version: "1.2.0"
+  version: "1.3.0"
   author: "CCBA Hub"
 gpi:
   s: 3.0
@@ -27,6 +27,9 @@ triggers:
 - self-correction
 - map reduce
 - multi turn memory
+- local-first cli
+- silent downgrade
+- cli runtime hierarchy
 ---
 # LLM Pipeline Patterns
 
@@ -455,17 +458,102 @@ def extract_last_exchange(file_content: str, max_chars: int = 4_000) -> dict[str
 
 ---
 
+## Pattern 11: Deterministic Defense-in-Depth & SLM Prompt Anti-Literalism
+
+### Vấn đề
+Khi pipeline fallback từ frontier reasoning models (Claude Opus 4.6 Thinking, Gemini Pro) sang các mô hình nhẹ tầng dưới (Gemini Flash, Haiku, SLMs), các mô hình nhẹ này thường mắc lỗi **Token Literalism**: sao chép máy móc từng ký tự minh họa từ prompt ví dụ thay vì hiểu ngữ dụng ngữ nghĩa (ví dụ: prompt minh họa cú pháp bằng `` `[[slug|[1]]]` ``, Flash sao chép nguyên trạng dấu backticks vào bài viết khiến wikilink biến thành inline code pill xám và làm gãy đồ thị Graph View trong Obsidian).
+Ngoài ra, nếu backend chỉ tin tưởng 100% vào output LLM mà không có lớp lọc regex tất định, các lỗi định dạng sẽ lọt thẳng xuống đĩa.
+
+### Giải pháp: Cơ chế Phòng Thủ Chiều Sâu 3 Tầng
+```
+[LLM Prompt] ────► 1. Zero-Fencing Examples (dùng XML <example>, cấm backticks)
+                   2. Explicit Negative Constraints (CẤM TUYỆT ĐỐI bọc backtick...)
+                          │
+                          ▼
+[LLM Raw Output] ──► 3. Deterministic Pre-Save Regex Gate (clean_wikilink_quotes)
+                          │
+                          ▼
+[Vault Markdown] ──► 4. CI / Vault Maintenance Linter (scan_wikilink_code_pills)
+```
+
+1. **Zero-Fencing Examples**: Trong prompt hệ thống, tuyệt đối KHÔNG dùng backticks bọc ví dụ định dạng nếu output mong muốn là text trần. Sử dụng thẻ XML:
+   ```xml
+   <example>
+   Đúng: Luận điểm này được kế thừa từ [[supercell_cell_model|[15]]].
+   Sai: Không viết `[[supercell_cell_model|[15]]]` (cấm backtick).
+   </example>
+   ```
+2. **Explicit Negative Constraints**: Khai báo điều khoản cấm rõ ràng trong `<rules>`: *"CẤM TUYỆT ĐỐI bọc backtick quanh wikilink trên mọi bề mặt Markdown"*.
+3. **Deterministic Pre-Save Sanitization Gate**: Ở tầng Python runtime, bắt buộc chạy hàm lọc regex trước khi lưu file:
+   ```python
+   def clean_wikilink_quotes(text: str) -> str:
+       # Bóc tách backticks bao quanh wikilink hoặc image embed
+       return re.sub(r"`(!?\[\[[^`\n]+?\]\])`", r"\1", text)
+   ```
+4. **CI / Linter Scan**: Quét định kỳ hoặc tiền kiểm định để phát hiện các code-pill wikilinks còn sót lại trong kho tri thức.
+
+---
+
+## Pattern 12: Local-First CLI Runtime Hierarchy & The Silent Gateway Downgrade Trap
+
+### Vấn đề (The Incident)
+Khi xây dựng các pipeline tích hợp LLM đa tầng, việc phụ thuộc hoàn toàn vào Remote Gateway Proxy (như LiteLLM trên Server riêng qua VPN) thường đối mặt 2 rủi ro kiến trúc nghiêm trọng:
+1. **Upstream Rate-Limit Clumping**: Nhiều client hoặc background daemons gọi dồn vào 1-2 tài khoản trong pool của Proxy gây lỗi `HTTP 429` ngay khi gặp bối cảnh lớn ($\ge 30\text{k}$ tokens, cạn sliding-window TPM của upstream provider).
+2. **The Silent Downgrade Trap**:
+   - **Server-side**: Gateway Proxy âm thầm định tuyến lại (remap/redirect ngầm) từ mô hình cao cấp (vd: `gemini-3.8-flash-high` hoặc `claude-opus`) sang mô hình cấp thấp (`gemini-3.5-flash-low`) nhằm ép request trả về HTTP 200 thay vì báo lỗi, khiến chất lượng tổng hợp suy giảm mà không có bất kỳ warning header nào.
+   - **Client-side**: Tầng client bắt lỗi 429 rồi tự ý giáng cấp sang model yếu hơn trên cùng server thay vì trả lỗi về bộ điều phối đa tầng để kích hoạt provider khác có **CÙNG ĐẲNG CẤP MÔ HÌNH**.
+
+### Giải pháp: Kiến Trúc Phân Tầng Ưu Tiên CLI Cục Bộ (Local-First CLI Hierarchy)
+
+Sử dụng tài khoản cá nhân có bản quyền trên công cụ CLI cục bộ (như `agy.exe` Antigravity CLI) làm **Tier 1 Primary**:
+
+```mermaid
+%%{init: {'theme': 'base', 'themeVariables': {'primaryColor': '#ffffff', 'primaryBorderColor': '#333333', 'primaryTextColor': '#111111', 'lineColor': '#444444'}}}%%
+flowchart TD
+    REQ["Pipeline / User Request"] --> CHECK{"Model có trên<br/>Local CLI?"}
+    CHECK -- "CÓ (Opus, Flash 3.8, Sonnet, Pro)" --> TIER1["Tier 1: Local Antigravity CLI (agy.exe)<br/><div align='left'>• Zero VPN Tailscale<br/>• Zero Rate Limit 429<br/>• Hạn ngạch cá nhân cao (~6.5s)</div>"]
+    CHECK -- "KHÔNG (vLLM local GPU, OCR)" --> TIER2["Tier 2: Remote Gateway (Port 8045 / 8090)<br/><div align='left'>• Server Spark qua Tailscale VPN<br/>• Pool tài khoản đa mô hình</div>"]
+    TIER1 -. "Khi CLI lỗi / Timeout / Unreachable" .-> TIER2
+    TIER2 -. "Khi Port 8045/8090 trả lỗi 429 / 503" .-> TIER3["Tier 3: Secondary CLI (GitHub Copilot)<br/><div align='left'>• claude-sonnet-4.6, gpt-5-mini</div>"]
+    TIER3 -. "Khi Copilot lỗi" .-> TIER4["Tier 4: Direct REST API<br/><div align='left'>• Google AI Studio (gemini-3.1-flash-lite)</div>"]
+```
+
+### Các Bất Biến Kỹ Thuật Bắt Buộc (Invariants)
+1. **Local Account Precedence Invariant**: Bất kỳ mô hình nào được hỗ trợ bởi Local CLI (`claude-opus-4-6-thinking`, `gemini-3.8-flash-high`, `claude-sonnet-4-6`, `gemini-3.1-pro`, `gpt-oss-120b-medium`) **BẮT BUỘC** phải được định tuyến qua Local CLI trước (Tier 1 Primary). Remote Gateway chỉ đóng vai trò Tier 2 Fallback hoặc chuyên trách các tác vụ mô hình cục bộ GPU (vLLM, OCR).
+2. **Zero-Silent Downgrade Invariant**:
+   - Khi gọi mô hình Frontier/Reasoning, nếu provider chính gặp sự cố (429/timeout), hệ thống phải thử fallback sang provider khác với **CÙNG ĐẲNG CẤP MÔ HÌNH** (ví dụ: Opus Local CLI $\rightarrow$ Opus Port 8045) trước khi chấp nhận giáng cấp về năng lực suy luận (Flash).
+   - Tầng Gateway client tuyệt đối không tự ý giáng cấp ngầm mà phải ném ngoại lệ hoặc trả kết quả rỗng để tầng orchestrator toàn cục kiểm soát trạng thái.
+3. **Polymorphic Test Mocking for Aliased Wrappers**:
+   Khi một wrapper API có cả tên cũ và tên mới (alias, ví dụ: `call_antigravity_cli = call_gemini_cli`), việc kiểm tra mock trong test suite không được so sánh lẫn nhau (`call_antigravity_cli is not call_gemini_cli`) vì khi test chỉ monkeypatch 1 trong 2 hàm, hàm còn lại sẽ vô tình kích hoạt lệnh thực thi subprocess thật ra ngoài hệ thống. Bắt buộc so sánh với tham chiếu gốc:
+   ```python
+   # scripts/core/llm/__init__.py
+   import scripts.core.llm.gemini_client as _gc_orig
+
+   def _invoke_cli(prompt: str, model_name: str, timeout: int) -> str | None:
+       """Gọi CLI an toàn cho cả mock riêng lẻ lẫn production runtime."""
+       # Nếu test suite monkeypatch call_antigravity_cli trực tiếp
+       if call_antigravity_cli is not _gc_orig.call_gemini_cli:
+           return call_antigravity_cli(prompt, model=model_name, timeout=timeout)
+       # Nếu test suite monkeypatch call_gemini_cli
+       if call_gemini_cli is not _gc_orig.call_gemini_cli:
+           return call_gemini_cli(prompt, model=model_name, timeout=timeout)
+       # Runtime bình thường
+       return call_antigravity_cli(prompt, model=model_name, timeout=timeout)
+   ```
+
+---
+
 ## Quick Reference — Model Routing cho Pipeline Tasks
 
 | Task trong pipeline | Model khuyến nghị | Lý do |
 |---|---|---|
-| Deep reasoning & synthesis | `claude-opus-4-6-thinking` | Port 8045 / Spark, deep academic reasoning, Map-Reduce Reduce phase |
-| Fast JIT Map / Interactive | `gemini-3.8-flash-high` | Port 8090, ~2s ultra-fast response, JIT URL Map phase, auto-downgrade fallback |
-| OCR / Vision extract | `ocr-primary` (Gemini Flash) | Fast, cheap, multimodal |
-| Draft synthesis (Pass 1) | `qwen-local-primary` | Fast local GPU, Vietnamese |
-| Quality check (Pass 2) | `reasoning-gemma` / `claude-sonnet-thinking` | Precision verify |
-| Metadata extract | `claude-haiku-4-5` | Clean JSON, no reasoning overhead |
-| Large corpus (> 50k tokens) | `gemini-3.1-pro-high` | 1M context window |
+| Deep reasoning & synthesis | `claude-opus-4-6-thinking` (Local CLI) | **Tier 1: Antigravity CLI cục bộ** (`agy.exe`), Zero VPN, Zero 429, suy luận học thuật sâu cho Map-Reduce Reduce phase |
+| Fast JIT Map / Interactive | `gemini-3.8-flash-high` (Local CLI) | **Tier 1: Antigravity CLI cục bộ**, ~2s phản hồi, JIT URL Map phase, fallback xuống Gateway |
+| OCR / Vision extract | `ocr-primary` (Gemini Flash) | Fast, cheap, multimodal qua Remote Gateway |
+| Draft synthesis (Pass 1) | `gemini-3.8-flash-high` (Local CLI) / `qwen-local-primary` | Local CLI tốc độ cao hoặc Local GPU |
+| Quality check (Pass 2) | `claude-opus-4-6-thinking` (Local CLI) / `claude-sonnet-thinking` | Precision verify trên Local CLI |
+| Metadata extract | `claude-haiku-4-5` | Clean JSON, no reasoning overhead qua Remote Gateway |
+| Large corpus (> 50k tokens) | `gemini-3.1-pro-high` (Local CLI) | 1M context window trên Local CLI |
 | Cross-reference audit | `qwen-local-primary` | Private data, offline |
 
 ---
@@ -484,3 +572,5 @@ def extract_last_exchange(file_content: str, max_chars: int = 4_000) -> dict[str
 | Zero-Broken-Link Fallbacks | `D:\VvC_Notes\scripts\services\diagram_base.py` + workers |
 | Heading-Aware Map-Reduce | `D:\VvC_Notes\scripts\core\text_chunker.py` |
 | Conditional Multi-turn Memory | `D:\VvC_Notes\scripts\services\command\coordinator.py` |
+| Deterministic Sanitization & SLM Anti-Literalism | `D:\VvC_Notes\scripts\services\command\citations.py` + `wiki_maintain.py` |
+| Local-First CLI Hierarchy & Downgrade Defense | `D:\VvC_Notes\scripts\core\llm\gemini_client.py` + `scripts\core\llm\__init__.py` |

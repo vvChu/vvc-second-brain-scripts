@@ -161,7 +161,7 @@ TRANG: {page}
 4. Triệt tiêu trùng lặp ngữ nghĩa & Chuẩn hóa song ngữ (CRITICAL):
    - Trường `summary` trong YAML: câu tuyên bố siêu súc tích phản ánh INSIGHT cốt lõi. PHẢI khác nội dung blockquote Evidence Hook bên dưới.
    - **Evidence Hook** (blockquote ngay dưới frontmatter): trích dẫn nguyên văn bằng tiếng Việt sát nghĩa nhất của phần highlight nguồn. Dưới blockquote này, bạn PHẢI tự động thêm một dòng trích dẫn khoa học dạng:
-     `> — **Tên Tác Giả/Người Phát Biểu**, trích dẫn trong sách/bài viết *Tên Sách/Bài Viết* (Tên Nguồn phụ, [[{source_ref}|Tên Nguồn chính, Năm]])`
+     > — **Tên Tác Giả/Người Phát Biểu**, trích dẫn trong sách/bài viết *Tên Sách/Bài Viết* (Tên Nguồn phụ, [[{source_ref}|Tên Nguồn chính, Năm]])
    - **`## Core Idea`**: PHÂN TÍCH THUẦN hoàn toàn bằng tiếng Việt. KHÔNG lồng thêm quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook. Tập trung diễn giải cơ chế, hệ quả, và kết nối với các khái niệm liên quan.
    - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: PHẢI hiển thị bằng **tiếng Anh nguyên bản** lấy từ nguồn thô làm căn cứ học thuật để người đọc đối chiếu.
 5. Viết nội dung phân tích hoàn toàn bằng tiếng Việt (trừ các thuật ngữ tiếng Anh chuyên môn chưa có từ tương đương).
@@ -170,7 +170,8 @@ TRANG: {page}
 8. Sử dụng hệ thống thuật ngữ nhất quán với từ điển định nghĩa trong thẻ <GLOSSARY> của THÔNG TIN NỀN VĨ MÔ (nếu có).
 9. Tuân thủ nghiêm ngặt các chỉ dẫn biên soạn (khẩu vị phân rã, văn phong) được định nghĩa trong thẻ <COMPILATION_GUIDELINES> của THÔNG TIN NỀN VĨ MÔ (nếu có).
 10. Sử dụng thông tin nhân vật và tổ chức định nghĩa sẵn trong thẻ <PEOPLE_AND_ORGANIZATIONS> (nếu có) để chuẩn hóa và hỗ trợ điền chính xác trường `people` và `companies` trong frontmatter.
-11. Nếu trong khối `<CHAPTER_DIAGRAMS>` có sơ đồ phù hợp giúp làm rõ nội dung phân tích của bạn, hãy chủ động nhúng sơ đồ đó vào vị trí thích hợp nhất trong `## Core Idea` bằng cú pháp `![[tên_thích_ứng.webp]]`. Đồng thời, viết từ 2-3 câu phân tích sâu liên kết cấu trúc sơ đồ với lý thuyết của khái niệm.
+11. Nếu trong khối `<CHAPTER_DIAGRAMS>` có sơ đồ phù hợp giúp làm rõ nội dung phân tích của bạn, hãy chủ động nhúng sơ đồ đó vào vị trí thích hợp nhất trong `## Core Idea` bằng cú pháp ![[tên_thích_ứng.webp]]. Đồng thời, viết từ 2-3 câu phân tích sâu liên kết cấu trúc sơ đồ với lý thuyết của khái niệm.
+12. TUYỆT ĐỐI KHÔNG bọc ngoài wikilink bằng dấu backtick (bắt buộc viết liên kết trần [[slug]] hoặc [[slug|alias]], cấm bọc backtick quanh wikilink vì sẽ biến liên kết thành inline code pill xám và làm gãy đồ thị Graph View).
 </rules>
 
 <output_template>
@@ -316,6 +317,7 @@ NHIỆM VỤ:
 4. Mỗi concept = 1 ý tưởng atomic, đứng độc lập.
 5. related: tự động suy luận 5-10 links liên quan nhất.
 6. Nếu bài viết chỉ có 1 ý chính → tạo 1 concept. Nếu có nhiều ý → tạo nhiều concept (ví dụ 3-5 concepts cho video 1 tiếng).
+7. TUYỆT ĐỐI KHÔNG bọc ngoài wikilink bằng dấu backtick (bắt buộc viết liên kết trần [[slug]] hoặc [[slug|alias]], cấm bọc backtick quanh wikilink).
 </rules>
 
 <output_template>

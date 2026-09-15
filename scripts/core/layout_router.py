@@ -72,26 +72,32 @@ def apply_smart_layout(elements: list[dict]) -> None:
                 eb = el.get("endBinding", {})
                 sid = sb.get("elementId") if isinstance(sb, dict) else (sb if isinstance(sb, str) else None)
                 eid = eb.get("elementId") if isinstance(eb, dict) else (eb if isinstance(eb, str) else None)
-                if sid and eid:
+                if sid in G and eid in G:
                     G.add_edge(sid, eid)
                     
         if G.nodes:
-            degrees = dict(G.degree())
+            active_nodes = [n for n in G.nodes if G.degree(n) > 0]
+            if len(active_nodes) >= 3:
+                G_eval = G.subgraph(active_nodes)
+            else:
+                G_eval = G
+
+            degrees = dict(G_eval.degree())
             max_deg = max(degrees.values()) if degrees else 0
 
             # 0. Wheel graph (Hub + Outer Cycle) detection
-            if len(G.nodes) >= 4 and max_deg >= 3:
-                hub_candidate = max(degrees, key=lambda n: (degrees[n], 1 if "hub" in n.lower() else 0))
-                outer_nodes = [n for n in G.nodes if n != hub_candidate]
+            if len(G_eval.nodes) >= 4 and max_deg >= 3:
+                hub_candidate = max(degrees, key=lambda n: (degrees[n], 1 if any(k in n.lower() for k in ("hub", "core", "center")) else 0))
+                outer_nodes = [n for n in G_eval.nodes if n != hub_candidate]
                 if len(outer_nodes) >= 3:
                     try:
-                        g_outer = G.subgraph(outer_nodes)
+                        g_outer = G_eval.subgraph(outer_nodes)
                         outer_cycles = nx.cycle_basis(g_outer)
                         if outer_cycles:
                             longest_cycle = max(outer_cycles, key=len)
                             # Outer cycle must span at least 70% of outer nodes
                             if len(longest_cycle) >= max(3, int(len(outer_nodes) * 0.7)):
-                                hub_neighbors = set(G.neighbors(hub_candidate))
+                                hub_neighbors = set(G_eval.neighbors(hub_candidate))
                                 cycle_conn = len(hub_neighbors.intersection(longest_cycle))
                                 if cycle_conn >= int(len(longest_cycle) * 0.7):
                                     is_wheel = True
@@ -99,32 +105,32 @@ def apply_smart_layout(elements: list[dict]) -> None:
                         pass
             
             # 1. Star graph (Hub and Spoke) detection
-            if not is_wheel and max_deg >= len(G.nodes) - 2 and len(G.nodes) > 3:
+            if not is_wheel and max_deg >= len(G_eval.nodes) - 2 and len(G_eval.nodes) > 3:
                 is_radial = True
             
             # 2. Cycle detection
             if not is_wheel:
                 try:
-                    basis = nx.cycle_basis(G)
-                    if basis and len(max(basis, key=len)) == len(G.nodes):
+                    basis = nx.cycle_basis(G_eval)
+                    if basis and len(max(basis, key=len)) == len(G_eval.nodes):
                         is_cycle = True
                 except Exception:
                     pass
                 
             # 3. Spanning Tree structure detection
-            if not is_wheel and not is_cycle and len(G.nodes) > 3:
+            if not is_wheel and not is_cycle and len(G_eval.nodes) > 3:
                 try:
-                    if nx.is_tree(G):
+                    if nx.is_tree(G_eval):
                         is_tree = True
                 except Exception:
                     pass
                     
             # 4. Chain detection (highly linear layout)
-            if not is_wheel and not is_cycle and not is_tree and len(G.nodes) > 2:
+            if not is_wheel and not is_cycle and not is_tree and len(G_eval.nodes) > 2:
                 deg_vals = list(degrees.values())
                 deg_2_count = sum(1 for d in deg_vals if d == 2)
                 deg_1_count = sum(1 for d in deg_vals if d == 1)
-                if deg_2_count >= len(G.nodes) - 2 and deg_1_count <= 2:
+                if deg_2_count >= len(G_eval.nodes) - 2 and deg_1_count <= 2:
                     is_chain = True
 
     # --- Routing Execution ---

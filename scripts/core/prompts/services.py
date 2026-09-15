@@ -4,13 +4,18 @@ Centralized prompt templates for interactive services and workers.
 Prompts with placeholders use str.format(); static prompts are used as-is.
 
 Modules that consume these prompts:
+    - core/text_chunker.py
     - services/brain_dump/concept_synthesis.py
-    - services/command.py
-    - services/ea_worker.py
+    - services/command/coordinator.py
+    - services/command/hero_image.py
+    - services/d2_worker.py
+    - services/ea_worker.py (legacy)
     - services/excalidraw_worker.py
     - services/legal_sync_worker.py
     - services/mermaid_worker.py
+    - services/text_chunker.py
     - services/vision_qc_worker.py
+    - tools/classify_figures.py
 """
 
 # ── Brain Dump (Map-Reduce) ───────────────────────────────────────────────
@@ -62,7 +67,7 @@ Dựa vào nội dung NGUỒN dưới đây, hãy tạo 1 Concept Note duy nhấ
 4. Triệt tiêu trùng lặp ngữ nghĩa & Chuẩn hóa song ngữ (CRITICAL):
    - Trường `summary` trong YAML: tuyên bố siêu súc tích một câu phản ánh INSIGHT cốt lõi. PHẢI khác nội dung blockquote Evidence Hook bên dưới.
    - **Evidence Hook** (blockquote ngay dưới frontmatter): Trích dẫn/ý tưởng cốt lõi đắt giá nhất lấy trực tiếp từ NGUỒN, dịch sát nghĩa sang tiếng Việt. Dưới blockquote này, bạn PHẢI tự động thêm một dòng trích dẫn khoa học dạng:
-     `> — **Tên Tác Giả/Người Phát Biểu**, trích dẫn trong sách/bài viết *Tên Sách/Bài Viết* (Tên Nguồn phụ, [[{source_ref}|Tên Nguồn chính, Năm]])`
+     > — **Tên Tác Giả/Người Phát Biểu**, trích dẫn trong sách/bài viết *Tên Sách/Bài Viết* (Tên Nguồn phụ, [[{source_ref}|Tên Nguồn chính, Năm]])
    - **`## Core Idea`**: PHÂN TÍCH THUẦN hoàn toàn bằng tiếng Việt. KHÔNG lồng thêm quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook. Tập trung diễn giải cơ chế, hệ quả.
    - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: PHẢI hiển thị bằng **tiếng Anh nguyên bản** (nếu nguồn gốc là tiếng Anh) để làm căn cứ học thuật đối chiếu. Nếu nguồn hoàn toàn bằng tiếng Việt, hãy ghi rõ "(không có)".
 5. Viết nội dung phân tích hoàn toàn bằng tiếng Việt (trừ các thuật ngữ tiếng Anh chuyên môn chưa có từ tương đương).
@@ -72,6 +77,10 @@ Dựa vào nội dung NGUỒN dưới đây, hãy tạo 1 Concept Note duy nhấ
    - CHỈ nhúng **tối đa 3 ảnh** cho mỗi concept. Chỉ chọn ảnh thực sự minh họa cho nội dung Core Idea.
    - KHÔNG nhúng ảnh vào Evidence Hook, Ground Truth, hay References section.
    - Nếu không có ảnh nào liên quan đến concept này, KHÔNG nhúng ảnh nào cả.
+7. Nếu tạo bảng so sánh hoặc ma trận (Markdown Table):
+   - Thoát ký tự pipe khi dùng wikilink có alias trong ô: [[slug\\|[display]]]. Tuyệt đối không dùng dấu gạch đứng trần `|` vì sẽ làm gãy parser bảng và vỡ Knowledge Graph. Cấm bọc dấu backtick quanh wikilink.
+   - Khi dùng ký tự mũi tên/bullet (`↳`, `→`, `•`) sau thẻ `<br>`, BẮT BUỘC dùng `&nbsp;` liền kề: `↳&nbsp;Nội dung` để chống rớt dòng mồ côi.
+   - Luôn thêm nhãn phụ ngắn `*(...)*` để ổn định bề rộng cột tiêu chí; cấu trúc ô đối chiếu 2 nhịp (In đậm từ khóa + giải thích <= 40 ký tự/dòng).
 </rules>
 
 <output_template>
@@ -138,20 +147,49 @@ CÂU HỎI CỦA NGƯỜI DÙNG:
 
 QUY TẮC:
 1. Trả lời bằng tiếng Việt (giữ nguyên thuật ngữ tiếng Anh khi cần).
-2. Tích cực trích dẫn nguồn từ NGỮ CẢNH bằng cách sử dụng cú pháp inline wikilink của Obsidian ngay trong câu văn: `[[file|[id]]]` (ví dụ: `[[tai_tao_to_chuc|[1]]]`, `[[ly_luan_he_sinh_thai|[2]]]`). TUYỆT ĐỐI KHÔNG chỉ viết ngoặc vuông trống không như `[1]`.
+2. Tích cực trích dẫn nguồn từ NGỮ CẢNH bằng cách sử dụng cú pháp inline wikilink của Obsidian ngay trong câu văn: [[file|[id]]] (ví dụ: [[tai_tao_to_chuc|[1]]], [[ly_luan_he_sinh_thai|[2]]]).
+   - CẤM BỌC DẤU BACKTICK: TUYỆT ĐỐI KHÔNG bọc ngoài wikilink bằng dấu backtick (bắt buộc viết liên kết trần [[slug|[id]]], cấm bọc backtick quanh link vì trong Obsidian sẽ biến thành inline code pill xám, làm hỏng liên kết click và rách giao diện văn bản).
+   - TUYỆT ĐỐI KHÔNG chỉ viết ngoặc vuông trống không như [1].
+   - QUAN TRỌNG KHI DÙNG TRONG BẢNG MARKDOWN: Nếu trích dẫn nằm bên trong ô bảng Markdown, BẮT BUỘC thoát ký tự pipe bằng `\\|` (ví dụ: [[tai_tao_to_chuc\\|[1]]]) để không làm gãy cột của bảng và hỏng liên kết (cũng không được bọc backtick quanh link trong bảng).
 3. KHÔNG TỰ TẠO MỤC "TÀI LIỆU THAM CHIẾU" Ở CUỐI BÀI. Hệ thống sẽ tự động phân tích các liên kết bạn dùng và tạo danh sách này.
-4. QUY TẮC CHÈN SƠ ĐỒ TRỰC QUAN (Artifact Diagrams):
+4. QUY TẮC CHÈN SƠ ĐỒ TRỰC QUAN (Artifact Diagrams & Responsive Standards):
    - ĐIỀU KIỆN TIÊN QUYẾT: CHỈ chèn sơ đồ khi (1) người dùng yêu cầu trực tiếp, HOẶC (2) nội dung phân tích có quy trình/tiến trình nhiều bước phức tạp hoặc kiến trúc hệ thống đa tầng cần trực quan hóa. TUYỆT ĐỐI KHÔNG tự ý chèn sơ đồ khi chỉ giải thích định nghĩa hay khái niệm đơn thuần.
+   - TUYỆT ĐỐI CẤM VẼ SƠ ĐỒ KÝ TỰ TEXT (ZERO-ASCII INVARIANT): Nghiêm cấm vẽ sơ đồ, ma trận, cây quyết định hoặc hộp trạng thái bằng ký tự ASCII (`+---+`, `|`, `->`) hoặc Unicode Box-Drawing (`┌─┐`, `└─┘`) bên trong code block trần để chống rách khung viền trên mobile/split-pane. Mọi sơ đồ phải là Mermaid (`flowchart TD`) hoặc tệp đính kèm Excalidraw/D2.
+   - BẮT BUỘC DÙNG NATIVE FENCED BLOCKS CHO DỮ LIỆU/CẤU HÌNH: Tệp cấu hình (YAML, JSON, Python) phải dùng code block có tag ngôn ngữ chuẩn (```yaml, ```json), phân tách phân vùng bằng comment nội bộ (`# ---`), tuyệt đối không bao bọc trong hộp vẽ Unicode/ASCII giả lập.
+   - NGƯỠNG VÀNG PHÂN TÁCH EXCALIDRAW 16:9 VS MERMAID (HYBRID GOLDEN THRESHOLD):
+     * Sơ đồ Kiến trúc Hệ sinh thái/Ma trận vĩ mô (>= 3 layers), hoặc tổng số nodes >= 9, hoặc có liên kết chéo giữa >= 3 subgraphs -> BẮT BUỘC tạo tệp Excalidraw 16:9 riêng (`![[tên.excalidraw.md|100%]]`).
+     * CHUẨN EXECUTIVE TYPOGRAPHY 16:9 & BẢNG ĐẶC TẢ MA TRẬN KÈM DƯỚI (EXECUTIVE TYPOGRAPHY 16:9): Khóa canvas width 1.000px <= W <= 1.150px (đảm bảo hệ số co giãn khi nhúng >= 65%-70%). Cỡ chữ sàn hiển thị >= 8.5px-11.5px (canvas font: tiêu đề chính >= 17px-20px, nội dung/badge >= 12px-14px). BẮT BUỘC tạo Bảng Đặc Tả Ma Trận Kiến Trúc Markdown đặt ngay dưới sơ đồ ma trận.
+     * Mermaid inline CHỈ DÙNG cho luồng tuyến tính, tương tác song phương (2 cụm), hoặc chu trình nhỏ (<= 8 nodes).
+   - BỘ NGŨ RÀNG BUỘC MERMAID (THE 5 MERMAID INVARIANTS):
+     * Dagre Cycle Stabilization: Khi có liên kết 2 chiều giữa 2 subgraphs, BẮT BUỘC dùng bất đối xứng trọng số cạnh: chiều xuôi `===>` hoặc `<===>` (W=2), chiều ngược `-.->` (W=1), đảm bảo Delta W >= 2 để Hub luôn nằm ở đỉnh (Rank 0).
+     * Academic Grayscale Init: BẮT BUỘC chèn directive `%%{{init: {{'theme': 'base', 'themeVariables': {{...}}}}}}%%` để khử màu vàng mù tạt.
+     * Căn lề trái bullet points & Cách ly HTML Entity: Bọc văn bản nhiều dòng trong `<div align='left'>...</div>`; dùng thực thể HTML `#40;` và `#41;` cho ngoặc đơn CHỈ bên trong node Mermaid (CẤM dùng `#40;`/`#41;` trong bảng biểu Markdown hoặc ngoài khối Mermaid).
+     * Cưỡng chế LTR: Dùng cạnh vô hình (`T1 ~~~ T2 ~~~ T3`) để khóa cứng thứ tự đọc từ trái sang phải.
+     * Flat Two-Node Invariant & Cấm Lồng Hộp (FLAT TWO-NODE INVARIANT): Với các cặp đối trọng song phương (Edge vs Core), CẤM TUYỆT ĐỐI dùng subgraph bọc 1 node đơn lẻ (phẳng hóa thành 2 node); CẤM ngắt dòng <br/> trong tiêu đề subgraph để chống lỗi clipping chữ của Dagre; cưỡng chế <div align='left'> cho bullet points.
+     * Cú pháp nhãn mũi tên Mermaid (MERMAID EDGE LABEL INVARIANT): CẤM chèn text vào giữa thân mũi tên (`===="text"====>`, `-."text".->`); BẮT BUỘC dùng cú pháp pipe chuẩn `===>|"nhãn"|`, `-.->|"nhãn"|`, `<===>|"nhãn"|`; chuẩn hóa toán tử so sánh Unicode (`≥`, `≤`).
+   - QUY TẮC PHÂN TÁCH MŨI TÊN & NHÃN KẾT NỐI (ARROW-LABEL CLEARANCE): Tách rời trục tọa độ Y giữa nhãn text và mũi tên (>= 15px); khoảng cách ngang giữa 2 khối có mũi tên liên kết kèm nhãn phải đạt tối thiểu >= 80px-90px.
    - PHÂN ĐỊNH RÕ LOẠI SƠ ĐỒ (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP):
      * Excalidraw: dùng cho bản đồ tư duy, mô hình khái niệm trừu tượng, khung so sánh 2x2, ma trận -> chèn `![[tên_sơ_đồ.excalidraw.md|100%]]`
      * Mermaid: dùng cho lưu đồ tiến trình (Flowchart TD), chuỗi tuần tự (Sequence), cây phân cấp -> chèn `![[tên_sơ_đồ.mermaid.md|100%]]`
      * D2: dùng cho kiến trúc hạ tầng kỹ thuật, topology mạng, hệ thống phân tán -> chèn `![[tên_sơ_đồ.d2.svg|100%]]`
-5. VĂN BẢN VÀ BẢNG TÍNH (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP):
+5. CÔNG THÁI HỌC TÀI LIỆU PHÂN LOẠI 2 NHÁNH (TWO-TRACK DOCUMENT ERGONOMICS):
+   - Mọi khối code/cấu hình dài > 15 dòng BẮT BUỘC bọc trong Obsidian Callout:
+     * Cấu hình mẫu/Schema: Dùng Callout Mở sẵn `> [!abstract]+ Tiêu đề` (CẤM chèn emoji)
+     * Log thô/Metadata: Dùng Callout Đóng sẵn `> [!info]- Tiêu đề` (CẤM chèn emoji)
+   - Tuyệt đối cấm code block trần > 15 dòng nằm trực tiếp ở thân bài làm đứt mạch đọc.
+   - QUY TẮC TIÊU ĐỀ CALLOUT THUẦN KHIẾT (CLEAN CALLOUT HEADER INVARIANT): CẤM chèn emoji ở đầu tiêu đề Callout để chống lỗi Double Icon Glitch; CẤM bọc backticks quanh tên tệp/định danh trong tiêu đề Callout (dùng plain text, ví dụ: 'Cấu trúc: workspace_context.yaml') để chống vỡ baseline text và chevron.
+   - ĐỒNG BỘ NGỮ NGHĨA CÚ PHÁP (TARGET LANGUAGE SYNTAX ALIGNMENT): Chú thích trong văn bản giải thích bắt buộc dùng đúng cú pháp comment của ngôn ngữ đích (# cho YAML/Python, // cho JSONC/JS/TS, <!-- --> cho Markdown/HTML), chống crash parser khi copy code.
+   - TỐI GIẢN PHÂN VÙNG CODE (MINIMAL BANNER INVARIANT): Dùng comment ngắn gọn (# --- SECTION ---) thay cho các dải kẻ dài (# ====================).
+6. VĂN BẢN VÀ BẢNG TÍNH (TUYỆT ĐỐI KHÔNG DÙNG DẤU NGOẶC KÉP):
    - BẮT BUỘC CHỈ chèn khi người dùng có yêu cầu cụ thể:
      * Tạo báo cáo/hồ sơ Word: chèn `![[tên_file.docx]]`
      * Trích xuất bảng kiểm/dữ liệu Excel/CSV: chèn `![[tên_file.csv]]` hoặc `![[tên_file.xlsx]]`
-6. Cấu trúc bài viết rõ ràng với heading và sections.
-7. BỐI CẢNH HỘI THOẠI NỐI TIẾP (khi có <previous_conversation_context>):
+7. QUY TẮC BẢNG BIỂU & MA TRẬN MARKDOWN (khi tạo bảng so sánh hoặc ma trận đối chiếu):
+   - BẮT BUỘC thoát ký tự pipe cho mọi wikilink trong ô: [[slug\\|[id]]]. Tuyệt đối không bọc dấu backtick quanh wikilink.
+   - Khi ngắt dòng bằng `<br>` kèm ký tự điều hướng (`↳`, `→`, `•`), BẮT BUỘC dùng `&nbsp;` liền kề (ví dụ: `↳&nbsp;Nội dung`) để chống rớt dòng mồ côi.
+   - Thêm nhãn phụ `*(...)*` để ổn định độ rộng đáy cột tiêu chí; cấu trúc ô đối chiếu 2 nhịp (In đậm từ khóa + cơ chế <= 40 ký tự/dòng) để triệt tiêu thanh cuộn ngang.
+8. Cấu trúc bài viết rõ ràng với heading và sections.
+9. BỐI CẢNH HỘI THOẠI NỐI TIẾP (khi có <previous_conversation_context>):
    - Nếu ngữ cảnh có chứa thẻ `<previous_conversation_context>`, hãy hiểu người dùng đang hỏi nối tiếp hoặc đào sâu câu hỏi trước đó.
    - Trả lời tập trung vào khía cạnh được yêu cầu thêm, kết nối liền mạch với thông tin đã trao đổi trước, không lặp lại toàn bộ bài viết cũ.
 """
@@ -171,7 +209,7 @@ QUY TẮC:
 4. Dùng dấu ngoặc kép cho labels chứa ký tự đặc biệt: id["Label (info)"]
 5. KHÔNG dùng HTML tags trong labels
 6. Giữ sơ đồ gọn gàng, tối đa 15-20 nodes
-7. Cấu trúc rõ ràng, sử dụng các kết nối nét liền (-->), nét đậm (==>) hoặc nét đứt (-.->)
+7. Cấu trúc rõ ràng, sử dụng các kết nối nét liền (-->), nét đậm (==>) hoặc nét đứt (-.->). CẤM chèn text vào giữa thân mũi tên (===="nhãn"====>); BẮT BUỘC dùng pipe labels: ===>|"nhãn"|, -.->|"nhãn"|, <===>|"nhãn"|; chuẩn hóa toán tử ≥/≤.
 8. CHỌN ĐÚNG LOẠI SƠ ĐỒ theo nội dung:
    - `flowchart TD`: phân cấp, cây tổ chức, phân rã khái niệm, quy trình / pipeline chung (mặc định)
    - `flowchart LR`: CHỈ dùng cho chuỗi tiến trình rất ngắn (<= 3 bước)
@@ -180,6 +218,7 @@ QUY TẮC:
    - `mindmap`: brainstorm, phân nhánh ý tưởng
    - `graph TD`: quan hệ đa chiều không phân cấp rõ ràng
 9. TEXT WRAPPING — BẮT BUỘC: Mỗi dòng TỐI ĐA 20 ký tự, dùng \\\\n để xuống dòng.
+10. FLAT TWO-NODE & SUBGRAPH INVARIANT: Tuyệt đối CẤM tạo subgraph chỉ chứa duy nhất 1 node. CẤM ngắt dòng <br/> trong tiêu đề subgraph. Với nội dung nhiều dòng hoặc bullet points trong node, BẮT BUỘC bọc trong <div align='left'>...</div>.
 """
 
 EXCALIDRAW_GENERATE = """\
@@ -203,6 +242,8 @@ CRITICAL RULES FOR EXCALIDRAW JSON:
 8. Connect shapes with arrows using `startBinding` and `endBinding`.
 9. GRID SYSTEM: Assign coordinates (x, y) using a rigid 200px grid (e.g., x: 100, 300, 500 and y: 100, 300, 500) to ensure shapes are perfectly aligned and do not overlap.
 10. Ensure all text elements have double-newline (\\n\\n) for line breaks if needed.
+11. Keep node titles concise on 1 single line (<= 35 characters). For metadata tag nodes, badges, or annotations, enforce width >= 200px to prevent awkward line breaks.
+12. EXECUTIVE TYPOGRAPHY 16:9 & ARROW CLEARANCE: Bounding box width 1,000px-1,150px for 16:9 aspect ratio. Floor font size: title >= 18px-20px, section header >= 14px-16px, labels/badges >= 12px-13px. For labeled arrows, maintain vertical gap >= 15px between text and arrow line, and horizontal gap >= 80px-90px between connected shapes.
 
 Generate a clean, professional diagram that visualizes the key relationships and concepts."""
 
@@ -388,4 +429,21 @@ VĂN BẢN GỐC:
 ---
 {chunk}
 ---"""
+
+
+# ── Large Document Map-Reduce ──────────────────────────────────────────────
+
+LARGE_DOC_MAP = """\
+Bạn là chuyên gia trích xuất dữ liệu. Hãy tóm tắt cô đọng các luận điểm, số liệu, quy chuẩn, và cấu trúc cốt lõi của phân đoạn văn bản sau (Phân đoạn {idx}/{total_chunks}, tối đa 1,500 ký tự):
+
+--- BẮT ĐẦU PHÂN ĐOẠN ---
+{chunk}
+--- KẾT THÚC PHÂN ĐOẠN ---"""
+
+LARGE_DOC_REDUCE = """\
+Bạn là chuyên gia tổng hợp học thuật. Dưới đây là các bản tóm tắt trích đoạn từ một tài liệu lớn ({total_chars:,} ký tự, {total_chunks} phân đoạn).
+Hãy tổng hợp lại thành một văn bản bối cảnh mạch lạc, có cấu trúc chặt chẽ (khoảng 4,000 - 8,000 ký tự) giữ lại đầy đủ mọi luận điểm kỹ thuật then chốt:
+
+{combined_notes}"""
+
 

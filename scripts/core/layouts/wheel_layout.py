@@ -15,6 +15,7 @@ from core.config import cfg
 from services.diagram_base import (
     compute_safe_arrow_endpoints,
     get_shape_boundary_point,
+    normalize_canvas_bounding_box,
     sync_bound_text_translation,
 )
 
@@ -22,8 +23,9 @@ from services.diagram_base import (
 def _find_wheel_components(
     shapes: dict[str, dict[str, Any]],
     arrows: list[dict[str, Any]],
-) -> tuple[str | None, list[str], list[tuple[dict[str, Any], str, str]], nx.DiGraph, nx.Graph]:
-    """Extract graph edges, hub node, and outer cycle nodes."""
+    center_y: float = 400.0,
+) -> tuple[str | None, list[str], list[tuple[dict[str, Any], str, str]], nx.DiGraph, nx.Graph, list[str], list[str]]:
+    """Extract graph edges, hub node, outer cycle nodes, header banners, and auxiliary shapes."""
     g_dir = nx.DiGraph()
     g_undir = nx.Graph()
     for sid in shapes:
@@ -42,12 +44,34 @@ def _find_wheel_components(
             edges.append((arr, start_id, end_id))
 
     if not g_undir.nodes:
-        return None, [], edges, g_dir, g_undir
+        return None, [], edges, g_dir, g_undir, [], []
 
-    degrees = dict(g_undir.degree())
-    hub_id = max(degrees, key=lambda n: (degrees[n], 1 if "hub" in n.lower() else 0))
-    outer_nodes = [nid for nid in shapes if nid != hub_id]
-    return hub_id, outer_nodes, edges, g_dir, g_undir
+    # Detect Header Banner shapes: degree == 0, width >= 600, upper half of canvas (y <= center_y)
+    header_ids = [
+        sid for sid, s in shapes.items()
+        if g_undir.degree(sid) == 0
+        and float(s.get("width", 0.0)) >= 600.0
+        and float(s.get("y", 0.0)) <= center_y
+    ]
+
+    active_shape_ids = [sid for sid in shapes if sid not in header_ids]
+    if not active_shape_ids:
+        return None, [], edges, g_dir, g_undir, header_ids, []
+
+    # Separate connected shapes from unattached auxiliary shapes (e.g. badges, annotations)
+    connected_shape_ids = [sid for sid in active_shape_ids if g_undir.degree(sid) > 0]
+    aux_shape_ids = [sid for sid in active_shape_ids if g_undir.degree(sid) == 0]
+
+    # Fallback to all active shapes if graph has no edges at all yet
+    eval_shape_ids = connected_shape_ids if connected_shape_ids else active_shape_ids
+
+    degrees = dict(g_undir.degree(eval_shape_ids))
+    if not degrees:
+        return None, [], edges, g_dir, g_undir, header_ids, aux_shape_ids
+
+    hub_id = max(degrees, key=lambda n: (degrees[n], 1 if any(k in n.lower() for k in ("hub", "core", "center")) else 0))
+    outer_nodes = [nid for nid in eval_shape_ids if nid != hub_id]
+    return hub_id, outer_nodes, edges, g_dir, g_undir, header_ids, aux_shape_ids
 
 
 def _order_outer_nodes(
@@ -193,9 +217,22 @@ def apply_wheel_layout(
     if len(shapes) < 2:
         return False
 
-    hub_id, outer_nodes, edges, g_dir, g_undir = _find_wheel_components(shapes, arrows)
+    hub_id, outer_nodes, edges, g_dir, g_undir, header_ids, aux_shape_ids = _find_wheel_components(shapes, arrows, center_y)
     if not hub_id or not outer_nodes:
         return False
+
+    # Anchor header banners at safe top coordinate y = 30
+    for hid in header_ids:
+        h_shape = shapes[hid]
+        old_y = float(h_shape.get("y", 0.0))
+        new_y = 30.0
+        dy = new_y - old_y
+        h_shape["y"] = new_y
+        h_shape["roughness"] = 0
+        h_shape["backgroundColor"] = cfg.excalidraw_background_color
+        h_shape["strokeColor"] = cfg.excalidraw_stroke_color
+        h_shape["fillStyle"] = "solid"
+        sync_bound_text_translation(h_shape, elements, 0.0, dy)
 
     ordered_nodes = _order_outer_nodes(outer_nodes, g_dir, g_undir)
 
@@ -227,6 +264,28 @@ def apply_wheel_layout(
             r_candidates.append(hub_reach + node_reach + min_clearance)
         r = max(r_candidates)
 
+    # Position wheel elements:
+    # When header banner exists, ensure the wheel belt is positioned below y >= 120
+    dy_wheel = 0.0
+    if header_ids:
+        tentative_min_y = min(
+            center_y - float(shapes[hub_id].get("height", 100.0)) / 2.0,
+            *(
+                (center_y + r * math.sin(i * angle_step - math.pi / 2.0)) - float(shapes[nid].get("height", 100.0)) / 2.0
+                for i, nid in enumerate(ordered_nodes)
+            )
+        )
+        if tentative_min_y < 120.0:
+            dy_wheel = 120.0 - tentative_min_y
+            center_y += dy_wheel
+
+    # Synchronize auxiliary shapes (badges, annotations) if the wheel center shifted down
+    if dy_wheel > 0.0 and aux_shape_ids:
+        for aid in aux_shape_ids:
+            a_shape = shapes[aid]
+            a_shape["y"] = float(a_shape.get("y", 0.0)) + dy_wheel
+            sync_bound_text_translation(a_shape, elements, 0.0, dy_wheel)
+
     pos: dict[str, tuple[float, float]] = {hub_id: (center_x, center_y)}
 
     for i, nid in enumerate(ordered_nodes):
@@ -239,17 +298,8 @@ def apply_wheel_layout(
     _position_shapes(shapes, pos, elements, hub_id)
     _route_arrows(edges, shapes, hub_id, center_x, center_y)
 
-    # Normalize bounding box to prevent negative coordinates
-    if shapes:
-        min_x = min(float(s.get("x", 0.0)) for s in shapes.values())
-        min_y = min(float(s.get("y", 0.0)) for s in shapes.values())
-        shift_x = max(0.0, 80.0 - min_x) if min_x < 80.0 else 0.0
-        shift_y = max(0.0, 60.0 - min_y) if min_y < 60.0 else 0.0
-        if shift_x > 0.0 or shift_y > 0.0:
-            for el in elements:
-                if "x" in el:
-                    el["x"] = float(el.get("x", 0.0)) + shift_x
-                if "y" in el:
-                    el["y"] = float(el.get("y", 0.0)) + shift_y
+    # Standardize bounding box normalization per AGENTS.md §4.9 (accounting for shapes, text, and arrow curves)
+    min_pad_y = 30.0 if header_ids else 60.0
+    normalize_canvas_bounding_box(elements, min_padding_x=80.0, min_padding_y=min_pad_y)
 
     return True

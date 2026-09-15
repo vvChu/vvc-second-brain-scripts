@@ -10,6 +10,8 @@ import logging
 import re
 from typing import Callable
 
+from core.prompts.services import LARGE_DOC_MAP, LARGE_DOC_REDUCE
+
 _logger = logging.getLogger("vvc.chunker")
 
 
@@ -114,23 +116,20 @@ def map_reduce_summarize(
     # --- Phase 1: Map (Fast extraction per chunk) ---
     chunk_summaries: list[str] = []
     for idx, chunk in enumerate(chunks, 1):
-        map_prompt = (
-            f"Bạn là chuyên gia trích xuất dữ liệu. Hãy tóm tắt cô đọng các luận điểm, "
-            f"số liệu, quy chuẩn, và cấu trúc cốt lõi của phân đoạn văn bản sau "
-            f"(Phân đoạn {idx}/{len(chunks)}, tối đa 1,500 ký tự):\n\n"
-            f"--- BẮT ĐẦU PHÂN ĐOẠN ---\n{chunk}\n--- KẾT THÚC PHÂN ĐOẠN ---"
+        map_prompt = LARGE_DOC_MAP.format(
+            idx=idx,
+            total_chunks=len(chunks),
+            chunk=chunk,
         )
         summary = call_llm_fn(map_prompt, model="gemini-3.8-flash-high", task="synthesis")
         chunk_summaries.append(f"#### Phân đoạn {idx}/{len(chunks)}:\n{summary.strip()}")
 
     # --- Phase 2: Reduce (Comprehensive synthesis) ---
     combined_notes = "\n\n".join(chunk_summaries)
-    reduce_prompt = (
-        f"Bạn là chuyên gia tổng hợp học thuật. Dưới đây là các bản tóm tắt trích đoạn "
-        f"từ một tài liệu lớn ({len(text):,} ký tự, {len(chunks)} phân đoạn).\n"
-        f"Hãy tổng hợp lại thành một văn bản bối cảnh mạch lạc, có cấu trúc chặt chẽ "
-        f"(khoảng 4,000 - 8,000 ký tự) giữ lại đầy đủ mọi luận điểm kỹ thuật then chốt:\n\n"
-        f"{combined_notes}"
+    reduce_prompt = LARGE_DOC_REDUCE.format(
+        total_chars=len(text),
+        total_chunks=len(chunks),
+        combined_notes=combined_notes,
     )
 
     final_reduced = call_llm_fn(reduce_prompt, model=target_model, task="reasoning")

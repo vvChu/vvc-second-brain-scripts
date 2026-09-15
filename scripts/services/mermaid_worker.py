@@ -29,6 +29,7 @@ from services.diagram_base import (
 _logger = logging.getLogger("vvc.mermaid")
 
 from core.prompts.services import MERMAID_GENERATE as _MERMAID_PROMPT  # noqa: E402
+from services.command.citations import heal_mermaid_edge_syntax  # noqa: E402
 
 __all__ = [
     "trigger_mermaid_generation",
@@ -118,6 +119,7 @@ def _clean_mermaid(raw: str) -> str:
         _logger.warning(f"Invalid Mermaid: doesn't start with valid type: {first_line}")
         return ""
 
+    raw = heal_mermaid_edge_syntax(raw)
     return normalize_mermaid_direction(raw.strip())
 
 

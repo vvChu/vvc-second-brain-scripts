@@ -370,3 +370,81 @@ def test_sync_source_note_fuzzy_match():
         finally:
             object.__setattr__(cfg, "sources_dir", orig_sources_dir)
 
+
+def test_save_concept_deterministic_sanitization(tmp_path, monkeypatch):
+    """save_concept must deterministically sanitize wikilinks, chimeric edges, and HTML entity leaks."""
+    import dataclasses
+    from core.config import cfg
+    from pipeline.post_process import save_concept
+
+    mock_concepts_dir = tmp_path / "concepts"
+    mock_concepts_dir.mkdir()
+    mock_cfg = dataclasses.replace(cfg, concepts_dir=mock_concepts_dir)
+    monkeypatch.setattr("pipeline.post_process.cfg", mock_cfg)
+    monkeypatch.setattr("pipeline.post_process.find_semantic_overlap", lambda content: None)
+    monkeypatch.setattr("pipeline.post_process._hot_insert_embedding", lambda path, content: None)
+
+    raw_note = """---
+title: "Khái Niệm Kiểm Thử Khử Lỗi"
+aliases:
+  - "Test Sanitization"
+tags:
+  - knowledge
+  - domain/software
+  - type/concept
+type: concept
+date_created: 2026-09-15
+date_modified: 2026-09-15
+source: "test_source.md"
+summary: "Một insight súc tích phục vụ kiểm thử đơn vị vệ sinh nội dung trước khi lưu."
+related:
+  - "`[[related_seed_concept]]`"
+status: seed
+confidence: high
+---
+
+> "Đây là câu trích dẫn chứng cứ tiếng Việt hoàn hảo cho bài test."
+> — **Tác giả**, *Sách Kiểm Thử* ([[test_source|Kiểm Thử, 2026]])
+
+## Core Idea
+
+Khái niệm này mô tả quy trình làm sạch tất định trước khi ghi đĩa.
+Bảng đối chiếu #40;Phiên bản VN#41;:
+
+| Tiêu chí | Mô tả |
+|---|---|
+| Mã nguồn | Tham chiếu đến `[[target_concept|[1]]]` |
+
+```mermaid
+graph TD
+    A ===="Nối luồng >= 5"====> B
+```
+
+## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)
+
+This is the original English context for verification.
+
+---
+
+## References
+
+- [[test_source]]
+"""
+    saved_path = save_concept(raw_note)
+    assert saved_path is not None
+    assert saved_path.exists()
+
+    saved_content = saved_path.read_text(encoding="utf-8")
+    # 1. Backticks around wikilinks stripped (Zero Code-Pill Invariant)
+    assert "`[[target_concept|[1]]]`" not in saved_content
+    assert "[[target_concept|[1]]]" in saved_content
+    assert "`[[related_seed_concept]]`" not in saved_content
+    assert "[[related_seed_concept]]" in saved_content
+
+    # 2. Leaked HTML entities in text/table reverted to standard parentheses
+    assert "#40;Phiên bản VN#41;" not in saved_content
+    assert "(Phiên bản VN)" in saved_content
+
+    # 3. Chimeric Mermaid edge transformed to pipe label and operators normalized
+    assert '===>|"Nối luồng ≥ 5"|' in saved_content
+
