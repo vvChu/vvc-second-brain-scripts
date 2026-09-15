@@ -292,11 +292,14 @@ def test_call_llm_with_latest_alias():
     """call_llm with model='latest' resolves to latest model for the tier."""
     from core.llm import call_llm
 
-    with patch("core.llm.call_gateway") as mock_gw:
-        mock_gw.return_value = "Resolved successfully"
+    with patch("core.llm.call_antigravity_cli") as mock_agy, \
+         patch("core.llm.call_gemini_cli") as mock_gcli:
+        mock_agy.return_value = "Resolved successfully"
+        mock_gcli.return_value = "Resolved successfully"
         res = call_llm("test prompt", model="latest", task="general")
         assert res == "Resolved successfully"
-        assert mock_gw.call_args[1]["model"] == "gemini-3.8-flash-high"
+        called = mock_agy.call_args or mock_gcli.call_args
+        assert called[1]["model"] == "gemini-3.8-flash-high"
 
 
 def test_call_gateway_resolves_latest():

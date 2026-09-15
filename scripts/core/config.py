@@ -99,6 +99,8 @@ class VaultConfig:
     copilot_vision_timeout: int = 300
 
     # --- Reasoning ---
+    reasoning_primary_tier: str = "antigravity-cli"
+    reasoning_cli_model: str = "claude-opus-4-6-thinking"
     reasoning_gateway_model: str = ""
     reasoning_timeout: int = 600
 
@@ -201,6 +203,8 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
         copilot_timeout=ccli.get("timeout", 60),
         copilot_vision_timeout=ccli.get("vision_timeout", 300),
         # Reasoning
+        reasoning_primary_tier=reasoning.get("primary_tier", "antigravity-cli"),
+        reasoning_cli_model=reasoning.get("cli_model", "claude-opus-4-6-thinking"),
         reasoning_gateway_model=reasoning.get("gateway_model", ""),
         reasoning_timeout=reasoning.get("timeout", 600),
         # Models

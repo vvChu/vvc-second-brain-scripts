@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,80 @@ def _resolve_cli_path() -> str:
     return cmd or "agy"
 
 
+def _resolve_cli_artifact_content(
+    text: str,
+    full_stdout: str = "",
+    *,
+    min_mtime: float = 0.0,
+    brain_dir: Path | None = None,
+    max_age_seconds: int = 600,
+) -> str:
+    """Detect and ingest artifact file content if CLI agent outputted a reference link instead of full text."""
+    if not text or len(text) > 5000:
+        return text
+
+    # 1. Search for local .md file URI inside text: file:///C:/... or file://C:/...
+    match = re.search(r"file:///([a-zA-Z]:[^\s\)\"'>]+?\.md)", text)
+    if not match:
+        match = re.search(r"file://([a-zA-Z]:[^\s\)\"'>]+?\.md)", text)
+
+    # 2. Search within full_stdout if available
+    if not match and full_stdout:
+        match = re.search(r"file:///([a-zA-Z]:[^\s\)\"'>]+?\.md)", full_stdout)
+        if not match:
+            match = re.search(r"file://([a-zA-Z]:[^\s\)\"'>]+?\.md)", full_stdout)
+
+    if match:
+        artifact_path_str = match.group(1).replace("%20", " ")
+        artifact_path = Path(artifact_path_str)
+        if artifact_path.exists() and artifact_path.is_file():
+            try:
+                artifact_content = artifact_path.read_text(encoding="utf-8").strip()
+                if len(artifact_content) > len(text) * 2:
+                    _logger.info(
+                        f"[Antigravity CLI] Ingested full artifact content from {artifact_path.name} "
+                        f"({len(artifact_content)} chars vs {len(text)} chars summary)"
+                    )
+                    return artifact_content
+            except OSError as e:
+                _logger.warning(f"[Antigravity CLI] Failed to read artifact file {artifact_path}: {e}")
+
+    # 3. Fallback scan: If min_mtime or brain_dir is provided, scan for recently created large artifact (.md >= 10KB)
+    if min_mtime > 0.0 or brain_dir is not None:
+        try:
+            target_brain = brain_dir or (Path.home() / ".gemini" / "antigravity-cli" / "brain")
+            if target_brain.exists() and target_brain.is_dir():
+                now = time.time()
+                threshold_time = min_mtime if min_mtime > 0.0 else (now - max_age_seconds)
+                candidates = []
+                for p in target_brain.rglob("*.md"):
+                    if ".system_generated" in p.parts or p.name.startswith(".") or p.name == "content.md":
+                        continue
+                    try:
+                        stat = p.stat()
+                        if stat.st_mtime >= threshold_time and stat.st_size >= 10000:
+                            candidates.append((stat.st_mtime, stat.st_size, p))
+                    except OSError:
+                        continue
+                if candidates:
+                    candidates.sort(key=lambda c: c[0], reverse=True)
+                    best_path = candidates[0][2]
+                    try:
+                        artifact_content = best_path.read_text(encoding="utf-8").strip()
+                        if len(artifact_content) > len(text) * 2:
+                            _logger.info(
+                                f"[Antigravity CLI] Ingested fallback artifact from {best_path.name} "
+                                f"({len(artifact_content)} chars vs {len(text)} chars summary)"
+                            )
+                            return artifact_content
+                    except OSError as e:
+                        _logger.warning(f"[Antigravity CLI] Failed to read fallback artifact {best_path}: {e}")
+        except Exception as e:
+            _logger.debug(f"[Antigravity CLI] Fallback artifact scan skipped: {e}")
+
+    return text
+
+
 def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
     """Call LLM via Google Antigravity CLI (agy.exe) with native JSON bridge.
 
@@ -46,6 +121,11 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
     # Normalize reasoning tier suffix for flash models if not explicitly set
     if re.match(r"^gemini-\d+(?:\.\d+)*-flash$", target_model) or target_model in ("gemini-3.8-flash", "gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"):
         target_model = f"{target_model}-high"
+
+    # For reasoning/thinking models with default short timeout, elevate to reasoning_timeout
+    effective_timeout = timeout
+    if ("thinking" in target_model.lower() or "opus" in target_model.lower()) and timeout <= 60:
+        effective_timeout = getattr(cfg, "reasoning_timeout", 600)
 
     use_stream_json = len(prompt) > 30000
     mode_label = "stream-json (stdin)" if use_stream_json else "print (-p)"
@@ -65,6 +145,8 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
                 "--output-format", "stream-json",
                 "--disable-slash-commands",
             ]
+            if effective_timeout and effective_timeout > 300:
+                args.extend(["--print-timeout", f"{effective_timeout}s"])
             input_payload: str | None = json.dumps({"event": "user", "message": {"content": prompt}}) + "\n"
         else:
             args = [
@@ -72,16 +154,19 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
                 "--model", target_model,
                 "--output-format", "json",
                 "--disable-slash-commands",
-                "-p", prompt,
             ]
+            if effective_timeout and effective_timeout > 300:
+                args.extend(["--print-timeout", f"{effective_timeout}s"])
+            args.extend(["-p", prompt])
             input_payload = None
 
+        start_time = time.time()
         result = subprocess.run(
             args,
             input=input_payload,
             capture_output=True,
             text=True,
-            timeout=timeout,
+            timeout=effective_timeout,
             encoding="utf-8",
             errors="replace",
             cwd=str(Path(__file__).parent.parent.parent),
@@ -124,7 +209,11 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
                             f"[Antigravity CLI] Done in {duration:.2f}s | "
                             f"Tokens: {in_tok} in, {out_tok} out, {think_tok} think, {cached_tok} cached"
                         )
-                        return strip_think_tags(resp_text.strip())
+                        return _resolve_cli_artifact_content(
+                            strip_think_tags(resp_text.strip()),
+                            full_stdout=stdout,
+                            min_mtime=start_time - 5.0,
+                        )
                 except json.JSONDecodeError:
                     continue
             _logger.warning("[Antigravity CLI] No valid result event found in stream-json output")
@@ -151,11 +240,19 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
                         f"[Antigravity CLI] Done in {duration:.2f}s | "
                         f"Tokens: {in_tok} in, {out_tok} out, {think_tok} think, {cached_tok} cached"
                     )
-                    return strip_think_tags(resp_text.strip())
+                    return _resolve_cli_artifact_content(
+                        strip_think_tags(resp_text.strip()),
+                        full_stdout=stdout,
+                        min_mtime=start_time - 5.0,
+                    )
             except json.JSONDecodeError:
                 _logger.debug("[Antigravity CLI] Output is not JSON, falling back to raw text.")
 
-            return strip_think_tags(stdout)
+            return _resolve_cli_artifact_content(
+                strip_think_tags(stdout),
+                full_stdout=stdout,
+                min_mtime=start_time - 5.0,
+            )
     except subprocess.TimeoutExpired:
         _logger.warning("Antigravity CLI timed out")
         return ""
@@ -165,6 +262,21 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
 
 
 call_antigravity_cli = call_gemini_cli
+
+ANTIGRAVITY_CLI_SUPPORTED_PREFIXES = ("gemini-", "claude-", "gpt-oss")
+
+
+def is_antigravity_cli_supported(model_name: str) -> bool:
+    """Check if a model is natively supported by local Antigravity CLI (agy.exe)."""
+    if not model_name:
+        return False
+    clean = model_name.lower().strip()
+    if any(clean.startswith(p) for p in ANTIGRAVITY_CLI_SUPPORTED_PREFIXES):
+        # Exclude non-text modalities (image generation, embedding, specialized OCR)
+        if any(sub in clean for sub in ("-image", "embedding", "embed", "vision", "ocr")):
+            return False
+        return True
+    return False
 
 
 def call_gemini_api(

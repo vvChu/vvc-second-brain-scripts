@@ -32,8 +32,8 @@ ai_gateway:
 
 # --- Backend Selection ---
 # Options: "gemini-cli" | "copilot-cli" | "gateway"
-backend: "gateway"
-fallback: "gemini-cli"
+backend: "gemini-cli"
+fallback: "gateway"
 
 # --- Gemini CLI + API ---
 # CLI: text completion (gemini-2.5-pro, signed-in account)
@@ -69,14 +69,15 @@ copilot_cli:
 
 # --- Reasoning Config ---
 # Model used by the dedicated Reasoning Worker thread for Command.md queries.
-# Primary: Gateway (VPN required). Fallback: Copilot CLI → Gemini CLI.
-# Gateway thinking models available: claude-opus-4-6-thinking (best),
-#   claude-sonnet-4-6-thinking (fast), reasoning-gemma (local GPU, no VPN)
+# Primary: Antigravity CLI (Local agy.exe, zero VPN, zero 429).
+# Fallback: Gateway Port 8045 → Copilot CLI → Gateway Port 8090.
 reasoning:
-  gateway_model: "claude-opus-4-6-thinking"  # Strongest: native <think> tags, ~3-5 min
+  primary_tier: "antigravity-cli"             # Tier 1 Priority: local agy.exe
+  cli_model: "claude-opus-4-6-thinking"       # Primary model for local Antigravity CLI
+  gateway_model: "claude-opus-4-6-thinking"   # Strongest fallback via Gateway: native <think> tags
   # gateway_model: "claude-sonnet-4-6-thinking"  # Balanced: ~1-2 min
   # gateway_model: "reasoning-gemma"             # Local GPU: fast, no VPN needed
-  timeout: 600                               # Longest timeout allowed for deep reasoning
+  timeout: 600                                # Longest timeout allowed for deep reasoning
 
 # --- Model Routing ---
 # To switch models, change values here. Daemon restart required.

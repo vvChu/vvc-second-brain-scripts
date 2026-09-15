@@ -10,7 +10,12 @@ from core.config import cfg
 from core.llm.utils import strip_think_tags, encode_image, is_garbage, increment_counter
 from core.llm.gateway_client import call_gateway
 from core.llm.copilot_client import call_copilot
-from core.llm.gemini_client import call_gemini_cli, call_antigravity_cli, call_gemini_api
+from core.llm.gemini_client import (
+    call_gemini_cli,
+    call_antigravity_cli,
+    call_gemini_api,
+    is_antigravity_cli_supported,
+)
 from core.llm.vision_client import call_vision
 from core.llm.audio_client import call_audio
 from core.llm.embedding_client import get_embedding, get_embedding_via_gateway
@@ -21,6 +26,18 @@ _logger = logging.getLogger("vvc.llm")
 # Global state for Round-Robin load balancing (thread-safe)
 _rr_index = 0
 _rr_lock = threading.Lock()
+
+
+import core.llm.gemini_client as _gc_orig
+
+
+def _invoke_cli(prompt: str, model: str, timeout: int) -> str:
+    """Invoke CLI tier, supporting monkeypatching of either call_antigravity_cli or call_gemini_cli."""
+    if call_antigravity_cli is not _gc_orig.call_gemini_cli:
+        return call_antigravity_cli(prompt, model=model, timeout=timeout)
+    if call_gemini_cli is not _gc_orig.call_gemini_cli:
+        return call_gemini_cli(prompt, model=model, timeout=timeout)
+    return call_antigravity_cli(prompt, model=model, timeout=timeout)
 
 from typing import Callable
 
@@ -65,31 +82,39 @@ def call_llm(
     # Determine Models based on Task
     if task == "reasoning":
         gw_model = resolved_model or resolve_model(cfg.reasoning_gateway_model, task=task)
+        agy_model = resolved_model or getattr(cfg, "reasoning_cli_model", "") or "claude-opus-4-6-thinking"
     elif task == "synthesis":
         gw_model = resolved_model or resolve_model(cfg.gateway_synthesis_model or "gemini-3.8-flash-high", task=task)
+        agy_model = resolved_model or (cfg.gemini_text_synthesis_model if task == "synthesis" else cfg.gemini_model)
     elif task == "correction":
         gw_model = resolved_model or resolve_model(cfg.gateway_correction_model, task=task)
+        agy_model = resolved_model or cfg.gemini_text_correction_model
     else:
         gw_model = resolved_model or resolve_model(cfg.gateway_proxy_model, task=task)
+        agy_model = resolved_model or cfg.gemini_model
 
     cp_model = resolved_model or (cfg.copilot_correction_model if task == "correction" else cfg.copilot_model)
     gemini_raw = resolved_model or (cfg.gemini_text_synthesis_model if task == "synthesis" else (cfg.gemini_text_correction_model if task == "correction" else cfg.gemini_model))
     gemini_model = resolve_model(gemini_raw, task=task)
 
+    # Check if target model is supported by local Antigravity CLI (agy.exe)
+    use_antigravity_cli_primary = is_antigravity_cli_supported(agy_model)
+
     # Try each tier:
-    # For synthesis (Reduce/Note Generation), prioritize Antigravity CLI (gemini-3.8-flash-high)
-    # as primary tier, with Gateway (gemini-3.8-flash-high) as immediate fallback.
-    if task == "synthesis":
+    if use_antigravity_cli_primary:
+        # Priority 1: Local Antigravity CLI (Zero VPN, Zero 429, native Claude Opus / Gemini Flash / Gemini Pro)
+        # Fallback: Gateway Port 8045/8090 -> Copilot CLI -> Gemini API
         tiers = [
-            ("gemini-cli", lambda: call_gemini_cli(prompt, model=gemini_model, timeout=gw_timeout)),
+            ("antigravity-cli", lambda: _invoke_cli(prompt, model=agy_model, timeout=gw_timeout)),
             ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
             ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
             ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
         ]
     else:
+        # For non-CLI models (e.g. qwen-local-primary on GPU, specialized ocr-primary), Gateway remains Tier 1
         tiers = [
             ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
-            ("gemini-cli", lambda: call_gemini_cli(prompt, model=gemini_model, timeout=gw_timeout)),
+            ("antigravity-cli", lambda: _invoke_cli(prompt, model=agy_model, timeout=gw_timeout)),
             ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
             ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
         ]
