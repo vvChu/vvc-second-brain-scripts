@@ -394,6 +394,10 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         f"> - 🏷️ **{len(domain_mocs)}** Bản đồ Lĩnh vực (Domain MOCs)\n\n",
         f"*Last updated: {date.today().isoformat()}*\n\n",
         "---\n\n",
+        "> [!quote]+ 🌟 Kiệt Tác Chuyên Luận (Flagship Playbooks)\n",
+        "> - 📘 **Bản Điều Phối Kiến Trúc 12 Chương**: [[ai_eos_playbook_master|AI-EOS Playbook Master — Cẩm Nang Vận Hành Doanh Nghiệp AI-Native]]\n",
+        "> - 📑 **Toàn Văn Bản Thảo Hợp Nhất (Full Manuscript)**: [[ai_eos_playbook_full_manuscript|Toàn Văn Bản Thảo AI-EOS Playbook]]\n\n",
+        "---\n\n",
         "## 📖 Source Topics (Bản Đồ Nguồn)\n\n",
     ]
 

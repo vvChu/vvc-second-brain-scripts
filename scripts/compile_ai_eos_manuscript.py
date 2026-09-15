@@ -29,29 +29,31 @@ CHAPTER_SLUGS = [
     "chuong_12_lo_trinh_chuyen_doi_90_ngay_va_bo_bieu_mau_khung_thuc_chien",
 ]
 
-PARTS_TOC = """## 🗺️ Mục Lục Toàn Văn (Table of Contents)
+PARTS_TOC = """<span id="muc-luc-toan-van"></span>
+
+## 🗺️ Mục Lục Toàn Văn (Table of Contents)
 
 ### PHẦN I: BỐI CẢNH & CUỘC ĐẠI DỊCH CHUYỂN (The Paradigm Shift)
-- **[[chuong_1_cai_chet_cua_kim_tu_thap_quan_tri_dinh_luat_conway_dao_nguoc|Chương 1: Cái Chết Của Kim Tự Tháp Quản Trị & Định Luật Conway Đảo Ngược]]**
-- **[[chuong_2_tu_ung_dung_ai_be_mat_den_kien_truc_ai_native_doanh_nghiep_50_nguoi_mang_suc_manh_tap_doan|Chương 2: Từ "Ứng Dụng AI Bề Mặt" Đến "Kiến Trúc AI-Native": Doanh Nghiệp 50 Người Mang Sức Mạnh Tập Đoàn]]**
+- 📖 **[[#CHƯƠNG 1: CÁI CHẾT CỦA KIM TỰ THÁP QUẢN TRỊ & ĐỊNH LUẬT CONWAY ĐẢO NGƯỢC|Chương 1: Cái Chết Của Kim Tự Tháp Quản Trị & Định Luật Conway Đảo Ngược]]** &nbsp;*(📄 Bản độc lập: [[chuong_1_cai_chet_cua_kim_tu_thap_quan_tri_dinh_luat_conway_dao_nguoc|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 2: TỪ "ỨNG DỤNG AI BỀ MẶT" ĐẾN "KIẾN TRÚC AI-NATIVE": DOANH NGHIỆP 50 NGƯỜI MANG SỨC MẠNH TẬP ĐOÀN|Chương 2: Từ "Ứng Dụng AI Bề Mặt" Đến "Kiến Trúc AI-Native": Doanh Nghiệp 50 Người Mang Sức Mạnh Tập Đoàn]]** &nbsp;*(📄 Bản độc lập: [[chuong_2_tu_ung_dung_ai_be_mat_den_kien_truc_ai_native_doanh_nghiep_50_nguoi_mang_suc_manh_tap_doan|Ghi chú]])*
 
 ### PHẦN II: CẤU TRÚC HÌNH THÁI & HẠ TẦNG (Arthur Yeung & CCBA Platform)
-- **[[chuong_3_khoi_nen_tang_platform_kien_truc_hub_and_spoke_lam_bo_nao_trung_tam|Chương 3: Khối Nền Tảng (Platform) & Kiến Trúc Hub-and-Spoke Làm Bộ Não Trung Tâm]]**
-- **[[chuong_4_van_hanh_khoi_te_bao_cells_tu_tri_nguyen_tac_toi_thuong_reuse_first_gate|Chương 4: Khối Tế Bào (Cells) & Nguyên Tắc Tối Thượng Reuse-First Gate]]**
-- **[[chuong_5_khoi_lien_minh_allies_tech_stack_va_bai_toan_build_vs_buy|Chương 5: Khối Liên Minh (Allies), Khung Lựa Chọn Tech Stack & Bài Toán Build vs Buy]]**
+- 📖 **[[#CHƯƠNG 3: KHỐI NỀN TẢNG (PLATFORM) & KIẾN TRÚC HUB-AND-SPOKE LÀM BỘ NÃO TRUNG TÂM|Chương 3: Khối Nền Tảng (Platform) & Kiến Trúc Hub-and-Spoke Làm Bộ Não Trung Tâm]]** &nbsp;*(📄 Bản độc lập: [[chuong_3_khoi_nen_tang_platform_kien_truc_hub_and_spoke_lam_bo_nao_trung_tam|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 4: VẬN HÀNH KHỐI TẾ BÀO (CELLS) TỰ TRỊ & NGUYÊN TẮC TỐI THƯỢNG REUSE-FIRST GATE|Chương 4: Khối Tế Bào (Cells) & Nguyên Tắc Tối Thượng Reuse-First Gate]]** &nbsp;*(📄 Bản độc lập: [[chuong_4_van_hanh_khoi_te_bao_cells_tu_tri_nguyen_tac_toi_thuong_reuse_first_gate|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 5: KHỐI LIÊN MINH (ALLIES), KHUNG LỰA CHỌN TECH STACK & BÀI TOÁN BUILD VS BUY|Chương 5: Khối Liên Minh (Allies), Khung Lựa Chọn Tech Stack & Bài Toán Build vs Buy]]** &nbsp;*(📄 Bản độc lập: [[chuong_5_khoi_lien_minh_allies_tech_stack_va_bai_toan_build_vs_buy|Ghi chú]])*
 
 ### PHẦN III: BỘ MÁY VẬN HÀNH & TRÁCH NHIỆM GIẢI TRÌNH (EOS Gino Wickman & CCBA WAY)
-- **[[chuong_6_ban_dinh_huong_tam_nhin_ai_v_to_va_nhip_sinh_hoc_van_hanh_90_ngay|Chương 6: Bản Định Hướng Tầm Nhìn AI (AI-V/TO) & Nhịp Sinh Học Vận Hành 90 Ngày]]**
-- **[[chuong_7_so_do_giai_trinh_moi_accountability_chart_ma_tran_role_id_ssot|Chương 7: Sơ Đồ Giải Trình Mới (Accountability Chart): Ma Trận 15 ROLE_ID SSOT Cho Người & AI]]**
-- **[[chuong_8_chu_trinh_nghiep_vu_cot_loi_khep_kin_ccba_way|Chương 8: Chu Trình Nghiệp Vụ Cốt Lõi Khép Kín (CCBA WAY): CRM → HĐKT → Dự Án → Quyết Toán]]**
+- 📖 **[[#CHƯƠNG 6: BẢN ĐỊNH HƯỚNG TẦM NHÌN AI (AI-V/TO) & NHỊP SINH HỌC VẬN HÀNH 90 NGÀY|Chương 6: Bản Định Hướng Tầm Nhìn AI (AI-V/TO) & Nhịp Sinh Học Vận Hành 90 Ngày]]** &nbsp;*(📄 Bản độc lập: [[chuong_6_ban_dinh_huong_tam_nhin_ai_v_to_va_nhip_sinh_hoc_van_hanh_90_ngay|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 7: SƠ ĐỒ GIẢI TRÌNH MỚI (ACCOUNTABILITY CHART): MA TRẬN 15 ROLE_ID SSOT CHO NGƯỜI & AI|Chương 7: Sơ Đồ Giải Trình Mới (Accountability Chart): Ma Trận 15 ROLE_ID SSOT Cho Người & AI]]** &nbsp;*(📄 Bản độc lập: [[chuong_7_so_do_giai_trinh_moi_accountability_chart_ma_tran_role_id_ssot|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 8: CHU TRÌNH NGHIỆP VỤ CỐT LÕI KHÉP KÍN (CCBA WAY): CRM → HĐKT → DỰ ÁN → QUYẾT TOÁN|Chương 8: Chu Trình Nghiệp Vụ Cốt Lõi Khép Kín (CCBA WAY): CRM → HĐKT → Dự Án → Quyết Toán]]** &nbsp;*(📄 Bản độc lập: [[chuong_8_chu_trinh_nghiep_vu_cot_loi_khep_kin_ccba_way|Ghi chú]])*
 
 ### PHẦN IV: VĂN HÓA, TỐC ĐỘ & BỘ LỌC TINH GIẢN (Google, NVIDIA, Musk & IDOP)
-- **[[chuong_9_van_hoa_du_lieu_okrs_va_to_chuc_mang_no_ron_tren_ha_tang_cde|Chương 9: Văn Hóa Dữ Liệu, OKRs & Tổ Chức Dạng Mạng Nơ-ron Trên Hạ Tầng CDE (ISO 19650)]]**
-- **[[chuong_10_luoi_dao_cao_tinh_gian_elon_musk_va_spec_driven_development|Chương 10: Lưỡi Dao Cạo Tinh Giản Elon Musk & Phương Pháp Spec-Driven Development]]**
+- 📖 **[[#CHƯƠNG 9: VĂN HÓA DỮ LIỆU, OKRS & TỔ CHỨC DẠNG MẠNG NƠ-RON TRÊN HẠ TẦNG CDE (ISO 19650)|Chương 9: Văn Hóa Dữ Liệu, OKRs & Tổ Chức Dạng Mạng Nơ-ron Trên Hạ Tầng CDE (ISO 19650)]]** &nbsp;*(📄 Bản độc lập: [[chuong_9_van_hoa_du_lieu_okrs_va_to_chuc_mang_no_ron_tren_ha_tang_cde|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 10: LƯỠI DAO CẠO TINH GIẢN ELON MUSK & PHƯƠNG PHÁP SPEC-DRIVEN DEVELOPMENT|Chương 10: Lưỡi Dao Cạo Tinh Giản Elon Musk & Phương Pháp Spec-Driven Development]]** &nbsp;*(📄 Bản độc lập: [[chuong_10_luoi_dao_cao_tinh_gian_elon_musk_va_spec_driven_development|Ghi chú]])*
 
 ### PHẦN V: BẢN ĐỒ TRIỂN KHAI & CASE STUDY THỰC NGHIỆM
-- **[[chuong_11_case_study_toan_canh_ccba_way_va_idop|Chương 11: Case Study Toàn Cảnh: CCBA WAY & IDOP — Hành Trình Chuyển Mình Sang AI-Native]]**
-- **[[chuong_12_lo_trinh_chuyen_doi_90_ngay_va_bo_bieu_mau_khung_thuc_chien|Chương 12: Lộ Trình Chuyển Đổi 90 Ngày (90-Day Roadmap) & Bộ Biểu Mẫu Khung Thực Chiến]]**
+- 📖 **[[#CHƯƠNG 11: CASE STUDY TOÀN CẢNH: CCBA WAY & IDOP — HÀNH TRÌNH CHUYỂN MÌNH SANG AI-NATIVE|Chương 11: Case Study Toàn Cảnh: CCBA WAY & IDOP — Hành Trình Chuyển Mình Sang AI-Native]]** &nbsp;*(📄 Bản độc lập: [[chuong_11_case_study_toan_canh_ccba_way_va_idop|Ghi chú]])*
+- 📖 **[[#CHƯƠNG 12: LỘ TRÌNH CHUYỂN ĐỔI 90 NGÀY (90-DAY ROADMAP) & BỘ BIỂU MẪU KHUNG THỰC CHIẾN|Chương 12: Lộ Trình Chuyển Đổi 90 Ngày (90-Day Roadmap) & Bộ Biểu Mẫu Khung Thực Chiến]]** &nbsp;*(📄 Bản độc lập: [[chuong_12_lo_trinh_chuyen_doi_90_ngay_va_bo_bieu_mau_khung_thuc_chien|Ghi chú]])*
 """
 
 MANUSCRIPT_FRONTMATTER = """---
@@ -139,7 +141,14 @@ def compile_manuscript():
         total_chars += chars
         total_words += words
 
-        sections.append(f"\n\n---\n\n<!-- CHAPTER {i} START -->\n\n{body}\n\n<!-- CHAPTER {i} END -->\n")
+        sections.append(
+            f"\n\n---\n\n<!-- CHAPTER {i} START -->\n"
+            f"<span id=\"chuong-{i}\"></span>\n\n"
+            f"{body}\n\n"
+            f"> [!tip]- 🧭 Điều Hướng Nhanh\n"
+            f"> [⬆️ Quay lại Mục Lục Toàn Văn](#muc-luc-toan-van) &nbsp;|&nbsp; [[ai_eos_playbook_master|Bản Điều Phối Master]]\n\n"
+            f"<!-- CHAPTER {i} END -->\n"
+        )
 
     full_manuscript = "\n\n".join(sections)
     OUTPUT_FILE.write_text(full_manuscript, encoding="utf-8")
