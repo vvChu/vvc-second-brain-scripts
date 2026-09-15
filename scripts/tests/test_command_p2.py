@@ -37,7 +37,7 @@ from services.command.topic_saver import (
 )
 from services.diagram_base import save_fallback_diagram
 from services.mermaid_worker import _generate_mermaid
-from services.excalidraw_worker import _generate_excalidraw
+from services.excalidraw_worker import _generate_excalidraw, clean_and_repair_excalidraw_json
 from services.d2_worker import _generate_d2
 
 
@@ -332,6 +332,121 @@ def test_excalidraw_worker_fallback_on_failure(tmp_path, monkeypatch):
     content = broken_file.read_text(encoding="utf-8")
     assert "^texterr1" in content
     assert "Lỗi cú pháp JSON Excalidraw" in content
+
+
+def test_clean_and_repair_excalidraw_auto_expand_container():
+    """clean_and_repair_excalidraw_json should auto-expand container height if H < H_text + 30px."""
+    # Text wrapping on width=100 will split long sentence into ~8 lines.
+    # Each line is fontSize (16) * 1.35 = 21.6px.
+    # Total text height will be ~172.8px.
+    # Container initially has height=40px, which is < text_height + 30px.
+    raw_excalidraw = {
+        "type": "excalidraw",
+        "version": 2,
+        "source": "https://excalidraw.com",
+        "elements": [
+            {
+                "type": "rectangle",
+                "id": "box_0001",
+                "x": 100.0,
+                "y": 100.0,
+                "width": 100.0,
+                "height": 40.0,
+                "boundElements": [{"id": "txt_0001", "type": "text"}],
+            },
+            {
+                "type": "text",
+                "id": "txt_0001",
+                "containerId": "box_0001",
+                "text": "Kiến trúc hệ thống phần mềm phân tán với nhiều tầng dịch vụ vi mô phức tạp",
+                "fontSize": 16,
+                "width": 100.0,
+                "height": 20.0,
+            },
+        ],
+    }
+
+    result = clean_and_repair_excalidraw_json(json.dumps(raw_excalidraw))
+    assert result is not None
+    json_str, text_content = result
+
+    repaired_data = json.loads(json_str)
+    elements = repaired_data["elements"]
+    box = next(el for el in elements if el["id"] == "box_0001")
+    txt = next(el for el in elements if el["id"] == "txt_0001")
+
+    # Invariant: min_needed_h = elem["height"] + 30.0
+    expected_min_h = txt["height"] + 30.0
+    assert box["height"] == pytest.approx(expected_min_h)
+    assert box["height"] > 40.0
+
+    # Also verify that when container height is already greater than min_needed_h, it is preserved
+    raw_excalidraw_large = {
+        "type": "excalidraw",
+        "version": 2,
+        "source": "https://excalidraw.com",
+        "elements": [
+            {
+                "type": "rectangle",
+                "id": "box_0002",
+                "x": 100.0,
+                "y": 100.0,
+                "width": 100.0,
+                "height": 500.0,
+                "boundElements": [{"id": "txt_0002", "type": "text"}],
+            },
+            {
+                "type": "text",
+                "id": "txt_0002",
+                "containerId": "box_0002",
+                "text": "Ngắn gọn",
+                "fontSize": 16,
+                "width": 100.0,
+                "height": 20.0,
+            },
+        ],
+    }
+    result2 = clean_and_repair_excalidraw_json(json.dumps(raw_excalidraw_large))
+    assert result2 is not None
+    repaired_data2 = json.loads(result2[0])
+    box2 = next(el for el in repaired_data2["elements"] if el["id"] == "box_0002")
+    assert box2["height"] == 500.0
+
+    # Verify null/None resilience (LLM outputting null fontSize, null height)
+    raw_excalidraw_nulls = {
+        "type": "excalidraw",
+        "version": 2,
+        "source": "https://excalidraw.com",
+        "elements": [
+            {
+                "type": "rectangle",
+                "id": "box_0003",
+                "x": 100.0,
+                "y": 100.0,
+                "width": 100.0,
+                "height": None,
+                "boundElements": [{"id": "txt_0003", "type": "text"}],
+            },
+            {
+                "type": "text",
+                "id": "txt_0003",
+                "text": "Đoạn văn kiểm tra khả năng chịu lỗi khi trường fontSize và containerId bị null",
+                "fontSize": None,
+                "width": None,
+                "height": None,
+            },
+        ],
+    }
+    result3 = clean_and_repair_excalidraw_json(json.dumps(raw_excalidraw_nulls))
+    assert result3 is not None
+    repaired_data3 = json.loads(result3[0])
+    box3 = next(el for el in repaired_data3["elements"] if el["id"] == "box_0003")
+    txt3 = next(el for el in repaired_data3["elements"] if el["id"] == "txt_0003")
+    # containerId should be auto-healed from box_0003 boundElements
+    assert txt3.get("containerId") == "box_0003"
+    # box height should be auto-expanded to txt height + 30px
+    assert box3["height"] == pytest.approx(txt3["height"] + 30.0)
+    assert box3["height"] > 30.0
 
 
 def test_d2_worker_fallback_on_failure(tmp_path, monkeypatch):

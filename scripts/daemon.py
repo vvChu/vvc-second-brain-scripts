@@ -485,8 +485,33 @@ def _scan_existing_files() -> None:
         _logger.error(f"Error during startup scan: {e}", exc_info=True)
 
 
-def main() -> None:
+def restart_existing_daemons() -> None:
+    """Terminate existing daemon and book_ingest processes before starting."""
+    import subprocess
+    my_pid = os.getpid()
+    cmd = (
+        f"Get-CimInstance Win32_Process -Filter 'Name like \"%python%\"' | "
+        f"Where-Object {{ ($_.CommandLine -like '*daemon.py*' -or $_.CommandLine -like '*book_ingest.py*') -and $_.ProcessId -ne {my_pid} }} | "
+        f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+    )
+    try:
+        subprocess.run(["powershell", "-WindowStyle", "Hidden", "-Command", cmd], capture_output=True, timeout=10)
+        time.sleep(1.5)
+        _logger.info("Terminated existing daemon processes via --restart")
+    except Exception as e:
+        _logger.warning(f"Failed to restart existing daemons: {e}")
+
+
+def main(argv: list[str] | None = None) -> None:
     """Start the daemon."""
+    import argparse
+    parser = argparse.ArgumentParser(description="VvC Second Brain Daemon")
+    parser.add_argument("--restart", action="store_true", help="Restart existing daemons before running")
+    args = parser.parse_args(argv)
+
+    if args.restart:
+        restart_existing_daemons()
+
     if not _acquire_daemon_lock():
         _logger.warning("Another daemon instance is already running")
         return

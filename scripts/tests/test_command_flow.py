@@ -567,6 +567,9 @@ def test_clean_wikilink_quotes_embeds_and_notes():
     assert clean_wikilink_quotes('![[\'chart.svg\']]') == "![[chart.svg]]"
     assert clean_wikilink_quotes('[["concept_note.md"]]') == "[[concept_note.md]]"
     assert clean_wikilink_quotes('[[note_without_quotes]]') == "[[note_without_quotes]]"
+    assert clean_wikilink_quotes('`[[concept_note|[1]]]`') == "[[concept_note|[1]]]"
+    assert clean_wikilink_quotes('`[[slug]]`') == "[[slug]]"
+    assert clean_wikilink_quotes('`![[image.png]]`') == "![[image.png]]"
 
 
 # ── Hero Image Command Flow Tests (v8.13.0) ───────────────────────────────────
@@ -997,4 +1000,63 @@ def test_heal_artifact_embed_syntax():
     quoted = 'See ![["overview_excalidraw_md|100%"]]'
     cleaned = clean_wikilink_quotes(quoted)
     assert "![[overview.excalidraw.md|100%]]" in cleaned
+
+
+def test_heal_mermaid_edge_syntax():
+    """heal_mermaid_edge_syntax must convert hallucinated edge syntax to valid pipe labels and normalize operators."""
+    from services.command.citations import heal_mermaid_edge_syntax
+
+    # 1. Thick forward edge: ===="label"====> -> ===>|"label"|
+    sample_thick = 'HUB ===="Tái cấu trúc SOP"====> SPOKES'
+    assert heal_mermaid_edge_syntax(sample_thick) == 'HUB ===>|"Tái cấu trúc SOP"| SPOKES'
+
+    # 2. Dotted edge: -."label".-> or -."label"-.-> -> -.->|"label"|
+    sample_dotted = 'SPOKES -."Phản hồi"-.-> HUB'
+    assert heal_mermaid_edge_syntax(sample_dotted) == 'SPOKES -.->|"Phản hồi"| HUB'
+    sample_dotted_short = 'SPOKES -."Phản hồi".-> HUB'
+    assert heal_mermaid_edge_syntax(sample_dotted_short) == 'SPOKES -.->|"Phản hồi"| HUB'
+
+    # 3. Bidirectional thick edge: <===="label"====> -> <===>|"label"|
+    sample_bidi = 'NODE_A <===="Đồng bộ 2 chiều"====> NODE_B'
+    assert heal_mermaid_edge_syntax(sample_bidi) == 'NODE_A <===>|"Đồng bộ 2 chiều"| NODE_B'
+
+    # 4. Operator normalization: >= -> ≥, <= -> ≤
+    sample_ops = 'ROUTER ===="Độ phức tạp >= 8 và chi phí <= 10"====> T1'
+    assert heal_mermaid_edge_syntax(sample_ops) == 'ROUTER ===>|"Độ phức tạp ≥ 8 và chi phí ≤ 10"| T1'
+
+
+def test_heal_html_entity_leakage():
+    """heal_html_entity_leakage must preserve #40; / #41; inside Mermaid while reverting outside."""
+    from services.command.citations import heal_html_entity_leakage, clean_wikilink_quotes
+
+    sample = (
+        "| Cột 1 | Cột 2 #40;Ghi chú#41; |\n"
+        "|---|---|\n"
+        "| Dữ liệu #40;VN#41; | Giá trị |\n"
+        "\n"
+        "```mermaid\n"
+        "graph TD\n"
+        "    NODE[\"<div align='left'>• Điểm 1 #40;A#41;</div>\"]\n"
+        "    A ====\"Nhãn >= 5\"====> B\n"
+        "```\n"
+        "\n"
+        "Đoạn văn ngoài bảng #40;chú thích#41;.\n"
+    )
+
+    healed = heal_html_entity_leakage(sample)
+    # Outside mermaid: entities reverted
+    assert "| Cột 1 | Cột 2 (Ghi chú) |" in healed
+    assert "| Dữ liệu (VN) | Giá trị |" in healed
+    assert "Đoạn văn ngoài bảng (chú thích)." in healed
+    assert "#40;" not in healed.split("```mermaid")[0]
+    assert "#40;" not in healed.split("```\n\n")[1]
+
+    # Inside mermaid: #40; preserved, edge healed, operator normalized
+    mermaid_block = healed.split("```mermaid")[1].split("```")[0]
+    assert "#40;A#41;" in mermaid_block
+    assert '===>|"Nhãn ≥ 5"|' in mermaid_block
+
+    # clean_wikilink_quotes calls heal_html_entity_leakage
+    cleaned = clean_wikilink_quotes(sample)
+    assert "| Cột 1 | Cột 2 (Ghi chú) |" in cleaned
 

@@ -17,7 +17,12 @@ from core.config import cfg
 from core.llm import call_llm
 
 from services.command.styles import WRITING_STYLES, parse_style
-from services.command.citations import reindex_citations, clean_wikilink_quotes
+from services.command.citations import (
+    reindex_citations,
+    clean_wikilink_quotes,
+    heal_mermaid_edge_syntax,
+    heal_html_entity_leakage,
+)
 from services.command.inbox import (
     ensure_format,
     find_pending_query,
