@@ -127,13 +127,27 @@ done
 log_info "3/7. Tự động dò tìm Google Drive GVFS Mount..."
 GVFS_VAULT="${GVFS_VAULT:-}"
 
-# Search common GVFS locations
-find_gvfs_vault() {
+# ------------------------------------------------------------------------------
+# 3. Storage Substrate Resolution: Rclone Mount (Primary) / GVFS (Fallback)
+# ------------------------------------------------------------------------------
+log_info "3/7. Xác định vị trí Google Drive Vault..."
+
+RCLONE_MOUNT_DIR="$HOME/mnt/gdrive/VvC_Vault"
+
+find_vault_dir() {
+    # 1. Ưu tiên kiểm tra thư mục Rclone headless mount
+    if [ -d "$RCLONE_MOUNT_DIR" ] && [ -d "$RCLONE_MOUNT_DIR/04 - Permanent" ]; then
+        echo "$RCLONE_MOUNT_DIR"
+        return 0
+    fi
+
+    # 2. Kiểm tra biến môi trường hoặc đường dẫn cấu hình sẵn
     if [ -n "$GVFS_VAULT" ] && [ -d "$GVFS_VAULT" ]; then
         echo "$GVFS_VAULT"
         return 0
     fi
 
+    # 3. Fallback: Quét các vị trí GVFS FUSE
     for p in "/run/user/$UID/gvfs/google-drive:host=gmail.com,user=chu.ibst/VvC_Vault" \
              "/run/user/$UID/gvfs/google-drive:host=gmail.com,user=chu.ibst/*/VvC_Vault" \
              "/run/user/$UID/gvfs"/*/*/VvC_Vault \
@@ -158,27 +172,27 @@ find_gvfs_vault() {
     echo ""
 }
 
-GVFS_VAULT=$(find_gvfs_vault)
+VAULT_STORAGE_DIR=$(find_vault_dir)
 
-while [ -z "$GVFS_VAULT" ]; do
+while [ -z "$VAULT_STORAGE_DIR" ]; do
     echo ""
-    log_warn "Chưa phát hiện thấy thư mục VvC_Vault trong /run/user/$UID/gvfs/."
-    echo -e "${YELLOW}👉 GỢI Ý:${NC} Mở Thunar File Manager trên Server Spark và bấm vào 'chu.ibst@gmail.com' để mount."
-    read -r -p "Bấm [Enter] sau khi đã mở Thunar để quét lại (hoặc nhập đường dẫn tuyệt đối tới VvC_Vault): " input_path
+    log_warn "Chưa phát hiện thấy thư mục VvC_Vault trong $RCLONE_MOUNT_DIR hoặc /run/user/$UID/gvfs/."
+    echo -e "${YELLOW}👉 GỢI Ý:${NC} Khởi động vvc-gdrive-mount (systemctl --user start vvc-gdrive-mount) hoặc mở Thunar để mount."
+    read -r -p "Bấm [Enter] để quét lại (hoặc nhập đường dẫn tuyệt đối tới VvC_Vault): " input_path
     if [ -n "$input_path" ] && [ -d "$input_path" ]; then
-        GVFS_VAULT="$input_path"
+        VAULT_STORAGE_DIR="$input_path"
     else
-        GVFS_VAULT=$(find_gvfs_vault)
+        VAULT_STORAGE_DIR=$(find_vault_dir)
     fi
 done
 
-log_ok "Phát hiện Google Drive Vault tại: $GVFS_VAULT"
+log_ok "Phát hiện Google Drive Vault tại: $VAULT_STORAGE_DIR"
 
 # Enable systemd user session linger so GVFS and user services survive logout
 log_info "Kích hoạt systemd user session lingering..."
 loginctl enable-linger "$USER" 2>/dev/null || log_warn "Không thể tự động chạy loginctl enable-linger. Hãy chạy: sudo loginctl enable-linger $USER"
 
-# Create Symlinks for 6 canonical directories
+# Create Symlinks for 5 canonical knowledge directories
 log_info "Tạo các Symlink liên kết dữ liệu vào repo..."
 TARGET_DIRS=(
     "00 - Maps of Content"
@@ -186,11 +200,10 @@ TARGET_DIRS=(
     "04 - Permanent"
     "05 - Fleeting"
     "99 - Archive"
-    "templates"
 )
 
 for dir_name in "${TARGET_DIRS[@]}"; do
-    src_dir="$GVFS_VAULT/$dir_name"
+    src_dir="$VAULT_STORAGE_DIR/$dir_name"
     dest_link="$REPO_ROOT/$dir_name"
 
     if [ ! -d "$src_dir" ]; then
@@ -260,11 +273,19 @@ fi
 log_info "5/7. Đăng ký Systemd User Services (100% không cần sudo)..."
 mkdir -p "$SYSTEMD_USER_DIR"
 
+# 0. vvc-gdrive-mount.service (Rclone Headless Mount)
+GDRIVE_TEMPLATE="$SCRIPTS_DIR/resources/vvc-gdrive-mount.service.template"
+if [ -f "$GDRIVE_TEMPLATE" ]; then
+    cp "$GDRIVE_TEMPLATE" "$SYSTEMD_USER_DIR/vvc-gdrive-mount.service"
+    log_ok "Đã sao chép vvc-gdrive-mount.service từ template."
+fi
+
 # 1. vvc-daemon.service
 cat > "$SYSTEMD_USER_DIR/vvc-daemon.service" <<EOF
 [Unit]
 Description=VvC Second Brain Main Daemon (Watchdog & Compiler)
-After=network.target
+After=network.target vvc-gdrive-mount.service
+Wants=vvc-gdrive-mount.service
 
 [Service]
 Type=simple
@@ -283,7 +304,8 @@ EOF
 cat > "$SYSTEMD_USER_DIR/vvc-book-ingest.service" <<EOF
 [Unit]
 Description=VvC Second Brain Book Ingestion Daemon
-After=network.target
+After=network.target vvc-gdrive-mount.service
+Wants=vvc-gdrive-mount.service
 
 [Service]
 Type=simple
@@ -327,6 +349,9 @@ log_ok "Đã tạo các unit file trong $SYSTEMD_USER_DIR"
 
 log_info "Nạp cấu hình và khởi động services..."
 systemctl --user daemon-reload
+if [ -f "$SYSTEMD_USER_DIR/vvc-gdrive-mount.service" ] && [ -f "$HOME/.config/rclone/rclone.conf" ]; then
+    systemctl --user enable --now vvc-gdrive-mount.service
+fi
 systemctl --user enable --now vvc-daemon.service
 systemctl --user enable --now vvc-book-ingest.service
 systemctl --user enable --now vvc-sleep.timer
