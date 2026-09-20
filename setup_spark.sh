@@ -222,6 +222,18 @@ for dir_name in "${TARGET_DIRS[@]}"; do
     log_ok "Symlink: $dir_name ──► $src_dir"
 done
 
+# Sync log.md to Google Drive root
+log_info "Liên kết log.md vào Google Drive..."
+if [ -f "$VAULT_STORAGE_DIR/log.md" ]; then
+    if [ -L "$REPO_ROOT/log.md" ]; then
+        rm -f "$REPO_ROOT/log.md"
+    elif [ -f "$REPO_ROOT/log.md" ]; then
+        mv "$REPO_ROOT/log.md" "${REPO_ROOT}/log.md.bak_$(date +%s)"
+    fi
+    ln -s "$VAULT_STORAGE_DIR/log.md" "$REPO_ROOT/log.md"
+    log_ok "Symlink: log.md ──► $VAULT_STORAGE_DIR/log.md"
+fi
+
 # ------------------------------------------------------------------------------
 # 4. Environment (.env) & AI Gateway Provisioning
 # ------------------------------------------------------------------------------
