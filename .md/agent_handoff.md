@@ -1,4 +1,4 @@
-# 🤝 Báo cáo Bàn giao Context Công nghệ (v8.15.1) — VvC Second Brain
+# 🤝 Báo cáo Bàn giao Context Công nghệ (v8.15.10) — VvC Second Brain
 
 > Tệp tin này được thiết lập tại `.\.md\agent_handoff.md` theo đúng quy trình bàn giao Macro (Phiên) được thống nhất giữa Người dùng và AI Agent.
 > Mục tiêu là giúp AI Agent tiếp theo nạp bối cảnh và tiếp quản dự án JIT (Just-In-Time) 100% thành công mà không cần hỏi lại người dùng.
@@ -7,65 +7,56 @@
 
 ## 1. Bản đồ Trạng thái Hệ thống (System State Map)
 
-* **Phiên bản hiện tại:** `v8.15.1 — Vault Structural Cleanup`
-* **Trạng thái Git:** Sạch sẽ. Commit mới nhất: `0313553` — `feat(pipeline): v8.12.1 Sequential Hook Exclusion + vault cleanup`
-* **Tổng số Concepts trong Vault:** **1,990 tệp** (không đổi — phiên này không ingest fleeting mới).
-* **Trạng thái CSDL Sơ đồ (`figure_inventory.json`):** **100% Sẵn sàng** (106 hình vẽ, đã làm giàu Caption + Alt-text đầy đủ từ phiên v8.15.0).
-* **Kết quả Kiểm thử:** **177/177 tests passed thành công 100%**.
+* **Phiên bản hiện tại:** `v8.15.10 — Antigravity Multi-Tier Autonomous Engine`
+* **Trạng thái Git:** Sạch sẽ. Commit mới nhất: `1c1e78b` — `feat(infra): add windows runner control scripts and sync log.md in setup_spark`
+* **Tổng số Concepts trong Vault:** **2,635 tệp** (236 Sources, 232 Source MOCs, 34 Domain MOCs).
+* **Trạng thái CSDL Sơ đồ (`figure_inventory.json`):** **100% Sẵn sàng** (106 hình vẽ, đầy đủ Caption + Alt-text cho RAG).
+* **Kết quả Kiểm thử:** **522/522 tests passed thành công 100%** (0 regressions).
+* **Hạ tầng 24/7 (systemd trên Server Spark Ubuntu Linux aarch64):**
+  - `vvc-daemon.service` (PID 69830) — active (Watchdog xử lý Command.md, Brain_Dump.md, Fleeting OCR).
+  - `vvc-book-ingest.service` (PID 3582641) — active (Watcher sách mới EPUB/PDF trong `03 - Resources/books`).
+  - `vvc-gdrive-mount.service` (PID 3566553) — active (Rclone VFS mount 2 chiều với Google Drive).
 
 ---
 
-## 2. Các thay đổi trong phiên v8.15.1 (31/05/2026)
-
-Phiên này **không thêm tính năng pipeline mới**. Toàn bộ công việc là **dọn dẹp cấu trúc Vault** để đạt trạng thái Agent-Ready tối ưu:
+## 2. Các thay đổi trong phiên v8.15.10 (21/09/2026)
 
 | Loại | Thay đổi | Chi tiết |
 | :--- | :--- | :--- |
-| **Refactor** | `scripts/pipeline/process_markdown.py` | Dịch chuyển debug output path từ `vault_root/scratch/` → `scripts/scratch/` bằng `Path(__file__).parent.parent`. Tuân thủ Operational Separation. |
-| **Xóa stubs** | `concepts/`, `sources/`, `wiki/` tại Root | 4 stub files 0 bytes + 3 thư mục rỗng — legacy từ trước khi chuẩn hóa `04 - Permanent/`. |
-| **Xóa stubs** | `scripts_recovered/`, `raw/` tại Root | Hoàn toàn rỗng, dead weight. |
-| **Xóa rác** | 5 files Root | `help.txt`, `context.txt`, `matches.txt`, `cleanup_report.txt`, `test_result.xml` — debug output cũ không có giá trị. |
-| **Di chuyển** | `check_json.py`, `fix_co_cau_diagram.py` | One-off scripts → `scratch/`. |
-| **Thăng cấp** | `architectural_design_legal_rag.md` | Root → `04 - Permanent/topics/` + YAML frontmatter (`domain/legal`, `domain/architecture`). |
-| **Thăng cấp** | `llm-wiki.md` | Root → `04 - Permanent/topics/llm_wiki_karpathy_analysis.md` + YAML frontmatter (`domain/ai`, `domain/knowledge-management`). |
-| **Commit** | v8.12.1 pipeline changes | Commit các thay đổi Hook Exclusion còn pending từ phiên trước + tất cả cleanup trên. |
+| **Fix/Refactor** | `scripts/config.yaml` & `gemini_client.py` | Chuyển `text_correction_model` sang `gemini-3.8-flash-low` (~1.8s - 2.8s/call). Thêm filter `-lite` vào `is_antigravity_cli_supported()` bảo vệ CLI Tier 1. Bổ sung test case `test_cli_artifact_ingestion.py` (12/12 passed). |
+| **Infra** | `run_agent_windows.bat`, `stop_agent_windows.bat` | Bổ sung runner control scripts cho Windows worker và cập nhật nhật ký cấu hình trong `setup_spark/log.md`. Commit `1c1e78b`. |
+| **Synthesis** | `00 - Maps of Content/Command.md` | Xử lý thành công đề tài *"Thuật Toán Tối Ưu Hóa 5 Bước Của Elon Musk x Harness Engineering"* bằng **Claude Opus 4.6 Thinking** (121k in / 10k out, 207s). Tạo topic note `thuat_toan_toi_uu_hoa_nam_buoc_va_ky_nghe_kien_truc_phan_mem_ai_native_mot_khung_phan_tich_lien_nganh.md` (19,433 ký tự, 13 concepts linked). |
+| **Playbook** | `ai_eos_playbook_master.md` | Tích hợp bài luận mới thành Phụ lục Kỹ thuật 10A (*Technical Appendix 10A*), liên kết chéo Chương 10, cập nhật backlog `y_tuong_bai_viet_tiem_nang.md`. Biên dịch lại toàn bộ `ai_eos_playbook_full_manuscript.md` (41,160 từ, 238,003 ký tự). |
+| **Consolidation** | `scripts/close_session.py` & Graph Healing | Chạy đóng phiên: tự động vá 2 stubs, cập nhật `Weekly_Synthesis.md` (2026-09-21). Bổ sung alias `agi` / `AGI` cho `dinh_nghia_va_moc_thoi_gian_dat_agi.md` theo chuẩn **Alias-First Resolution (AGENTS.md §4.3)** để vá dứt điểm broken body link `agi\`. |
 
 ---
 
-## 3. Cấu trúc Root Vault sau cleanup
+## 3. Bài học cốt lõi & Phòng ngừa (Lessons Learned)
 
-Root Vault hiện chỉ còn **7 files** — tất cả có mục đích rõ ràng:
-
-```
-D:\VvC_Notes\
-├── AGENTS.md          ← Hiến pháp toàn hệ thống (Highest Authority)
-├── GEMINI.md          ← Quick reference cho interactive sessions
-├── CHANGELOG.md       ← Lịch sử phiên bản kiến trúc
-├── log.md             ← Obsidian-readable event log (1.4MB, append-only)
-├── .gitignore         ← Git exclusion rules
-├── .stignore          ← Syncthing exclusion rules
-└── .coverage          ← pytest coverage data (auto-generated)
-```
-
-**Lưu ý:** `04 - Permanent/` bị gitignore theo thiết kế — Vault content sync qua Obsidian Sync/Google Drive, không qua git.
+1. **Antigravity CLI Model Constraints**:
+   - `agy` CLI chỉ nhận các model có reasoning effort suffix (`gemini-3.8-flash-{low,medium,high}`, `gemini-3.1-pro-...`, `claude-opus-4-6-thinking`).
+   - Các model Google AI Studio dạng `-lite` (`gemini-3.1-flash-lite-preview`) không được Antigravity CLI hỗ trợ và trả về exit code 1. Phải luôn có lớp lọc `is_antigravity_cli_supported()` để tự động fallback sang LiteLLM Gateway hoặc Copilot CLI.
+2. **Hiệu năng của Gemini 3.8 Flash Low**:
+   - Cấu hình `gemini-3.8-flash-low` cho các tác vụ sửa chính tả, định dạng bảng, vá stubs giảm thời gian xử lý từ >10s xuống còn <3s mà vẫn giữ độ chính xác tuyệt đối.
+3. **Autonomous Artifact Ingestion**:
+   - Khi chạy Claude Opus với prompt dài chuyên luận, `agy.exe` tạo tệp artifact trên đĩa thay vì in trực tiếp ra stdout. Lớp client `gemini_client.py:_resolve_cli_artifact_content` đã tự động phát hiện URI `file:///...` và nạp toàn văn thành công mà không làm gián đoạn pipeline.
 
 ---
 
-## 4. Bài học từ phiên này (Lessons Learned)
-
-> [!WARNING]
-> **Lỗi Agent đã xảy ra:** Trong bước cleanup, tôi đã xóa `D:\VvC_Notes\sources\` mà không đọc kỹ toàn bộ nội dung thư mục trước. File `ebook_hdsd vibe-company_thiet ke cong ty AI-Native.pdf` (355KB, untracked bởi git) đã bị xóa vĩnh viễn. **Quy tắc bắt buộc:** Trước khi xóa bất kỳ thư mục nào, phải dùng `list_dir` để kiểm tra từng file, kể cả file non-`.md`.
-
----
-
-## 5. Chỉ dẫn JIT nạp Context cho AI kế nhiệm (Memo for next Agent)
+## 4. Chỉ dẫn JIT nạp Context cho AI kế nhiệm (Memo for next Agent)
 
 > [!IMPORTANT]
 > **Hãy thực hiện các bước sau để tiếp quản dự án lập tức:**
-> 1. Đọc kỹ hiến pháp vĩ mô toàn cục tại [AGENTS.md](file:///d:/VvC_Notes/AGENTS.md) để nắm cấu trúc thư mục, YAML schema và các quy tắc Zettelkasten.
-> 2. Đọc file này (`.md/agent_handoff.md`) để nắm tiến độ phiên trước.
-> 3. Chạy toàn bộ unit test suite để đảm bảo không bị lỗi môi trường:
->    ```powershell
->    cd scripts; .\.venv\Scripts\python run_tests.py
+> 1. Đọc kỹ hiến pháp toàn cục tại [AGENTS.md](file:///home/vvc/VvC_Notes/AGENTS.md) và [GEMINI.md](file:///home/vvc/VvC_Notes/GEMINI.md) để nắm cấu trúc 3 tầng, YAML schema, quy tắc Zettelkasten và công thái học đồ họa v8.15.10.
+> 2. Kiểm tra trạng thái 3 tiến trình nền systemd trên Linux:
+>    ```bash
+>    systemctl --user status vvc-daemon.service vvc-book-ingest.service vvc-gdrive-mount.service
 >    ```
-> 4. Tiến trình daemon ngầm (`pythonw daemon.py`) hiện đang chạy ngầm an toàn trong nền hệ thống Windows để chờ fleeting mới.
+> 3. Kiểm thử toàn diện test suite:
+>    ```bash
+>    /home/vvc/VvC_Notes/scripts/.venv/bin/pytest scripts/tests/
+>    ```
+> 4. **Stale Daemon Invariant**: Nếu có chỉnh sửa code trong `scripts/` hoặc `scripts/config.yaml`, BẮT BUỘC phải khởi động lại daemon trước khi test thực địa:
+>    ```bash
+>    systemctl --user restart vvc-daemon.service
+>    ```
