@@ -489,17 +489,27 @@ def restart_existing_daemons() -> None:
     """Terminate existing daemon and book_ingest processes before starting."""
     import subprocess
     my_pid = os.getpid()
-    cmd = (
-        f"Get-CimInstance Win32_Process -Filter 'Name like \"%python%\"' | "
-        f"Where-Object {{ ($_.CommandLine -like '*daemon.py*' -or $_.CommandLine -like '*book_ingest.py*') -and $_.ProcessId -ne {my_pid} }} | "
-        f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
-    )
-    try:
-        subprocess.run(["powershell", "-WindowStyle", "Hidden", "-Command", cmd], capture_output=True, timeout=10)
-        time.sleep(1.5)
-        _logger.info("Terminated existing daemon processes via --restart")
-    except Exception as e:
-        _logger.warning(f"Failed to restart existing daemons: {e}")
+    if sys.platform == "win32":
+        cmd = (
+            f"Get-CimInstance Win32_Process -Filter 'Name like \"%python%\"' | "
+            f"Where-Object {{ ($_.CommandLine -like '*daemon.py*' -or $_.CommandLine -like '*book_ingest.py*') -and $_.ProcessId -ne {my_pid} }} | "
+            f"ForEach-Object {{ Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }}"
+        )
+        try:
+            subprocess.run(["powershell", "-WindowStyle", "Hidden", "-Command", cmd], capture_output=True, timeout=10)
+            time.sleep(1.5)
+            _logger.info("Terminated existing daemon processes via --restart")
+        except Exception as e:
+            _logger.warning(f"Failed to restart existing daemons: {e}")
+    else:
+        # Linux / Unix: terminate other instances of daemon.py / book_ingest.py
+        try:
+            subprocess.run(["pkill", "-f", "daemon.py"], capture_output=True)
+            subprocess.run(["pkill", "-f", "book_ingest.py"], capture_output=True)
+            time.sleep(1.5)
+            _logger.info("Terminated existing daemon processes via pkill")
+        except Exception as e:
+            _logger.warning(f"Failed to restart existing daemons: {e}")
 
 
 def main(argv: list[str] | None = None) -> None:

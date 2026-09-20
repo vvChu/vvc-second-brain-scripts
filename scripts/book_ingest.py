@@ -77,11 +77,16 @@ def _check_pid() -> bool:
         return False
     try:
         pid = int(_PID_FILE.read_text().strip())
-        import ctypes
-        kernel32 = ctypes.windll.kernel32
-        handle = kernel32.OpenProcess(0x1000, False, pid)
-        if handle:
-            kernel32.CloseHandle(handle)
+        if sys.platform == "win32":
+            import ctypes
+            kernel32 = ctypes.windll.kernel32
+            handle = kernel32.OpenProcess(0x1000, False, pid)
+            if handle:
+                kernel32.CloseHandle(handle)
+                return True
+        else:
+            # POSIX / Linux: os.kill with signal 0 checks for process existence
+            os.kill(pid, 0)
             return True
     except (ValueError, OSError, AttributeError):
         pass
