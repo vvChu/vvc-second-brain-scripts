@@ -8,9 +8,10 @@ from pathlib import Path
 scripts_dir = Path(__file__).resolve().parent
 sys.path.insert(0, str(scripts_dir))
 
+from core.config import cfg
 from core.frontmatter import extract_body, parse_frontmatter
 
-VAULT_ROOT = Path("D:/VvC_Notes")
+VAULT_ROOT = Path(cfg.vault_root)
 TOPICS_DIR = VAULT_ROOT / "04 - Permanent" / "topics"
 OUTPUT_FILE = TOPICS_DIR / "ai_eos_playbook_full_manuscript.md"
 

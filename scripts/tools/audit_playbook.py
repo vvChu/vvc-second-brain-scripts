@@ -4,9 +4,13 @@ from pathlib import Path
 import yaml
 from PIL import Image
 
-sys.stdout.reconfigure(encoding="utf-8")
+# Add scripts directory to sys.path
+scripts_dir = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(scripts_dir))
 
-VAULT_ROOT = Path("D:/VvC_Notes")
+from core.config import cfg
+
+VAULT_ROOT = Path(cfg.vault_root)
 TOPICS_DIR = VAULT_ROOT / "04 - Permanent" / "topics"
 ATTACHMENTS_DIR = VAULT_ROOT / "03 - Resources" / "attachments"
 INDEX_FILE = VAULT_ROOT / "00 - Maps of Content" / "index.md"

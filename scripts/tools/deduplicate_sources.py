@@ -84,9 +84,9 @@ def run_deduplication(dry_run: bool = False) -> None:
     """Thực thi dọn dẹp trùng lặp nguồn và chữa lành liên kết."""
     start_time = time.time()
     
-    vault_root = Path("D:/VvC_Notes")
-    concepts_dir = vault_root / "04 - Permanent" / "concepts"
-    transcripts_dir = vault_root / "04 - Permanent" / "sources" / "transcripts"
+    vault_root = Path(cfg.vault_root)
+    concepts_dir = cfg.concepts_dir
+    transcripts_dir = cfg.sources_dir / "transcripts"
     backup_dir = scripts_dir / "scratch" / "backup"
     
     logger.info("======================================================================")
@@ -94,7 +94,7 @@ def run_deduplication(dry_run: bool = False) -> None:
     logger.info("======================================================================")
     
     if not concepts_dir.exists() or not transcripts_dir.exists():
-        logger.error("Không tìm thấy các thư mục cốt lõi của Obsidian Vault tại D:/VvC_Notes")
+        logger.error(f"Không tìm thấy các thư mục cốt lõi của Obsidian Vault tại {vault_root}")
         return
 
     # Khởi tạo thư mục backup phòng thủ
