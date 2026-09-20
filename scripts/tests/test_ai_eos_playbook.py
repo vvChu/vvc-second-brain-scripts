@@ -13,7 +13,7 @@ from core.frontmatter import parse_frontmatter, extract_body
 from wiki_maintain import _build_master_index
 from core.config import cfg
 
-VAULT_ROOT = Path("D:/VvC_Notes")
+VAULT_ROOT = Path(cfg.vault_root)
 TOPICS_DIR = VAULT_ROOT / "04 - Permanent" / "topics"
 ATTACHMENTS_DIR = VAULT_ROOT / "03 - Resources" / "attachments"
 INDEX_FILE = VAULT_ROOT / "00 - Maps of Content" / "index.md"
