@@ -1,0 +1,42 @@
+# ==============================================================================
+# VvC Second Brain — Rclone Google Drive Mount Service Template (v1.0)
+# Target: ~/.config/systemd/user/vvc-gdrive-mount.service
+#
+# Hướng dẫn kích hoạt Giai đoạn 2:
+# 1. Cài đặt rclone: sudo apt install -y rclone
+# 2. Cấu hình remote: rclone config -> tạo remote tên 'gdrive' trỏ vào Google Drive
+# 3. Tạo thư mục mount: mkdir -p ~/mnt/gdrive/VvC_Vault
+# 4. Copy tệp này vào ~/.config/systemd/user/vvc-gdrive-mount.service
+# 5. Kích hoạt:
+#    systemctl --user daemon-reload
+#    systemctl --user enable --now vvc-gdrive-mount.service
+# ==============================================================================
+
+[Unit]
+Description=Rclone Google Drive Mount for VvC Second Brain
+Documentation=man:rclone(1)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+ExecStart=/usr/bin/rclone mount gdrive:VvC_Vault %h/mnt/gdrive/VvC_Vault \
+    --config=%h/.config/rclone/rclone.conf \
+    --vfs-cache-mode full \
+    --vfs-cache-max-age 24h \
+    --vfs-cache-max-size 10G \
+    --vfs-read-chunk-size 16M \
+    --vfs-read-chunk-size-limit 256M \
+    --buffer-size 32M \
+    --dir-cache-time 72h \
+    --drive-pacer-min-sleep 10ms \
+    --drive-pacer-burst 200 \
+    --umask 022 \
+    --log-level INFO \
+    --log-file=%h/VvC_Notes/scripts/logs/rclone.log
+ExecStop=/bin/fusermount -u -z %h/mnt/gdrive/VvC_Vault
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

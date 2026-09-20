@@ -272,6 +272,7 @@ WorkingDirectory=$SCRIPTS_DIR
 ExecStart=$VENV_DIR/bin/python daemon.py
 Restart=always
 RestartSec=10
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=$ENV_FILE
 
 [Install]
@@ -290,6 +291,7 @@ WorkingDirectory=$SCRIPTS_DIR
 ExecStart=$VENV_DIR/bin/python book_ingest.py
 Restart=always
 RestartSec=10
+Environment="PATH=%h/.local/bin:/usr/local/bin:/usr/bin:/bin"
 EnvironmentFile=$ENV_FILE
 
 [Install]

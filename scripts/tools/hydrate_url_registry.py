@@ -148,17 +148,17 @@ def run_hydration(dry_run: bool = False) -> None:
     """Thực thi quét lịch sử và nạp dữ liệu vào URL Registry."""
     start_time = time.time()
     
-    # Định nghĩa các đường dẫn tuyệt đối dựa trên workspace
-    vault_root = Path("D:/VvC_Notes")
-    concepts_dir = vault_root / "04 - Permanent" / "concepts"
-    sources_dir = vault_root / "04 - Permanent" / "sources"
+    # Định nghĩa các đường dẫn tuyệt đối dựa trên config
+    vault_root = Path(cfg.vault_root)
+    concepts_dir = cfg.concepts_dir
+    sources_dir = cfg.sources_dir
     
     logger.info("======================================================================")
     logger.info(f"🚀 BẮT ĐẦU TÁI THIẾT LẬP LỊCH SỬ URL REGISTRY (Mode: {'DRY RUN' if dry_run else 'LIVE'})")
     logger.info("======================================================================")
     
     if not concepts_dir.exists() or not sources_dir.exists():
-        logger.error("Không tìm thấy các thư mục cốt lõi của Obsidian Vault tại D:/VvC_Notes")
+        logger.error(f"Không tìm thấy các thư mục cốt lõi của Obsidian Vault tại {vault_root}")
         return
 
     # ------------------------------------------------------------------

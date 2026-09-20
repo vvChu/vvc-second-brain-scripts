@@ -50,6 +50,64 @@ def log(
     # Also emit to Python logger
     getattr(_logger, level, _logger.info)(f"[{category}] {message}")
 
+    # Out-of-band Telegram alert on error if configured
+    if level.lower() == "error":
+        send_telegram_alert(f"**[{category}]** {message}{src_tag}", level="ERROR")
+
+
+def send_telegram_alert(message: str, level: str = "ERROR") -> bool:
+    """Send an alert message to Telegram if credentials are configured.
+
+    Reads ALERT_TELEGRAM_BOT_TOKEN and ALERT_TELEGRAM_CHAT_ID from environment.
+    Uses only standard library urllib.request (zero dependencies).
+    """
+    import json
+    import os
+    import urllib.request
+
+    bot_token = os.environ.get("ALERT_TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_BOT_TOKEN")
+    chat_id = os.environ.get("ALERT_TELEGRAM_CHAT_ID") or os.environ.get("TELEGRAM_CHAT_ID")
+
+    if not bot_token or not chat_id:
+        return False
+
+    prefix = "🚨 [Spark 24/7 Alert]" if level.upper() == "ERROR" else "ℹ️ [Spark 24/7 Info]"
+    payload = {
+        "chat_id": chat_id,
+        "text": f"{prefix}\n{message}",
+        "parse_mode": "Markdown",
+    }
+    url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+
+    try:
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=5.0) as resp:
+            return resp.status == 200
+    except Exception as e:
+        _logger.warning(f"Failed to send Telegram alert: {e}")
+        return False
+
+
+def update_heartbeat(status: str = "Online", detail: str = "") -> None:
+    """Record daemon heartbeat timestamp and state in state_dir."""
+    import json
+    state_file = cfg.state_dir / "daemon_heartbeat.json"
+    data = {
+        "timestamp": datetime.now().isoformat(),
+        "status": status,
+        "detail": detail,
+    }
+    try:
+        cfg.state_dir.mkdir(parents=True, exist_ok=True)
+        with open(state_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except OSError:
+        pass
+
 
 def rotate_log(max_age_days: int = 30) -> None:
     """Archive log entries older than max_age_days.

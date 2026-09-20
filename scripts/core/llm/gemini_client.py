@@ -27,6 +27,11 @@ def _resolve_cli_path() -> str:
     which_agy = shutil.which("agy")
     if which_agy:
         return which_agy
+    # Linux fallback
+    linux_fallback = Path.home() / ".local" / "bin" / "agy"
+    if linux_fallback.exists():
+        return str(linux_fallback)
+    # Windows fallback
     fallback = Path.home() / "AppData" / "Local" / "agy" / "bin" / "agy.exe"
     if fallback.exists():
         return str(fallback)

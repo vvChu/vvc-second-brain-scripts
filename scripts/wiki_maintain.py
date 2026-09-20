@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from core.config import cfg
+from core.file_lock import CrossProcessFileLock
 from core.frontmatter import normalize_stem
 from core.log import log
 from core.vault import scan_all_concepts, scan_all_sources
@@ -571,48 +572,53 @@ def rebuild_incremental(concept: dict | Path) -> None:
 
 def rebuild_all(concepts: list[dict] | None = None, sources: list[dict] | None = None) -> None:
     """Rebuild all MOCs and the Master Index, unlinking stale MOCs."""
-    if concepts is None:
-        concepts = scan_all_concepts()
-    if sources is None:
-        sources = scan_all_sources()
+    lock_file = cfg.state_dir / "wiki_maintain.lock"
+    try:
+        with CrossProcessFileLock(lock_file, timeout=60.0):
+            if concepts is None:
+                concepts = scan_all_concepts()
+            if sources is None:
+                sources = scan_all_sources()
 
-    # Track active paths to preserve
-    active_paths = set()
+            # Track active paths to preserve
+            active_paths = set()
 
-    active_source_paths = _build_source_mocs(concepts, sources)
-    active_paths.update(active_source_paths)
+            active_source_paths = _build_source_mocs(concepts, sources)
+            active_paths.update(active_source_paths)
 
-    active_domain_paths = _build_domain_mocs(concepts, sources)
-    active_paths.update(active_domain_paths)
+            active_domain_paths = _build_domain_mocs(concepts, sources)
+            active_paths.update(active_domain_paths)
 
-    # Master index is always active
-    active_paths.add(cfg.index_file.resolve())
-    # Command file is always preserved
-    if cfg.command_file:
-        active_paths.add(Path(cfg.command_file).resolve())
+            # Master index is always active
+            active_paths.add(cfg.index_file.resolve())
+            # Command file is always preserved
+            if cfg.command_file:
+                active_paths.add(Path(cfg.command_file).resolve())
 
-    # Pre-existing documents or active user files to preserve
-    preserved_names = {"Weekly_Synthesis.md"}
+            # Pre-existing documents or active user files to preserve
+            preserved_names = {"Weekly_Synthesis.md"}
 
-    # Self-healing stale file cleanup (scans recursively across moc_dir and sub-folders)
-    for f in list(cfg.moc_dir.rglob("*.md")):
-        if f.name in preserved_names:
-            continue
+            # Self-healing stale file cleanup (scans recursively across moc_dir and sub-folders)
+            for f in list(cfg.moc_dir.rglob("*.md")):
+                if f.name in preserved_names:
+                    continue
 
-        f_resolved = f.resolve()
-        if f_resolved not in active_paths:
-            # Only delete files starting with MOC_ or Domain_ to be absolutely safe
-            if f.name.startswith("MOC_") or f.name.startswith("Domain_"):
-                try:
-                    f.unlink()
-                    _logger.info(f"Cleaned up stale MOC file: {f.name}")
-                except OSError as e:
-                    _logger.warning(f"Failed to delete stale MOC file {f.name}: {e}")
+                f_resolved = f.resolve()
+                if f_resolved not in active_paths:
+                    # Only delete files starting with MOC_ or Domain_ to be absolutely safe
+                    if f.name.startswith("MOC_") or f.name.startswith("Domain_"):
+                        try:
+                            f.unlink()
+                            _logger.info(f"Cleaned up stale MOC file: {f.name}")
+                        except OSError as e:
+                            _logger.warning(f"Failed to delete stale MOC file {f.name}: {e}")
 
-    _build_master_index(concepts, sources)
+            _build_master_index(concepts, sources)
 
-    _logger.info(f"Wiki maintained: {len(concepts)} concepts, {len(sources)} sources")
-    log("lint", f"Rebuilt MOCs: {len(concepts)} concepts")
+            _logger.info(f"Wiki maintained: {len(concepts)} concepts, {len(sources)} sources")
+            log("lint", f"Rebuilt MOCs: {len(concepts)} concepts")
+    except TimeoutError:
+        _logger.warning("Another process is maintaining wiki; skipping concurrent rebuild")
 
 
 # Canonical alias

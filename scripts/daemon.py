@@ -359,9 +359,15 @@ def _poll_loop() -> None:
     last_cmd_poll = 0.0
     last_dump_poll = 0.0
     last_fleeting_poll = 0.0
+    last_heartbeat = 0.0
 
     while not _shutdown.is_set():
         now = time.time()
+
+        if now - last_heartbeat >= 60.0:
+            from core.log import update_heartbeat
+            update_heartbeat("Online", detail="Polling loop healthy")
+            last_heartbeat = now
 
         if now - last_cmd_poll >= COMMAND_POLL_INTERVAL:
             _poll_command()

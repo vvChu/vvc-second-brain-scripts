@@ -11,7 +11,7 @@ sys.path.insert(0, str(scripts_dir))
 from core.config import cfg
 from services.command.hero_image import generate_hero_image, embed_hero_image_in_topic
 
-VAULT_ROOT = Path("D:/VvC_Notes")
+VAULT_ROOT = Path(cfg.vault_root)
 TOPICS_DIR = VAULT_ROOT / "04 - Permanent" / "topics"
 ATTACHMENTS_DIR = VAULT_ROOT / "03 - Resources" / "attachments"
 
