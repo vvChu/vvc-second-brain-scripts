@@ -276,8 +276,8 @@ def is_antigravity_cli_supported(model_name: str) -> bool:
         return False
     clean = model_name.lower().strip()
     if any(clean.startswith(p) for p in ANTIGRAVITY_CLI_SUPPORTED_PREFIXES):
-        # Exclude non-text modalities (image generation, embedding, specialized OCR)
-        if any(sub in clean for sub in ("-image", "embedding", "embed", "vision", "ocr")):
+        # Exclude non-text modalities (image generation, embedding, specialized OCR) and unsupported lite models
+        if any(sub in clean for sub in ("-image", "embedding", "embed", "vision", "ocr", "-lite")):
             return False
         return True
     return False

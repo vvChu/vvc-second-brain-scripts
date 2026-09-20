@@ -115,12 +115,13 @@ def test_call_antigravity_cli_with_artifact_ingestion(tmp_path):
 
 def test_is_antigravity_cli_supported():
     """Verifies prefix matching and modality filtering for Antigravity CLI."""
-    assert is_antigravity_cli_supported("gemini-3.8-flash") is True
+    assert is_antigravity_cli_supported("gemini-3.8-flash-low") is True
     assert is_antigravity_cli_supported("claude-opus-4-6-thinking") is True
     assert is_antigravity_cli_supported("gpt-oss-120b") is True
 
-    # Excluded modalities
+    # Excluded modalities & unsupported lite models
     assert is_antigravity_cli_supported("gemini-vision") is False
+    assert is_antigravity_cli_supported("gemini-3.1-flash-lite-preview") is False
     assert is_antigravity_cli_supported("text-embedding-3") is False
     assert is_antigravity_cli_supported("imagen-3-image-generation") is False
     assert is_antigravity_cli_supported("") is False

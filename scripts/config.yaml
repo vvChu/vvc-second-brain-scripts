@@ -45,7 +45,7 @@ gemini_cli:
   vision_model: "gemini-3.1-flash-lite-preview"          # Primary: best OCR quality + speed
   vision_model_batch: "gemini-3.1-flash-lite-preview"    # Batch: high throughput (500 RPD)
   text_synthesis_model: "gemini-3.8-flash-high"         # Upgrade to Pro-level for premium Tier 3 synthesis fallback!
-  text_correction_model: "gemini-3.1-flash-lite-preview" # Exact CLI name for correction
+  text_correction_model: "gemini-3.8-flash-low" # Fast, low-effort CLI model for correction
 
   api_key: ""  # Set via System Env Var: GEMINI_API_KEY (never hardcode here — synced to GDrive)
   vision_rpd_limit: 15                         # Switch to batch model after N calls/day
