@@ -201,7 +201,7 @@ def _render_domain_moc_content(
     # Group by source
     by_source: dict[str, list[dict]] = defaultdict(list)
     for c in domain_concepts:
-        src_val = c.get("source", "unknown")
+        src_val = c.get("source") or c.get("sources") or "unknown"
         srcs = flatten_source_list(src_val)
         for src in srcs:
             by_source[src].append(c)
@@ -246,7 +246,7 @@ def _build_source_mocs(concepts: list[dict], sources: list[dict]) -> list[Path]:
     active_paths = []
 
     for c in concepts:
-        src_val = c.get("source", "")
+        src_val = c.get("source") or c.get("sources") or ""
         if src_val:
             srcs = flatten_source_list(src_val)
             for src in srcs:
@@ -534,7 +534,7 @@ def rebuild_incremental(concept: dict | Path) -> None:
         for src_stem in src_stems:
             matched_source = next((s for s in all_sources if s.get("_stem") == src_stem), None)
             if matched_source:
-                linked = [c for c in all_concepts if src_stem in flatten_source_list(c.get("source", ""))]
+                linked = [c for c in all_concepts if src_stem in flatten_source_list(c.get("source") or c.get("sources") or "")]
                 if linked:
                     moc_path, content = _render_source_moc_content(matched_source, linked)
                     _safe_write_text(moc_path, content)

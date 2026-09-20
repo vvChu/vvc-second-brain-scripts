@@ -273,39 +273,46 @@ def handle_brain_dump() -> None:
 
     saved_stems = _synthesize_and_save_concepts(processed_text, url_content, source_ref)
 
-    if saved_stems or auto_feedback_links:
-        # Gom toàn bộ links (cả concept mới sinh và concept cũ từ auto_feedback_links)
-        all_links = []
-        if saved_stems:
-            all_links.extend(f"- [[{stem}|{title}]]" for stem, title in saved_stems)
-        if auto_feedback_links:
-            all_links.extend(auto_feedback_links)
-            
-        _commit_inbox_changes(dump_text, "", all_links)
-        _register_processed_hash(content_hash)
-        
-        # Cập nhật registry cho các URL đã được xử lý thành công trong lượt này
-        if saved_stems:
-            registry = _load_url_registry()
-            for url in urls_to_scrape:
-                norm_url = url_normalization_map.get(url)
-                if norm_url:
-                    registry[norm_url] = {
-                        "source_note": source_ref,
-                        "concepts": [{"stem": stem, "title": title} for stem, title in saved_stems],
-                        "processed_at": datetime.now().isoformat()
-                    }
-            _save_url_registry(registry)
-            
-        if saved_stems:
-            try:
-                from wiki_maintain import rebuild_incremental
-                for stem, _ in saved_stems:
-                    c_file = cfg.concepts_dir / f"{stem}.md"
-                    if c_file.exists():
-                        rebuild_incremental(c_file)
-            except Exception as e:
-                _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
+    all_links = []
+    if saved_stems:
+        all_links.extend(f"- [[{stem}|{title}]]" for stem, title in saved_stems)
+    if auto_feedback_links:
+        all_links.extend(auto_feedback_links)
 
-        log("dump", f"Completed: {len(saved_stems)} concepts created")
-        _logger.info(f"Brain Dump: {len(saved_stems)} concepts created")
+    # Nếu tất cả concepts đều bị subsumed (hấp thụ vào các note có sẵn),
+    # nhưng transcript đã được lưu trữ, ta vẫn ghi nhận hoàn tất và đưa vào Processed
+    if not all_links:
+        if source_ref and source_ref != "brain_dump":
+            all_links.append(f"- [[{source_ref}|Ghi chép gốc (Nội dung đã được hấp thụ vào kho tri thức)]]")
+        else:
+            all_links.append("- *(Nội dung đã được đối soát và hấp thụ vào các khái niệm hiện có)*")
+
+    _commit_inbox_changes(dump_text, "", all_links)
+    _register_processed_hash(content_hash)
+    
+    # Cập nhật registry cho các URL đã được xử lý thành công trong lượt này
+    if urls_to_scrape:
+        registry = _load_url_registry()
+        for url in urls_to_scrape:
+            norm_url = url_normalization_map.get(url)
+            if norm_url:
+                registry[norm_url] = {
+                    "source_note": source_ref,
+                    "concepts": [{"stem": stem, "title": title} for stem, title in saved_stems],
+                    "processed_at": datetime.now().isoformat()
+                }
+        _save_url_registry(registry)
+        
+    if saved_stems:
+        try:
+            from wiki_maintain import rebuild_incremental
+            for stem, _ in saved_stems:
+                c_file = cfg.concepts_dir / f"{stem}.md"
+                if c_file.exists():
+                    rebuild_incremental(c_file)
+        except Exception as e:
+            _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
+
+    log("dump", f"Completed: {len(saved_stems)} concepts created (transcript: {source_ref})")
+    _logger.info(f"Brain Dump: {len(saved_stems)} concepts created (transcript: {source_ref})")
+

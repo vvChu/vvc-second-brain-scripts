@@ -517,7 +517,7 @@ def flatten_source_list(src_val) -> list[str]:
     """Recursively flatten and normalize a potentially nested source list.
 
     Args:
-        src_val: Source value — string, list, or nested list.
+        src_val: Source value — string, list, dict, or nested structure.
 
     Returns:
         Flat list of clean source stem strings.
@@ -527,7 +527,11 @@ def flatten_source_list(src_val) -> list[str]:
         cleaned = clean_source_reference(src_val)
         if cleaned:
             result.append(cleaned)
+    elif isinstance(src_val, dict):
+        if "source" in src_val:
+            result.extend(flatten_source_list(src_val["source"]))
     elif isinstance(src_val, list):
         for item in src_val:
             result.extend(flatten_source_list(item))
     return result
+

@@ -101,3 +101,6 @@ scripts/pwsh.cmd
 .agents/skills/obsidian-*
 .agents/skills/openartifacts-publish/
 
+# Hub auto-generated editable links & Spoke Leakage Guard (ADR 0045)
+.md/data/telemetry_summary.json
+.md/data/*.json
