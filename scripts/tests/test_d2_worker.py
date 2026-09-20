@@ -240,6 +240,7 @@ def test_find_d2_bin_priority_1_shutil_which():
 def test_find_d2_bin_priority_2_tools_bin(tmp_path, monkeypatch):
     """find_d2_bin must check vault tools/bin directory if not on PATH."""
     import dataclasses
+    import sys
     from core.config import cfg
     from services.d2_worker import find_d2_bin
 
@@ -248,7 +249,8 @@ def test_find_d2_bin_priority_2_tools_bin(tmp_path, monkeypatch):
 
     tools_bin = tmp_path / "tools" / "bin"
     tools_bin.mkdir(parents=True)
-    fake_exe = tools_bin / "d2.exe"
+    exe_name = "d2.exe" if sys.platform == "win32" else "d2"
+    fake_exe = tools_bin / exe_name
     fake_exe.write_text("binary", encoding="utf-8")
 
     with patch("shutil.which", return_value=None):

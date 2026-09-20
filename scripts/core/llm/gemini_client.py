@@ -45,19 +45,18 @@ def _resolve_cli_artifact_content(
     if not text or len(text) > 5000:
         return text
 
-    # 1. Search for local .md file URI inside text: file:///C:/... or file://C:/...
-    match = re.search(r"file:///([a-zA-Z]:[^\s\)\"'>]+?\.md)", text)
-    if not match:
-        match = re.search(r"file://([a-zA-Z]:[^\s\)\"'>]+?\.md)", text)
+    _URI_PATTERN = r"file://(?:localhost)?(?:/([a-zA-Z]:[^\s\)\"'\<]+?\.md)|([a-zA-Z]:[^\s\)\"'\<]+?\.md)|(/+[^\s\)\"'\<]+?\.md))"
+
+    # 1. Search for local .md file URI inside text
+    match = re.search(_URI_PATTERN, text)
 
     # 2. Search within full_stdout if available
     if not match and full_stdout:
-        match = re.search(r"file:///([a-zA-Z]:[^\s\)\"'>]+?\.md)", full_stdout)
-        if not match:
-            match = re.search(r"file://([a-zA-Z]:[^\s\)\"'>]+?\.md)", full_stdout)
+        match = re.search(_URI_PATTERN, full_stdout)
 
     if match:
-        artifact_path_str = match.group(1).replace("%20", " ")
+        raw_path = match.group(1) or match.group(2) or match.group(3)
+        artifact_path_str = raw_path.replace("%20", " ")
         artifact_path = Path(artifact_path_str)
         if artifact_path.exists() and artifact_path.is_file():
             try:
