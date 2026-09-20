@@ -13,15 +13,18 @@ from daemon import main, restart_existing_daemons
 
 
 def test_restart_existing_daemons_executes_powershell():
-    """restart_existing_daemons calls PowerShell to terminate old instances."""
+    """restart_existing_daemons calls PowerShell on Windows or pkill on Linux."""
     with patch("subprocess.run") as mock_run, patch("time.sleep") as mock_sleep:
         mock_run.return_value = MagicMock(returncode=0)
         restart_existing_daemons()
 
         assert mock_run.called
         args = mock_run.call_args[0][0]
-        assert args[0] == "powershell"
-        assert "Stop-Process" in args[4]
+        if sys.platform == "win32":
+            assert args[0] == "powershell"
+            assert "Stop-Process" in args[4]
+        else:
+            assert args[0] == "pkill"
         assert mock_sleep.called
 
 

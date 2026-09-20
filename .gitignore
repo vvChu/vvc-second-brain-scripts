@@ -47,12 +47,19 @@ scripts/knowledge_graph/graph_data.js
 .trash/
 
 # --- Personal Knowledge Layers (EXCLUDE FROM GIT) ---
+00 - Maps of Content
 00 - Maps of Content/
+01 - Projects
 01 - Projects/
+02 - Areas
 02 - Areas/
+03 - Resources
 03 - Resources/
+04 - Permanent
 04 - Permanent/
+05 - Fleeting
 05 - Fleeting/
+99 - Archive
 99 - Archive/
 
 # Legacy and redundant directories
@@ -75,6 +82,7 @@ fix_co_cau_diagram.py
 
 # --- Allow Core Codebase & System Context ---
 !scripts/
+!scripts/requirements.txt
 !scripts/vvc_kbcompiler.xml
 !templates/
 !AGENTS.md

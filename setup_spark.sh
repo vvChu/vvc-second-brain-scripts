@@ -47,7 +47,7 @@ fi
 if ! command -v ffmpeg &>/dev/null; then
     log_warn "FFmpeg chưa cài đặt. Đang tự động cài đặt ffmpeg..."
     if command -v sudo &>/dev/null; then
-        sudo apt update && sudo apt install -y ffmpeg || log_warn "Không thể tự động cài ffmpeg. Audio pipeline có thể bị giới hạn."
+        sudo -n apt update && sudo -n apt install -y ffmpeg || log_warn "Không thể tự động cài ffmpeg. Audio pipeline có thể bị giới hạn."
     fi
 fi
 log_ok "Hệ thống đáp ứng đầy đủ binary tiên quyết."
@@ -61,17 +61,29 @@ if [ ! -d "$VENV_DIR" ]; then
     python3 -m venv "$VENV_DIR"
 fi
 
-# Ensure pip is up to date
-"$VENV_DIR/bin/pip" install --upgrade pip --quiet
+UV_BIN=""
+if command -v uv &>/dev/null; then
+    UV_BIN=$(command -v uv)
+elif [ -x "$HOME/.local/bin/uv" ]; then
+    UV_BIN="$HOME/.local/bin/uv"
+fi
 
-log_info "Cài đặt các gói phụ thuộc từ requirements.txt..."
-"$VENV_DIR/bin/pip" install -r "$SCRIPTS_DIR/requirements.txt" --quiet
+if [ -n "$UV_BIN" ]; then
+    log_info "Tận dụng uv ($UV_BIN) để cài đặt siêu tốc từ cache cục bộ..."
+    "$UV_BIN" pip install --python "$VENV_DIR/bin/python" -r "$SCRIPTS_DIR/requirements.txt"
+else
+    # Ensure pip is up to date
+    "$VENV_DIR/bin/pip" install --upgrade pip --quiet
+    log_info "Cài đặt các gói phụ thuộc từ requirements.txt..."
+    "$VENV_DIR/bin/pip" install -r "$SCRIPTS_DIR/requirements.txt" --quiet
+fi
 log_ok "Đã cài đặt hoàn tất dependencies cốt lõi."
 
 # Auto-link ccba-ai from Hub if available on Server Spark
 log_info "Tìm kiếm gói ccba-ai từ CCBA Platform Hub..."
 CCBA_AI_FOUND=""
 for hub_path in \
+    "$HOME/ccba/ccba-agent-platform/packages/ccba-ai" \
     "$HOME/ccba-agent-platform/packages/ccba-ai" \
     "$HOME/GitHubProjects/ccba-agent-platform/packages/ccba-ai" \
     "/home/spark/ccba-agent-platform/packages/ccba-ai" \
@@ -85,20 +97,53 @@ done
 
 if [ -n "$CCBA_AI_FOUND" ]; then
     log_info "Phát hiện ccba-ai tại: $CCBA_AI_FOUND. Đang cài đặt chế độ editable (-e)..."
-    "$VENV_DIR/bin/pip" install -e "$CCBA_AI_FOUND" --quiet 2>/dev/null || log_warn "Không thể cài đặt ccba-ai từ $CCBA_AI_FOUND"
+    if [ -n "$UV_BIN" ]; then
+        "$UV_BIN" pip install --python "$VENV_DIR/bin/python" -e "$CCBA_AI_FOUND" || log_warn "Không thể cài đặt ccba-ai từ $CCBA_AI_FOUND"
+    else
+        "$VENV_DIR/bin/pip" install -e "$CCBA_AI_FOUND" --quiet 2>/dev/null || log_warn "Không thể cài đặt ccba-ai từ $CCBA_AI_FOUND"
+    fi
     log_ok "Đã tích hợp ccba-ai SDK từ Hub."
 else
     log_warn "Không tìm thấy ccba-agent-platform cục bộ. Pipeline sẽ sử dụng LiteLLM Gateway trực tiếp qua HTTP REST."
 fi
 
+# Optional: Link ccba-harness if present
+for harness_path in \
+    "$HOME/ccba/ccba-agent-platform/packages/ccba-harness" \
+    "$HOME/ccba-agent-platform/packages/ccba-harness"; do
+    if [ -d "$harness_path" ] && [ -f "$harness_path/pyproject.toml" ]; then
+        if [ -n "$UV_BIN" ]; then
+            "$UV_BIN" pip install --python "$VENV_DIR/bin/python" -e "$harness_path" 2>/dev/null || true
+        else
+            "$VENV_DIR/bin/pip" install -e "$harness_path" --quiet 2>/dev/null || true
+        fi
+        break
+    fi
+done
+
 # ------------------------------------------------------------------------------
 # 3. Google Drive Auto-Discovery & Symlink Binding
 # ------------------------------------------------------------------------------
 log_info "3/7. Tự động dò tìm Google Drive GVFS Mount..."
-GVFS_VAULT=""
+GVFS_VAULT="${GVFS_VAULT:-}"
 
 # Search common GVFS locations
 find_gvfs_vault() {
+    if [ -n "$GVFS_VAULT" ] && [ -d "$GVFS_VAULT" ]; then
+        echo "$GVFS_VAULT"
+        return 0
+    fi
+
+    for p in "/run/user/$UID/gvfs/google-drive:host=gmail.com,user=chu.ibst/VvC_Vault" \
+             "/run/user/$UID/gvfs/google-drive:host=gmail.com,user=chu.ibst/*/VvC_Vault" \
+             "/run/user/$UID/gvfs"/*/*/VvC_Vault \
+             "/run/user/$UID/gvfs"/*/VvC_Vault; do
+        if [ -d "$p" ]; then
+            echo "$p"
+            return 0
+        fi
+    done
+
     local candidate
     candidate=$(find "/run/user/$UID/gvfs" -maxdepth 4 -name "VvC_Vault" 2>/dev/null | head -n 1 || true)
     if [ -n "$candidate" ] && [ -d "$candidate" ]; then
