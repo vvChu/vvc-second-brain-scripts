@@ -52,8 +52,14 @@ def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str
             if not info:
                 return None
 
-            subtitles = info.get("subtitles") or {}
-            auto_subtitles = info.get("automatic_captions") or {}
+            # Skip active livestream extraction (no static captions)
+            if info.get("is_live"):
+                _logger.warning(f"Video {url} đang phát sóng trực tiếp (Live Stream). Không thể trích xuất phụ đề tĩnh.")
+                return None
+
+            _IGNORED_SUB_KEYS = {"live_chat", "live_chat_replay"}
+            subtitles = {k: v for k, v in (info.get("subtitles") or {}).items() if k not in _IGNORED_SUB_KEYS}
+            auto_subtitles = {k: v for k, v in (info.get("automatic_captions") or {}).items() if k not in _IGNORED_SUB_KEYS}
 
             # Priority: Manual vi -> Manual en -> Auto vi -> Auto en -> Any manual -> Any auto
             selected_sub = None
@@ -93,6 +99,12 @@ def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str
 
             # Fetch subtitle content via yt-dlp's internal downloader (handles headers & cookies)
             sub_content = ydl.urlopen(target_url).read().decode("utf-8")
+
+            # Guard against HTML or client-side bootstrapping scripts being served instead of captions
+            sub_content_strip = sub_content.strip()
+            if sub_content_strip.lower().startswith(("<!doctype html", "<html", "<?xml", "var ytcfg", "window.yt")):
+                _logger.warning(f"Phát hiện nội dung phụ đề là mã HTML/JS rác thay vì captions: {url}")
+                return None
 
             # Parse JSON3 format
             if "json3" in target_url or sub_content.strip().startswith("{"):
@@ -167,6 +179,12 @@ def _download_audio_via_ytdlp(url: str, info_dict: dict | None = None) -> Path |
         })
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Check info before downloading to prevent infinite stream capture on active livestreams
+            check_info = info_dict or ydl.extract_info(url, download=False)
+            if check_info and check_info.get("is_live"):
+                _logger.warning(f"Video {url} đang phát sóng trực tiếp (Live Stream). Không thể tải audio luồng live.")
+                return None
+
             info = ydl.extract_info(url, download=True)
             if not info:
                 return None
@@ -258,6 +276,10 @@ def _fetch_transcript_via_api(url: str) -> str:
 
 def fetch_youtube_transcript(url: str, info_dict: dict | None = None) -> str:
     """Fetch transcript from YouTube URL, fallback to audio download + Whisper."""
+    if info_dict and info_dict.get("is_live"):
+        _logger.warning(f"Video {url} đang phát sóng trực tiếp (Live Stream). Không thể trích xuất transcript tự động.")
+        return ""
+
     # 1. Primary: Direct subtitle extraction via yt-dlp mobile client
     text = extract_transcript_via_ytdlp(url, info_dict=info_dict)
     if text:

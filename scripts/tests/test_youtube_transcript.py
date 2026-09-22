@@ -129,3 +129,70 @@ def test_extract_transcript_via_ytdlp_json3(mock_ytdl_class):
     assert "[00:01] Xin chào thế giới" in result
     assert "[00:35] Câu nói thứ hai" in result
 
+
+@patch("yt_dlp.YoutubeDL")
+def test_extract_transcript_ignores_live_chat(mock_ytdl_class):
+    """Test that live_chat is excluded from subtitle language choices."""
+    from services.youtube.transcript import extract_transcript_via_ytdlp
+
+    mock_ytdl = MagicMock()
+    mock_ytdl_class.return_value = mock_ytdl
+    mock_context = MagicMock()
+    mock_ytdl.__enter__.return_value = mock_context
+
+    # Video only has live_chat subtitle key
+    mock_context.extract_info.return_value = {
+        "subtitles": {
+            "live_chat": [{"ext": "json", "url": "https://fake.url/live_chat.json"}]
+        },
+        "automatic_captions": {}
+    }
+
+    result = extract_transcript_via_ytdlp("https://youtube.com/live/fake_live")
+    assert result is None
+
+
+@patch("yt_dlp.YoutubeDL")
+def test_extract_transcript_rejects_html_garbage(mock_ytdl_class):
+    """Test that HTML/JS content served as captions is rejected."""
+    from services.youtube.transcript import extract_transcript_via_ytdlp
+
+    mock_ytdl = MagicMock()
+    mock_ytdl_class.return_value = mock_ytdl
+    mock_context = MagicMock()
+    mock_ytdl.__enter__.return_value = mock_context
+
+    mock_context.extract_info.return_value = {
+        "subtitles": {
+            "vi": [{"ext": "vtt", "url": "https://fake.url/sub.vtt"}]
+        }
+    }
+
+    mock_response = MagicMock()
+    mock_response.read.return_value = b"<!DOCTYPE html><html><head><script>var ytcfg={};</script></head><body>error</body></html>"
+    mock_context.urlopen.return_value = mock_response
+
+    result = extract_transcript_via_ytdlp("https://youtube.com/watch?v=ABC123xyz")
+    assert result is None
+
+
+@patch("yt_dlp.YoutubeDL")
+def test_extract_transcript_skips_is_live(mock_ytdl_class):
+    """Test that active livestreams are skipped."""
+    from services.youtube.transcript import extract_transcript_via_ytdlp
+
+    mock_ytdl = MagicMock()
+    mock_ytdl_class.return_value = mock_ytdl
+    mock_context = MagicMock()
+    mock_ytdl.__enter__.return_value = mock_context
+
+    mock_context.extract_info.return_value = {
+        "is_live": True,
+        "subtitles": {
+            "vi": [{"ext": "json3", "url": "https://fake.url/sub.json3"}]
+        }
+    }
+
+    result = extract_transcript_via_ytdlp("https://youtube.com/live/active_stream")
+    assert result is None
+
