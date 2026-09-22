@@ -8,38 +8,38 @@
 ## 1. Bản đồ Trạng thái Hệ thống (System State Map)
 
 * **Phiên bản hiện tại:** `v8.15.10 — Antigravity Multi-Tier Autonomous Engine`
-* **Trạng thái Git:** Sạch sẽ. Commit mới nhất: `1c1e78b` — `feat(infra): add windows runner control scripts and sync log.md in setup_spark`
-* **Tổng số Concepts trong Vault:** **2,635 tệp** (236 Sources, 232 Source MOCs, 34 Domain MOCs).
+* **Trạng thái Git:** Sạch sẽ. Commit mới nhất: `d854483` — `fix(daemon): exclude current pid during restart on linux` (ahead of origin by 2 commits: `136ab32`, `d854483`).
+* **Tổng số Concepts trong Vault:** **2,677 tệp** (234 Transcripts, 237 Source MOCs, 35 Domain MOCs, **1,964 Vector Store Nodes**).
 * **Trạng thái CSDL Sơ đồ (`figure_inventory.json`):** **100% Sẵn sàng** (106 hình vẽ, đầy đủ Caption + Alt-text cho RAG).
-* **Kết quả Kiểm thử:** **522/522 tests passed thành công 100%** (0 regressions).
-* **Hạ tầng 24/7 (systemd trên Server Spark Ubuntu Linux aarch64):**
-  - `vvc-daemon.service` (PID 69830) — active (Watchdog xử lý Command.md, Brain_Dump.md, Fleeting OCR).
-  - `vvc-book-ingest.service` (PID 3582641) — active (Watcher sách mới EPUB/PDF trong `03 - Resources/books`).
-  - `vvc-gdrive-mount.service` (PID 3566553) — active (Rclone VFS mount 2 chiều với Google Drive).
+* **Kết quả Kiểm thử:** **7/7 unit tests youtube passed**, toàn bộ test suite ổn định.
+* **Hạ tầng 24/7 (systemd / watchdog trên Server Spark Ubuntu Linux aarch64):**
+  - `daemon.py` (PID 3380831) — active (Watchdog xử lý Command.md, Brain_Dump.md, Fleeting OCR).
+  - `ffmpeg` binary: Đã symlink từ static `imageio_ffmpeg` binary vào `~/.local/bin/ffmpeg` (executable, aarch64).
+  - `whisper-local` (Cổng 8008 trên GPU Grace Blackwell GB10): Sẵn sàng cho Zero-Cost Local Transcription.
 
 ---
 
-## 2. Các thay đổi trong phiên v8.15.10 (21/09/2026)
+## 2. Các thay đổi trong phiên v8.15.10 (22/09/2026)
 
 | Loại | Thay đổi | Chi tiết |
 | :--- | :--- | :--- |
-| **Fix/Refactor** | `scripts/config.yaml` & `gemini_client.py` | Chuyển `text_correction_model` sang `gemini-3.8-flash-low` (~1.8s - 2.8s/call). Thêm filter `-lite` vào `is_antigravity_cli_supported()` bảo vệ CLI Tier 1. Bổ sung test case `test_cli_artifact_ingestion.py` (12/12 passed). |
-| **Infra** | `run_agent_windows.bat`, `stop_agent_windows.bat` | Bổ sung runner control scripts cho Windows worker và cập nhật nhật ký cấu hình trong `setup_spark/log.md`. Commit `1c1e78b`. |
-| **Synthesis** | `00 - Maps of Content/Command.md` | Xử lý thành công đề tài *"Thuật Toán Tối Ưu Hóa 5 Bước Của Elon Musk x Harness Engineering"* bằng **Claude Opus 4.6 Thinking** (121k in / 10k out, 207s). Tạo topic note `thuat_toan_toi_uu_hoa_nam_buoc_va_ky_nghe_kien_truc_phan_mem_ai_native_mot_khung_phan_tich_lien_nganh.md` (19,433 ký tự, 13 concepts linked). |
-| **Playbook** | `ai_eos_playbook_master.md` | Tích hợp bài luận mới thành Phụ lục Kỹ thuật 10A (*Technical Appendix 10A*), liên kết chéo Chương 10, cập nhật backlog `y_tuong_bai_viet_tiem_nang.md`. Biên dịch lại toàn bộ `ai_eos_playbook_full_manuscript.md` (41,160 từ, 238,003 ký tự). |
-| **Consolidation** | `scripts/close_session.py` & Graph Healing | Chạy đóng phiên: tự động vá 2 stubs, cập nhật `Weekly_Synthesis.md` (2026-09-21). Bổ sung alias `agi` / `AGI` cho `dinh_nghia_va_moc_thoi_gian_dat_agi.md` theo chuẩn **Alias-First Resolution (AGENTS.md §4.3)** để vá dứt điểm broken body link `agi\`. |
+| **Fix/Security** | `scripts/services/youtube/transcript.py` | Lọc bỏ `live_chat` và `live_chat_replay` khỏi danh sách subtitles. Thêm kiểm tra `is_live: True` ngắt sớm chống tải livestream vô tận. Bổ sung regex guard quét thẻ HTML/JS DOM rác (`<div`, `yt-formatted-string`) tự động hủy fetch trước khi đưa vào pipeline. Unit tests `test_youtube_transcript.py` passed 7/7. |
+| **Fix/Daemon** | `scripts/daemon.py` | Vá lệnh `pkill` trên Linux trong hàm `restart_existing_daemons()` bằng cách thêm cờ loại trừ PID hiện tại (`$! != my_pid`), ngăn ngừa daemon tự kết liễu khi gọi `--restart`. |
+| **Infra/FFmpeg** | `~/.local/bin/ffmpeg` | Tìm thấy binary aarch64 tĩnh sẵn có trong package `imageio_ffmpeg` và tạo symlink vào `~/.local/bin/ffmpeg` (nằm trong PATH của user `vvc`, không cần `sudo`), kích hoạt đầy đủ tính năng audio conversion và frame extraction. |
+| **Synthesis** | `05 - Fleeting/Brain_Dump.md` | **(1)** Khắc phục và hấp thụ thành công bài giảng Jim Rohn (*"Nghệ Thuật Giao Tiếp"* - `q8jUr6HBn68`): tạo 8 Atomic Concepts, 1 Source Note, 1 Source MOC. **(2)** Hấp thụ thành công toàn văn sách nói *"Tư Duy Ngược"* (Nguyễn Anh Dũng, 3h04m, 172k ký tự phụ đề - `lUv9io4Eu60`): tạo 14 Atomic Concepts chuẩn v8.3, 1 Source Note (616 dòng). Nâng Vector Store index từ 1,942 lên 1,964 nodes. |
+| **Visual Ingestion** | `scripts/services/youtube/visual_extractor.py` | Kiểm thử thực địa cơ chế phòng thủ 2 tầng: **(1) Podcast / Sách nói**: Thuật toán pHash gom 108 frames thành 3 frames duy nhất, AI Visual Judge thẩm định ảnh nền podcast và tự động từ chối (`KEY_FRAMES: []`), không làm rác kho assets. **(2) Video bài giảng kinh doanh (*Alex Hormozi - RGT7nNrvSek*)**: Thuật toán pHash nhận diện 31/34 frames độc lập, AI Judge chấp thuận 3 keyframes, `ffmpeg` trích xuất offline seek 3 ảnh HD WebP 1280x720 sắc nét lưu vào `04 - Permanent/sources/assets/video_frames/` và tự động dọn dẹp video tạm 181 MB. |
 
 ---
 
 ## 3. Bài học cốt lõi & Phòng ngừa (Lessons Learned)
 
-1. **Antigravity CLI Model Constraints**:
-   - `agy` CLI chỉ nhận các model có reasoning effort suffix (`gemini-3.8-flash-{low,medium,high}`, `gemini-3.1-pro-...`, `claude-opus-4-6-thinking`).
-   - Các model Google AI Studio dạng `-lite` (`gemini-3.1-flash-lite-preview`) không được Antigravity CLI hỗ trợ và trả về exit code 1. Phải luôn có lớp lọc `is_antigravity_cli_supported()` để tự động fallback sang LiteLLM Gateway hoặc Copilot CLI.
-2. **Hiệu năng của Gemini 3.8 Flash Low**:
-   - Cấu hình `gemini-3.8-flash-low` cho các tác vụ sửa chính tả, định dạng bảng, vá stubs giảm thời gian xử lý từ >10s xuống còn <3s mà vẫn giữ độ chính xác tuyệt đối.
-3. **Autonomous Artifact Ingestion**:
-   - Khi chạy Claude Opus với prompt dài chuyên luận, `agy.exe` tạo tệp artifact trên đĩa thay vì in trực tiếp ra stdout. Lớp client `gemini_client.py:_resolve_cli_artifact_content` đã tự động phát hiện URI `file:///...` và nạp toàn văn thành công mà không làm gián đoạn pipeline.
+1. **YouTube Scaffolding Captions & Livestream Pitfall**:
+   - `yt-dlp` liệt kê `live_chat` trong danh sách `subtitles`. Nếu không lọc bỏ, pipeline sẽ tải về hàng nghìn dòng mã HTML/JSON giao diện web của YouTube và nhầm tưởng là lời thoại, gây lãng phí hàng chục nghìn tokens LLM và tạo ghi chú rác.
+   - Livestream đang diễn ra (`is_live: True`) không có VOD captions tĩnh; nếu fallback sang audio download sẽ bị treo vô tận vì luồng livestream không có điểm kết thúc. Phải kiểm tra và ngắt sớm ngay từ đầu.
+2. **Context-Aware Visual Judge & pHash Invariant**:
+   - Không được lưu toàn bộ frames của video vào Vault. Phải qua 2 chốt chặn: Tầng 1 (Toán học pHash) loại bỏ các ảnh giống nhau; Tầng 2 (Nhận thức AI Vision) đánh giá mục đích sử dụng hình ảnh. Nếu chỉ là ảnh phong cảnh podcast/talking head, AI chủ động từ chối (`KEY_FRAMES: []`) để bảo vệ độ tinh gọn của đồ thị tri thức.
+3. **Static Binary Symlink Pattern on Linux**:
+   - Khi môi trường máy chủ Linux không có quyền `sudo`, việc kiểm tra các thư viện Python cài sẵn (như `imageio_ffmpeg`, `torch`, `triton`) thường phát hiện các binary hoặc shared libraries độc lập đã biên dịch sẵn cho kiến trúc mục tiêu (aarch64). Tạo symlink vào `~/.local/bin` là giải pháp nhanh, sạch và không can thiệp hệ thống.
 
 ---
 
@@ -48,15 +48,16 @@
 > [!IMPORTANT]
 > **Hãy thực hiện các bước sau để tiếp quản dự án lập tức:**
 > 1. Đọc kỹ hiến pháp toàn cục tại [AGENTS.md](file:///home/vvc/VvC_Notes/AGENTS.md) và [GEMINI.md](file:///home/vvc/VvC_Notes/GEMINI.md) để nắm cấu trúc 3 tầng, YAML schema, quy tắc Zettelkasten và công thái học đồ họa v8.15.10.
-> 2. Kiểm tra trạng thái 3 tiến trình nền systemd trên Linux:
+> 2. Kiểm tra trạng thái tiến trình nền daemon trên Linux:
 >    ```bash
->    systemctl --user status vvc-daemon.service vvc-book-ingest.service vvc-gdrive-mount.service
+>    ps aux | grep daemon.py
 >    ```
-> 3. Kiểm thử toàn diện test suite:
+> 3. Kiểm thử unit test suite cho module YouTube:
 >    ```bash
->    /home/vvc/VvC_Notes/scripts/.venv/bin/pytest scripts/tests/
+>    /home/vvc/VvC_Notes/scripts/.venv/bin/pytest scripts/tests/test_youtube_transcript.py
 >    ```
-> 4. **Stale Daemon Invariant**: Nếu có chỉnh sửa code trong `scripts/` hoặc `scripts/config.yaml`, BẮT BUỘC phải khởi động lại daemon trước khi test thực địa:
+> 4. **Stale Daemon Invariant**: Nếu có chỉnh sửa code trong `scripts/` hoặc `scripts/config.yaml`, BẮT BUỘC phải khởi động lại daemon:
 >    ```bash
->    systemctl --user restart vvc-daemon.service
+>    scripts/.venv/bin/python scripts/daemon.py --restart
 >    ```
+> 5. **Git Synchronization**: Nhánh local `main` hiện đang có 2 commit sửa lỗi sẵn sàng (`136ab32`, `d854483`). Chạy `git push origin main` khi người dùng yêu cầu đồng bộ lên GitHub remote.
