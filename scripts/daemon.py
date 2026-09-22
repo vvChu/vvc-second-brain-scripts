@@ -508,12 +508,12 @@ def restart_existing_daemons() -> None:
         except Exception as e:
             _logger.warning(f"Failed to restart existing daemons: {e}")
     else:
-        # Linux / Unix: terminate other instances of daemon.py / book_ingest.py
+        # Linux / Unix: terminate other instances of daemon.py / book_ingest.py (excluding self)
         try:
-            subprocess.run(["pkill", "-f", "daemon.py"], capture_output=True)
-            subprocess.run(["pkill", "-f", "book_ingest.py"], capture_output=True)
+            cmd = f"pgrep -f '(daemon\\.py|book_ingest\\.py)' | grep -v '^{my_pid}$' | xargs -r kill -15 2>/dev/null || true"
+            subprocess.run(cmd, shell=True, capture_output=True)
             time.sleep(1.5)
-            _logger.info("Terminated existing daemon processes via pkill")
+            _logger.info("Terminated existing daemon processes via pgrep/kill")
         except Exception as e:
             _logger.warning(f"Failed to restart existing daemons: {e}")
 
