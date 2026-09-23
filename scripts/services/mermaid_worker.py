@@ -22,7 +22,6 @@ from services.diagram_base import (
     save_fallback_diagram,
     select_template,
     spawn_worker,
-    sanitize_mermaid,
     wrap_label,
 )
 

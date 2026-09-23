@@ -23,6 +23,15 @@ from core.frontmatter import normalize_stem
 # Re-export consolidated diagram hygiene from diagram_base for backward compatibility
 from services.diagram_base import sanitize_mermaid, wrap_label
 
+__all__ = [
+    "wrap_label",
+    "sanitize_mermaid",
+    "generate_mermaid_flowchart",
+    "build_mermaid_overview",
+    "format_concept_line",
+    "flatten_source_list",
+]
+
 
 def _get_node_label_and_indicator(concept_dict: dict, max_title_len: int = 45) -> str:
     """Helper to retrieve trimmed and decorated concept title with status & confidence icons,
