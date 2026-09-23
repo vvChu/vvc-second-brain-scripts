@@ -247,10 +247,11 @@ def _save_transcript(text: str, original_url: str = "") -> str:
         except Exception:
             pass
     
+    safe_title = display_title.replace('"', '\\"')
     fm = (
         f"---\n"
-        f"title: \"{display_title}\"\n"
-        f"aliases:\n  - \"{filename[:-3]}_Source\"\n"
+        f'title: "{safe_title}"\n'
+        f'aliases:\n  - "{safe_title}"\n  - "{filename[:-3]}_Source"\n'
         f"tags:\n  - knowledge\n  - type/source\n"
         f"type: source\n"
         f"date_created: {date_created}\n"

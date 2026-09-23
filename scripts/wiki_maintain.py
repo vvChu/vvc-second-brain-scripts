@@ -144,20 +144,28 @@ def _normalize_moc_name(name: str) -> str:
     return "_".join(w.capitalize() for w in name.split("_") if w)
 
 
+def _get_source_aliases(src: dict) -> list[str]:
+    """Extract and normalize all aliases from a source dictionary."""
+    raw = src.get("aliases", [])
+    if isinstance(raw, str):
+        return [raw]
+    if isinstance(raw, list):
+        return [a for a in raw if isinstance(a, str)]
+    return []
+
+
+def _get_source_moc_display_name(src: dict) -> str:
+    """Get canonical display name for Source MOC, filtering test prefixes."""
+    src_stem = src.get("_stem", "")
+    aliases = _get_source_aliases(src)
+    valid_aliases = [a for a in aliases if not a.lower().startswith("test_")]
+    return valid_aliases[0] if valid_aliases else (aliases[0] if aliases else src.get("title", src_stem))
+
+
 def _render_source_moc_content(src: dict, linked_concepts: list[dict]) -> tuple[Path, str]:
     """Render Markdown content for a single Source MOC."""
     src_stem = src["_stem"]
-    raw_aliases = src.get("aliases", [])
-    if isinstance(raw_aliases, str):
-        aliases = [raw_aliases]
-    elif isinstance(raw_aliases, list):
-        aliases = [a for a in raw_aliases if isinstance(a, str)]
-    else:
-        aliases = []
-
-    valid_aliases = [a for a in aliases if not a.lower().startswith("test_")]
-    display_name = valid_aliases[0] if valid_aliases else (aliases[0] if aliases else src.get("title", src_stem))
-
+    display_name = _get_source_moc_display_name(src)
     moc_name = _normalize_moc_name(display_name)
     moc_path = cfg.moc_dir / "sources" / f"MOC_{moc_name}.md"
 
@@ -275,15 +283,9 @@ def _build_source_mocs(concepts: list[dict], sources: list[dict]) -> list[Path]:
     for src in sources:
         src_stem = src["_stem"]
         keys_to_check = {src_stem, normalize_stem(src_stem)}
-        aliases = src.get("aliases") or []
-        if isinstance(aliases, list):
-            for a in aliases:
-                if isinstance(a, str):
-                    keys_to_check.add(a)
-                    keys_to_check.add(normalize_stem(a))
-        elif isinstance(aliases, str):
-            keys_to_check.add(aliases)
-            keys_to_check.add(normalize_stem(aliases))
+        for a in _get_source_aliases(src):
+            keys_to_check.add(a)
+            keys_to_check.add(normalize_stem(a))
 
         seen_concepts: set[str] = set()
         linked_concepts: list[dict] = []
@@ -315,11 +317,8 @@ def _build_domain_mocs(concepts: list[dict], sources: list[dict] | None = None) 
     if sources:
         for s in sources:
             known_sources.add(normalize_stem(s.get("_stem", "")))
-            aliases = s.get("aliases")
-            if isinstance(aliases, list):
-                for a in aliases:
-                    if isinstance(a, str):
-                        known_sources.add(normalize_stem(a))
+            for a in _get_source_aliases(s):
+                known_sources.add(normalize_stem(a))
 
     for c in concepts:
         for tag in c.get("tags", []):
@@ -365,9 +364,7 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
     # Classify Source MOCs
     moc_to_source = {}
     for src in sources:
-        src_stem = src.get("_stem", "")
-        aliases = src.get("aliases", [])
-        display_name = aliases[0] if aliases else src.get("title", src_stem)
+        display_name = _get_source_moc_display_name(src)
         moc_name = _normalize_moc_name(display_name)
         moc_stem = f"MOC_{moc_name}"
         moc_to_source[moc_stem] = src
@@ -582,11 +579,8 @@ def rebuild_incremental(concept: dict | Path) -> None:
     # 2. Rebuild affected Domain MOC(s)
     known_sources = {normalize_stem(s.get("_stem", "")) for s in all_sources}
     for s in all_sources:
-        aliases = s.get("aliases")
-        if isinstance(aliases, list):
-            for a in aliases:
-                if isinstance(a, str):
-                    known_sources.add(normalize_stem(a))
+        for a in _get_source_aliases(s):
+            known_sources.add(normalize_stem(a))
 
     tags = concept_data.get("tags", [])
     for tag in tags:
