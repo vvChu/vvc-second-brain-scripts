@@ -15,7 +15,6 @@ import threading
 from typing import Any
 
 from core.config import cfg
-from services.moc_mermaid import sanitize_mermaid, wrap_label
 
 _logger = logging.getLogger("vvc.diagram")
 
@@ -34,6 +33,62 @@ __all__ = [
     "wrap_label",
     "sanitize_mermaid",
 ]
+
+
+def wrap_label(text: str, max_chars: int | None = None) -> str:
+    """Wrap label text at word boundaries using <br> for neat visual layout in Mermaid nodes.
+
+    Supports a dynamic wrapping threshold between 20 and 25 characters based on actual text length
+    to prevent extreme vertical stretching or extreme horizontal width.
+
+    Args:
+        text: Label text to wrap.
+        max_chars: Maximum characters per line. If None, dynamically calculated.
+
+    Returns:
+        Text with <br> separators at word boundaries.
+    """
+    if max_chars is None:
+        L = len(text)
+        if L <= 20:
+            max_chars = 20
+        else:
+            max_chars = min(25, 20 + (L - 20) // 5)
+
+    words = text.split()
+    lines: list[str] = []
+    current_line: list[str] = []
+    current_len = 0
+
+    for word in words:
+        added_len = len(word) + (1 if current_line else 0)
+        if current_len + added_len > max_chars and current_line:
+            lines.append(" ".join(current_line))
+            current_line = [word]
+            current_len = len(word)
+        else:
+            current_line.append(word)
+            current_len += added_len
+
+    if current_line:
+        lines.append(" ".join(current_line))
+
+    return "<br>".join(lines)
+
+
+def sanitize_mermaid(text: str) -> str:
+    """Escape characters that break Mermaid syntax.
+
+    Args:
+        text: Raw text to sanitize.
+
+    Returns:
+        Mermaid-safe string with special chars replaced.
+    """
+    return (text.replace('"', "'").replace("(", "❨").replace(")", "❩")
+            .replace("[", "❲").replace("]", "❳").replace("{", "❴")
+            .replace("}", "❵").replace("<", "‹").replace(">", "›")
+            .replace("&", "+").replace("#", "Nr"))
 
 
 def get_shape_boundary_point(shape: dict, dx: float, dy: float) -> tuple[float, float]:
