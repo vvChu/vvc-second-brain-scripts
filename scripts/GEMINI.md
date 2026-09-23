@@ -1,4 +1,4 @@
-# VvC Daemon Pipeline — Text Processing Context
+# VvC Daemon Pipeline — Text Processing Context (v8.15.11)
 
 > [!NOTE] Role of This File
 > This file is the **Pipeline Mode Override**. It is loaded automatically (JIT) when an AI agent operates inside the `scripts/` directory.

@@ -23,6 +23,10 @@
 > | `CHANGELOG.md` | New version entry (2-3 lines) | Version History |
 > | `scripts/GEMINI.md` | Architecture Reference version header | Pipeline Override |
 > | `scripts/README.md` | Version header + changelog line | Developer Docs |
+> | `CLAUDE.md` | Living Architecture Reference & operational invariants | Project Context |
+> | `.cursor/rules/vault-architecture.mdc` | Living Architecture Reference & operational invariants | Cursor IDE Rule |
+> | `.github/copilot-instructions.md` | Living Architecture Reference & operational invariants | GitHub Copilot Context |
+> | `.md/workspace_context.yaml` | Version number & current milestone | SSoT Context |
 > | `scripts/core/prompts/pipeline.py` | LLM prompt `<rules>` + `<output_template>` | Book Pipeline Code |
 > | `scripts/core/prompts/services.py` | LLM prompt `<rules>` + `<output_template>` in `BRAIN_DUMP_REDUCE` | Brain Dump Code |
 > | `scripts/pipeline/process_markdown.py` | `_MARKDOWN_PROMPT` concept format template | Markdown Pipeline Code |
@@ -38,7 +42,34 @@ This vault is a **personal knowledge base** ("Second Brain") that follows the **
 
 **Philosophy**: You (the agent) are the **librarian and compiler**. The human is the **source provider**. Your job is to keep this wiki coherent, well-linked, and up-to-date.
 
-### 1.1 Operating Modes
+### 1.1 Living Architecture Reference (Mental Model)
+
+Vault vận hành như một Hệ Điều Hành Tri Thức Tự Trị ("Zero-Touch" LLM OS) kế thừa mô hình **LLM Compiler Pattern** (Andrej Karpathy, 2026), nhưng phát triển vượt bậc với **3 Đột Phá Kiến Trúc**:
+1. **Verifiable Ground Truth RAG**: Khử ảo giác bằng Chapter-Scoped BM25 đối chiếu trực tiếp bản gốc tiếng Anh, cưỡng chế cặp đối xứng **Evidence Hook (VN)** + **Ground Truth Verbatim (EN)** trên từng Concept Note.
+2. **Noise Gating & Chống Hồi Sinh**: Lọc nhận thức `_is_meaningful_dump`, lưu trạng thái con trỏ byte `.dump_state.json`, và ngăn trùng lặp URL qua `.processed_urls.json`.
+3. **Closed-Loop Compounding Feedback**: Các câu trả lời sâu sắc trong `Command.md` ($\ge 2500$ ký tự) tự động chuyển hóa thành Topic Note trong `04 - Permanent/topics/`, lập tức quay lại làm giàu ngữ cảnh RAG cho các câu hỏi tương lai.
+
+#### Bản Đồ 8 Trụ Cột Kiến Trúc (Living Architecture Seams Map)
+- **P1. Vận Hành & Single Runner**: Điều phối tiến trình, chống Split-Brain, quản lý locks ([`scripts/daemon.py`](file:///home/vvc/VvC_Notes/scripts/daemon.py), [`scripts/core/file_lock.py`](file:///home/vvc/VvC_Notes/scripts/core/file_lock.py)).
+- **P2. Phân Tầng Lưu Trữ**: Rclone VFS mount, cách ly state/logs cục bộ khỏi cloud ([`scripts/config.yaml`](file:///home/vvc/VvC_Notes/scripts/config.yaml), `scripts/.state/`, `scripts/logs/`).
+- **P3. Hạt Nhân Tri Thức**: Chuẩn Concept Note Canonical v8.3, Đa Bằng Chứng, Consolidated Pruning ([`scripts/core/frontmatter.py`](file:///home/vvc/VvC_Notes/scripts/core/frontmatter.py), [`scripts/core/prompts/pipeline.py`](file:///home/vvc/VvC_Notes/scripts/core/prompts/pipeline.py)).
+- **P4. Đường Ống Biên Dịch**: Chuỗi 5 giai đoạn: OCR $\rightarrow$ Chapter BM25 $\rightarrow$ Synthesis $\rightarrow$ Self-Correction $\rightarrow$ Merger ([`scripts/pipeline/image_processor.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/image_processor.py), [`scripts/pipeline/ground_truth.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/ground_truth.py)).
+- **P5. Thu Nạp Đa Kênh**: YouTube 4-tier Native ASR & Storyboard pHash, Podcast Faster-Whisper, Command JIT ([`scripts/services/youtube/`](file:///home/vvc/VvC_Notes/scripts/services/youtube/), [`scripts/services/command/`](file:///home/vvc/VvC_Notes/scripts/services/command/)).
+- **P6. Lưới AI Thích Ứng**: Lưới định tuyến 4 tầng, Circuit Breaker 503, WinError 206 stdin streaming, CLI artifact ingestion ([`scripts/core/llm/`](file:///home/vvc/VvC_Notes/scripts/core/llm/)).
+- **P7. Điều Phối Artifacts**: Lazy ArtifactEngine, Ngưỡng Vàng Lai 16:9, Mermaid 4 Patterns ([`scripts/services/worker_dispatcher.py`](file:///home/vvc/VvC_Notes/scripts/services/worker_dispatcher.py), [`.agents/rules/diagramming_hygiene.md`](file:///home/vvc/VvC_Notes/.agents/rules/diagramming_hygiene.md)).
+- **P8. Chu Trình Tự Hồi Phục**: Hợp nhất Cosine $\ge 0.88$ (SUBSUME/MERGE), Mtime 2 cấp độ, Weekly Sleep Consolidation ([`scripts/pipeline/semantic_merger.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/semantic_merger.py), [`scripts/sleep.py`](file:///home/vvc/VvC_Notes/scripts/sleep.py)).
+
+#### Bất Biến Vận Hành Active-Passive Single-Active Runner
+- **Primary Host**: Server Linux Spark (`spark-CCBA aarch64`, `100.83.192.30`) chạy 24/7 dưới sự quản lý của Systemd user services (`vvc-gdrive-mount.service`, `vvc-daemon.service`, `vvc-book-ingest.service`, `vvc-sleep.timer`).
+- **Client Host**: Máy trạm Windows chỉ đóng vai trò Client (Obsidian UI). Tuyệt đối KHÔNG chạy đồng thời daemon trên cả hai máy để chống xung đột Google Drive Split-Brain. Khi cần chạy runner cục bộ trên Windows, bắt buộc phải dừng daemon trên Spark qua `stop_windows_runner.cmd`.
+
+#### Con Trỏ Kiến Trúc Bắt Buộc (Mandatory Living Architecture Pointers)
+- **Technical Pointer & Living Architecture Reference**: [`.md/vault_mental_model_and_architecture.md`](file:///home/vvc/VvC_Notes/.md/vault_mental_model_and_architecture.md)
+- **Master Canonical Topic Note**: [[kien_truc_va_mental_model_vvc_second_brain|04 - Permanent/topics/kien_truc_va_mental_model_vvc_second_brain.md]]
+- **Sơ Đồ Excalidraw 16:9**: [[vvc_second_brain_architecture.excalidraw.md|03 - Resources/attachments/vvc_second_brain_architecture.excalidraw.md]]
+- **SSoT Workspace Context**: [`.md/workspace_context.yaml`](file:///home/vvc/VvC_Notes/.md/workspace_context.yaml)
+
+### 1.2 Operating Modes
 
 - **🟢 Interactive Mode (Default)**: Khi tương tác với con người, hành động như một librarian & pair programmer am hiểu. Giải thích suy luận, đặt câu hỏi làm rõ khi cần, sử dụng công cụ phù hợp.
 - **🔵 Pipeline Mode (Automated Daemon)**: Kích hoạt khi prompt bắt đầu bằng `[PIPELINE]` hoặc trong `scripts/`. Agent đóng vai trò là một pure text processing engine: Output CHỈ nội dung được yêu cầu, KHÔNG giải thích, KHÔNG hỏi, KHÔNG bọc code fences trừ khi được yêu cầu, ngôn ngữ mặc định: **Tiếng Việt**.

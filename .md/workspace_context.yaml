@@ -1,0 +1,87 @@
+# ==============================================================================
+# VvC Second Brain — Workspace Context Configuration
+# SSoT bootstrap configuration for AI Agents working in this Vault.
+# Aligned with Global Rule §1 & §4, ADR-0057, ADR-0058
+# ==============================================================================
+
+project:
+  name: "vvc-second-brain"
+  corpus_name: "vvChu/vvc-second-brain-scripts"
+  archetype: "knowledge_corpus"
+  type: "Second Brain / Autonomous Zettelkasten Knowledge Base"
+  version: "v8.15.11"
+  current_milestone: "v8.15.11 — 4-Tier Native ASR, Ground Truth Fallback & Multi-Evidence Hooks"
+  hub_path: "D:/GitHubProjects/ccba-agent-platform" # Windows primary; Linux fallback: /home/vvc/ccba/ccba-agent-platform, or CCBA_HUB_PATH env var
+  hub_path_linux: "/home/vvc/ccba/ccba-agent-platform"
+  hub_path_env: "CCBA_HUB_PATH"
+  description: "Personal knowledge management system following the LLM Compiler Pattern (Andrej Karpathy, 2026), operating as an autonomous 'Zero-Touch' LLM OS."
+
+databases:
+  concepts:
+    path: "04 - Permanent/concepts"
+    format: "snake_case_concept.md"
+    schema: "Canonical v8.3 (Evidence Hook VN -> Citation Line -> Core Idea -> Ground Truth Verbatim EN -> References)"
+  sources:
+    path: "04 - Permanent/sources"
+    format: "YYYY-MM-DD_Book_Title_Author.md"
+  topics:
+    path: "04 - Permanent/topics"
+    format: "Long-form synthesized essays and architectural analyses (>500 words)"
+  maps_of_content:
+    path: "00 - Maps of Content"
+    master_index: "00 - Maps of Content/index.md"
+    source_mocs: "00 - Maps of Content/sources"
+    domain_mocs: "00 - Maps of Content/domains"
+  fleeting:
+    path: "05 - Fleeting"
+    description: "Active ingestion workspace (human drops photos and notes here, e.g. Brain_Dump.md, Command.md)"
+  archive:
+    path: "99 - Archive"
+    status: "read-only"
+    description: "Processed photos and media archived with WebP compression"
+  resources:
+    path: "03 - Resources"
+    status: "read-only"
+    description: "Raw books (EPUB/PDF) and visual attachments"
+
+operational_invariants:
+  active_passive_single_runner: >
+    Primary Host runs 24/7 on Server Spark Linux (vvc-daemon.service). Windows is Client-only (Obsidian UI).
+    Never run concurrent daemons across hosts to prevent Google Drive split-brain corruption.
+  stale_daemon_invariant: >
+    Python holds source code in RAM upon startup. When editing scripts/ or config.yaml,
+    MUST restart daemon via 'python scripts/daemon.py --restart' before testing.
+  visual_ergonomics_16_9: >
+    Diagrams >= 3 layers or >= 9 nodes MUST use Excalidraw 16:9 with Architecture Specification Matrix table.
+    Diagrams <= 8 nodes use Mermaid Academic Grayscale with pipe syntax ===>|"label"|.
+  clean_wikilinks_zero_code_pill: >
+    Strictly forbid wrapping wikilinks with backticks (`[[link]]` is forbidden; use [[link]] or [[slug|alias]] in tables).
+    Mandatory escaped pipes in markdown tables: [[slug\|alias]].
+  html_entity_isolation: >
+    HTML entities #40; and #41; are strictly restricted to inside ```mermaid blocks.
+    Outside mermaid (tables, text), standard parentheses () MUST be used.
+  cli_autonomous_artifact_ingestion: >
+    Antigravity CLI (agy) may output artifact file URIs (file:///...);
+    gemini_client.py automatically resolves and ingests full content.
+
+must_read:
+  always:
+    - path: ".md/vault_mental_model_and_architecture.md"
+      why: "Bản đồ 8 trụ cột kiến trúc, 3 đột phá Karpathy, và hạ tầng dịch vụ nền 24/7"
+      canonical_topic: "04 - Permanent/topics/kien_truc_va_mental_model_vvc_second_brain.md"
+      diagram: "03 - Resources/attachments/vvc_second_brain_architecture.excalidraw.md"
+  on_pipeline_change:
+    - path: "AGENTS.md"
+      why: "Hiến pháp tối cao về schemas, note formats, và quy tắc bất biến"
+  on_script_change:
+    - path: "scripts/GEMINI.md"
+      why: "Quy tắc vận hành pipeline mode và kiến trúc microservices"
+
+acknowledgment_required: true
+acknowledgment_format: "Tôi đã đọc workspace_context.yaml. Đây là Vault 'vvc-second-brain' (v8.15.11). Sẵn sàng làm việc!"
+
+pipeline_mode_bypass: true
+pipeline_mode_rationale: "When invoked with [PIPELINE] prefix or running headless daemon scripts, bypass interactive 2-3 sentence acknowledgment to maintain pure text stream."
+
+subagent_mode_bypass: true
+subagent_mode_rationale: "When running as an autonomous subagent or child worker, bypass interactive 2-3 sentence acknowledgment to prevent protocol noise and preserve machine-to-machine response contracts."

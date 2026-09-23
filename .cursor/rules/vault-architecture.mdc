@@ -1,15 +1,22 @@
-# 🧠 VvC Second Brain — Claude Instructions
+---
+description: "VvC Second Brain living architecture, mental model, and operational invariants"
+globs: "*"
+alwaysApply: true
+---
 
-@AGENTS.md
+# 🧠 VvC Second Brain — Architecture & Operational Invariants
 
+Tài liệu tham chiếu chuẩn mực cho Cursor AI khi làm việc trong kho tri thức **VvC Second Brain**.
+
+> **Hiến pháp Tối cao**: [`AGENTS.md`](file:///home/vvc/VvC_Notes/AGENTS.md)  
 > **Living Architecture Reference**: [`.md/vault_mental_model_and_architecture.md`](file:///home/vvc/VvC_Notes/.md/vault_mental_model_and_architecture.md)  
 > **SSoT Workspace Context**: [`.md/workspace_context.yaml`](file:///home/vvc/VvC_Notes/.md/workspace_context.yaml)  
 > **Master Canonical Topic Note**: [[kien_truc_va_mental_model_vvc_second_brain|04 - Permanent/topics/kien_truc_va_mental_model_vvc_second_brain.md]]  
-> **System Architecture Diagram (16:9)**: [[vvc_second_brain_architecture.excalidraw.md|03 - Resources/attachments/vvc_second_brain_architecture.excalidraw.md]]
+> **Sơ Đồ Excalidraw 16:9**: [[vvc_second_brain_architecture.excalidraw.md|03 - Resources/attachments/vvc_second_brain_architecture.excalidraw.md]]
 
 ---
 
-## 1. Mental Model & Architecture (LLM Compiler Pattern)
+## 1. Mental Model (LLM Compiler Pattern)
 
 Vault vận hành như một **Hệ Điều Hành Tri Thức Tự Trị** ("Zero-Touch" LLM OS) kế thừa mô hình **LLM Compiler Pattern** (Andrej Karpathy, 2026):
 - **Phân định vai trò**: Con người là *Source Provider* (chụp ảnh highlight, xem YouTube, nghe podcast, ghi `Brain_Dump.md`), AI Agent và hệ thống daemons nền là *Compiler & Librarian*.
@@ -20,7 +27,7 @@ Vault vận hành như một **Hệ Điều Hành Tri Thức Tự Trị** ("Zero
 
 ---
 
-## 2. Bản Đồ 8 Trụ Cột Kiến Trúc (Living Architecture Seams Map)
+## 2. Bản Đồ 8 Trụ Cột Kiến Trúc (Seams Map)
 
 - **P1. Vận Hành & Single Runner**: [`scripts/daemon.py`](file:///home/vvc/VvC_Notes/scripts/daemon.py), [`scripts/core/file_lock.py`](file:///home/vvc/VvC_Notes/scripts/core/file_lock.py), [`scripts/start_windows_runner.cmd`](file:///home/vvc/VvC_Notes/scripts/start_windows_runner.cmd)
 - **P2. Phân Tầng Lưu Trữ**: Rclone VFS mount (`vvc-gdrive-mount.service`), [`scripts/config.yaml`](file:///home/vvc/VvC_Notes/scripts/config.yaml), `scripts/.state/`, `scripts/logs/`
@@ -35,7 +42,7 @@ Vault vận hành như một **Hệ Điều Hành Tri Thức Tự Trị** ("Zero
 
 ## 3. Bất Biến Vận Hành Bắt Buộc (Operational Invariants)
 
-1. **Active-Passive Single-Active Runner**: Server Linux Spark (`spark-CCBA aarch64`, `100.83.192.30`) chạy Primary 24/7 (`vvc-daemon.service`). Windows chỉ là Client (Obsidian UI). Tuyệt đối KHÔNG chạy đồng thời daemon trên cả 2 máy để chống Google Drive Split-Brain. Dùng `stop_windows_runner.cmd` khi cần dừng.
+1. **Active-Passive Single-Active Runner**: Server Linux Spark (`spark-CCBA aarch64`, `100.83.192.30`) chạy Primary 24/7 (`vvc-daemon.service`). Windows chỉ là Client (Obsidian UI). Tuyệt đối KHÔNG chạy đồng thời daemon trên cả 2 máy để chống Google Drive Split-Brain.
 2. **Stale Daemon Invariant**: Khi sửa đổi mã nguồn trong `scripts/` hoặc `scripts/config.yaml`, BẮT BUỘC phải hạ daemon cũ qua `scripts/.venv/bin/python scripts/daemon.py --restart` trước khi kiểm thử.
 3. **Công Thái Học Thị Giác (v8.15.10)**:
    - Sơ đồ $\ge 3$ tầng hoặc $\ge 9$ nodes $\rightarrow$ Bắt buộc Excalidraw 16:9 (`![[...excalidraw.md|100%]]`) kèm Bảng Đặc Tả Ma Trận Markdown bên dưới.

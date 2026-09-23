@@ -11,7 +11,10 @@ __pycache__/
 *.pyo
 *.pyd
 .pytest_cache/
-.md/
+.md/**
+!.md/**/
+!.md/**/*.md
+!.md/**/*.yaml
 .trash/
 .stignore
 .env
