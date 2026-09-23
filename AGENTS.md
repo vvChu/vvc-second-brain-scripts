@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.15.10)
+# 🧠 VvC Second Brain — Agent Constitution (v8.15.11)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.
@@ -136,9 +136,13 @@ Mỗi thư mục sách trong `05 - Fleeting/<Book_Name>/` bắt buộc có `_toc
   1. **Evidence Hook**: `> "Trích dẫn nguyên văn tiếng Việt"` (blockquote độc lập, không tiêu đề H1/H2). BẮT BUỘC tiếng Việt (dịch sát nghĩa nếu nguồn là tiếng Anh).
   2. **Citation Line**: `> — **Tên Tác Giả**, trích dẫn trong *Tên Sách* (Nguồn phụ, [[file_nguồn_thô|Tên Nguồn, Năm]])` (liền ngay dưới Hook).
   3. **`## Core Idea`**: Phân tích thuần tiếng Việt. KHÔNG lồng quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook.
-  4. **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: BẮT BUỘC bằng **tiếng Anh nguyên bản** từ nguồn thô để kiểm chứng học thuật. Nếu nguồn thuần Việt ghi `(không có)`.
+  4. **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: BẮT BUỘC bằng **tiếng Anh nguyên bản** từ nguồn thô để kiểm chứng học thuật. Nếu nguồn thuần Việt ghi `(không có — nguồn nạp là tài liệu tiếng Việt)` hoặc `(không có)`.
   5. **`---`**: Dấu phân cách ngang.
   6. **`## References`**: Tối đa 2-3 wiki-links `[[source_note]]`.
+- **Đa Bằng Chứng trong Hợp Nhất Tri Thức (Multi-Evidence Hooks in Stage 5 Merged Notes — v8.15.11)**:
+  - Khi sinh đơn lẻ (Stage 3 Synthesis), note duy trì nghiêm ngặt 1 Hook + 1 Citation Line.
+  - Khi hợp nhất ngữ nghĩa (Stage 5 Semantic Merger / Consolidation), note hợp nhất ĐƯỢC PHÉP duy trì 2-3 cặp Hook + Citation Line liền kề ở phần mở đầu (preamble) nhằm bảo tồn đa diện bằng chứng thực chứng từ các nguồn khác nhau.
+  - **Hook Count Gate & Consolidated Pruning**: Khi số lượng hooks đạt $\ge 4$, cơ chế Consolidated Pruning bắt buộc kích hoạt để cô đọng về $\le 3$ hooks tiêu biểu nhất, chuyển các trích dẫn thứ cấp vào ngữ cảnh phân tích của `## Core Idea`.
 
 ### 4.2 Other Note Types
 - **Source Summaries (`04 - Permanent/sources/`)**: Tên `YYYY-MM-DD_Book_Title_Author.md`. Bắt buộc có `aliases` để trích xuất tên MOC.

@@ -2,6 +2,13 @@
 
 Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hiện hành.
 
+## v8.15.11 — 4-Tier Native ASR Caption Hierarchy, Ground Truth Fallback & Multi-Evidence Hooks
+Thể chế hóa các nâng cấp kiến trúc và sửa lỗi từ phiên Double-Pass Adversarial Evaluation (`AGENTS.md` §4.1, `GEMINI.md`, `scripts/GEMINI.md`, `scripts/README.md`, `scripts/services/youtube/transcript.py`, `scripts/pipeline/self_correct.py`, `scripts/tools/deduplicate_sources.py`, `scripts/core/prompts/pipeline.py`, `scripts/core/prompts/services.py`):
+- **4-Tier Native ASR Caption Selection Hierarchy**: Phân biệt chuẩn xác giữa track phụ đề Native ASR nguyên bản (URL không chứa tham số `tlang=`) và phụ đề dịch máy YouTube (`tlang=...`), ưu tiên: Manual vi/en $\rightarrow$ Native ASR vi/en $\rightarrow$ Auto-translated fallback $\rightarrow$ Whisper AI (`language=None` tự động nhận diện tiếng nói đa ngữ); bảo tồn 100% Ground Truth nguyên văn tiếng Anh của diễn giả.
+- **Ground Truth Fallback Instruction & Self-Correction Bypass**: Chuẩn hóa điều khoản fallback tường minh trong prompt LLM: nếu nguồn nạp thuần Việt hoặc video không có transcript tiếng Anh verbatim, ghi rõ `(không có — nguồn nạp là tài liệu tiếng Việt)`; đồng thời nâng cấp `scripts/pipeline/self_correct.py` lập tức bỏ qua xác thực blockquote khi Ground Truth mang giá trị fallback, triệt tiêu ảo giác LLM.
+- **Multi-Evidence Hooks for Stage 5 Merged Notes**: Chính thức ghi nhận trong Hiến pháp quy tắc đa bằng chứng: ghi chú sau hợp nhất ngữ nghĩa (Stage 5 Semantic Merger) được phép duy trì 2-3 Evidence Hooks kèm Citation Line ở phần mở đầu; tự động kích hoạt Consolidated Pruning khi đạt ngưỡng $\ge 4$ hooks.
+- **Automated Source Deduplication & Link Healing**: Mở rộng `scripts/tools/deduplicate_sources.py` hỗ trợ cả trường `sources:` mảng YAML và tự động chuyển hướng, chữa lành 10 concept notes cùng registry của video `zcLPGC-tvgk` (Uncle Bob), thu hồi MOC mồ côi.
+
 ## v8.15.10 — Mermaid Edge Label & Strict HTML Entity Context Isolation Invariants
 Thể chế hóa các bài học kiến trúc thực chiến từ phiên `/ccba-grilling /learn` sau đợt khắc phục sự cố biên dịch Chương 3 (`AGENTS.md` §4.4, §5, `GEMINI.md`, `scripts/GEMINI.md`, `scripts/README.md`, `scripts/services/command/citations.py`, `scripts/services/mermaid_worker.py`, `.agents/rules/diagramming_hygiene.md`, `.agents/skills/ccba-markdown-document-processing/SKILL.md`):
 - **Mermaid Edge Label Invariant**: Cấm tuyệt đối chèn nhãn text vào giữa thân mũi tên (`===="text"====>`, `-."text".->`, `<===="text"====>`); bắt buộc dùng cú pháp pipe chuẩn `===>|"label"|`, `-.->|"label"|`, `<===>|"label"|` hoặc `-- "label" -->`; chuẩn hóa toán tử so sánh (`>=` $\rightarrow$ `≥`, `<=` $\rightarrow$ `≤`) để loại bỏ xung đột token với arrow head.
