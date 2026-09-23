@@ -232,7 +232,7 @@ class VaultLinter:
                 pass
 
         if cfg.sources_dir.exists():
-            for src_file in cfg.sources_dir.glob("*.md"):
+            for src_file in cfg.sources_dir.rglob("*.md"):
                 try:
                     content = src_file.read_text(encoding="utf-8")
                     for link in _LINK_PATTERN.findall(content):
@@ -1143,7 +1143,7 @@ def generate_weekly_synthesis(
         "type: topic\n",
         f"date_created: {today_str}\n",
         f"date_modified: {today_str}\n",
-        'summary: "Báo cáo tổng hợp đóng phiên và củng cố tri thức tự động (LLM OS v8.12.6)."\n',
+        'summary: "Báo cáo tổng hợp đóng phiên và củng cố tri thức tự động (LLM OS v8.15.11)."\n',
         "---\n\n",
         f"# 🌙 Weekly Synthesis — {today_str}\n\n",
         "> [!abstract] **📊 Chỉ Số Sức Khỏe Vault & Hoạt Động Tuần**\n",
