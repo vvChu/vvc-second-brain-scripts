@@ -315,6 +315,8 @@ REGISTRY DATA:
    - **Citation Line**: Ngay dưới Evidence Hook, ghi rõ nguồn pháp lý chính thức.
    - **`## Core Idea`**: Phân tích thuần tiếng Việt.
    - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: Ghi `(không có)` vì nguồn pháp lý Việt Nam.
+4. Trường `related`: Bắt buộc tự động suy luận và điền từ 3-5 wiki-links liên quan đến nghiệp vụ xây dựng/BIM/quản lý dự án.
+5. TUYỆT ĐỐI KHÔNG bọc ngoài wikilink bằng dấu backtick (bắt buộc viết liên kết trần [[slug]] hoặc [[slug|alias]], cấm bọc backtick quanh wikilink).
 </rules>
 
 <output_template>
@@ -338,6 +340,7 @@ summary: "Tóm tắt 2-3 câu về nghị định."
 people: []
 companies: []
 status: seed
+related: []
 confidence: high
 ---
 

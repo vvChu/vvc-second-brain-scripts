@@ -113,6 +113,8 @@ def test_service_prompts_placeholders():
     # LEGAL_CONCEPT
     assert "{registry_data}" in sv.LEGAL_CONCEPT
     assert "{date}" in sv.LEGAL_CONCEPT
+    assert "related: []" in sv.LEGAL_CONCEPT
+    assert "Trường `related`" in sv.LEGAL_CONCEPT
 
     # LARGE_DOC_MAP
     assert "{idx}" in sv.LARGE_DOC_MAP

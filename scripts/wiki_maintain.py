@@ -62,6 +62,14 @@ DOMAIN_ALIASES: dict[str, str] = {
     "triet_hoc": "philosophy",
     "giao_duc": "education",
     "phuong_phap_luan": "learning_methodology",
+    "ban_hang": "business",
+    "kinh_doanh": "business",
+    "quan_tri_kinh_doanh": "business",
+    "to_chuc": "organizational_design",
+    "quan_tri_to_chuc": "organizational_design",
+    "tri_thuc": "learning_methodology",
+    "quyet_dinh": "cognition",
+    "ra_quyet_dinh": "cognition",
 }
 
 GRAND_DOMAINS = {
@@ -252,10 +260,32 @@ def _build_source_mocs(concepts: list[dict], sources: list[dict]) -> list[Path]:
             srcs = flatten_source_list(src_val)
             for src in srcs:
                 source_map[src].append(c)
+                norm = normalize_stem(src)
+                if norm != src:
+                    source_map[norm].append(c)
 
     for src in sources:
         src_stem = src["_stem"]
-        linked_concepts = source_map.get(src_stem, [])
+        keys_to_check = {src_stem, normalize_stem(src_stem)}
+        aliases = src.get("aliases") or []
+        if isinstance(aliases, list):
+            for a in aliases:
+                if isinstance(a, str):
+                    keys_to_check.add(a)
+                    keys_to_check.add(normalize_stem(a))
+        elif isinstance(aliases, str):
+            keys_to_check.add(aliases)
+            keys_to_check.add(normalize_stem(aliases))
+
+        seen_concepts: set[str] = set()
+        linked_concepts: list[dict] = []
+        for key in keys_to_check:
+            for c in source_map.get(key, []):
+                c_stem = c.get("_stem")
+                if c_stem and c_stem not in seen_concepts:
+                    seen_concepts.add(c_stem)
+                    linked_concepts.append(c)
+
         if not linked_concepts:
             continue
 
