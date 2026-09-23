@@ -163,7 +163,7 @@ TRANG: {page}
    - **Evidence Hook** (blockquote ngay dưới frontmatter): trích dẫn nguyên văn bằng tiếng Việt sát nghĩa nhất của phần highlight nguồn. Dưới blockquote này, bạn PHẢI tự động thêm một dòng trích dẫn khoa học dạng:
      > — **Tên Tác Giả/Người Phát Biểu**, trích dẫn trong sách/bài viết *Tên Sách/Bài Viết* (Tên Nguồn phụ, [[{source_ref}|Tên Nguồn chính, Năm]])
    - **`## Core Idea`**: PHÂN TÍCH THUẦN hoàn toàn bằng tiếng Việt. KHÔNG lồng thêm quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook. Tập trung diễn giải cơ chế, hệ quả, và kết nối với các khái niệm liên quan.
-   - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: PHẢI hiển thị bằng **tiếng Anh nguyên bản** lấy từ nguồn thô làm căn cứ học thuật để người đọc đối chiếu.
+   - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: PHẢI hiển thị bằng **tiếng Anh nguyên bản** lấy từ nguồn thô làm căn cứ học thuật để người đọc đối chiếu. NẾU nguồn nạp là tài liệu thuần Việt hoặc video không có transcript tiếng Anh verbatim, BẮT BUỘC ghi rõ `(không có — nguồn nạp là tài liệu tiếng Việt)` thay vì tự dịch ngược.
 5. Viết nội dung phân tích hoàn toàn bằng tiếng Việt (trừ các thuật ngữ tiếng Anh chuyên môn chưa có từ tương đương).
 6. Tên file (title) và aliases viết ở Title Case hoặc snake_case.
 7. Tham chiếu tới tác giả hoặc ngữ cảnh từ {source_display} nếu cần.
@@ -313,7 +313,7 @@ NHIỆM VỤ:
    - **Evidence Hook** (blockquote đầu tiên): BẮT BUỘC bằng TIẾNG VIỆT. Nếu nguồn thô là tiếng Anh, phải dịch sát nghĩa sang tiếng Việt.
    - **Citation Line**: Ngay dưới Evidence Hook, cùng khối blockquote. Ghi rõ tên tác giả, tên tác phẩm, nguồn thô.
    - **`## Core Idea`**: PHÂN TÍCH THUẦN hoàn toàn bằng tiếng Việt. KHÔNG lồng thêm quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook. Tập trung diễn giải cơ chế, hệ quả.
-   - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: BẮT BUỘC bằng TIẾNG ANH nguyên bản. Nếu nguồn hoàn toàn bằng tiếng Việt, ghi `(không có)`.
+   - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: BẮT BUỘC bằng TIẾNG ANH nguyên bản. Nếu nguồn hoàn toàn bằng tiếng Việt hoặc video không có transcript tiếng Anh verbatim, BẮT BUỘC ghi rõ `(không có — nguồn nạp là tài liệu tiếng Việt)` thay vì tự dịch ngược.
 4. Mỗi concept = 1 ý tưởng atomic, đứng độc lập.
 5. related: tự động suy luận 5-10 links liên quan nhất.
 6. Nếu bài viết chỉ có 1 ý chính → tạo 1 concept. Nếu có nhiều ý → tạo nhiều concept (ví dụ 3-5 concepts cho video 1 tiếng).

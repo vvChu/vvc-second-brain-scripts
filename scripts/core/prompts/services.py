@@ -69,7 +69,7 @@ Dựa vào nội dung NGUỒN dưới đây, hãy tạo 1 Concept Note duy nhấ
    - **Evidence Hook** (blockquote ngay dưới frontmatter): Trích dẫn/ý tưởng cốt lõi đắt giá nhất lấy trực tiếp từ NGUỒN, dịch sát nghĩa sang tiếng Việt. Dưới blockquote này, bạn PHẢI tự động thêm một dòng trích dẫn khoa học dạng:
      > — **Tên Tác Giả/Người Phát Biểu**, trích dẫn trong sách/bài viết *Tên Sách/Bài Viết* (Tên Nguồn phụ, [[{source_ref}|Tên Nguồn chính, Năm]])
    - **`## Core Idea`**: PHÂN TÍCH THUẦN hoàn toàn bằng tiếng Việt. KHÔNG lồng thêm quote thứ hai bên trong. KHÔNG lặp lại Evidence Hook. Tập trung diễn giải cơ chế, hệ quả.
-   - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: PHẢI hiển thị bằng **tiếng Anh nguyên bản** (nếu nguồn gốc là tiếng Anh) để làm căn cứ học thuật đối chiếu. Nếu nguồn hoàn toàn bằng tiếng Việt, hãy ghi rõ "(không có)".
+    - **`## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)`**: PHẢI hiển thị bằng **tiếng Anh nguyên bản** (nếu nguồn gốc là tiếng Anh) để làm căn cứ học thuật đối chiếu. NẾU nguồn nạp là tài liệu thuần Việt hoặc video không có transcript tiếng Anh verbatim, BẮT BUỘC ghi rõ `(không có — nguồn nạp là tài liệu tiếng Việt)` thay vì tự dịch ngược.
 5. Viết nội dung phân tích hoàn toàn bằng tiếng Việt (trừ các thuật ngữ tiếng Anh chuyên môn chưa có từ tương đương).
 6. Nếu phần <source_material> chứa mục `## 🖼️ Hình ảnh bài viết (Đã tải cục bộ)` hoặc `## 🎬 Hình ảnh trực quan từ video (Đã tải cục bộ)` với danh sách `[IMG:filename|alt=description]`:
    - Xem xét alt text hoặc tên file để xác định ảnh nào **thực sự liên quan** đến concept "{concept_title}" đang viết.
@@ -119,7 +119,7 @@ confidence: high
 
 ## 📖 Bản gốc & Ngữ cảnh mở rộng (Ground Truth)
 
-> "Original English quote or paragraph representing the academic ground truth for this concept."
+> "Original English quote or paragraph representing the academic ground truth for this concept (hoặc ghi '(không có — nguồn nạp là tài liệu tiếng Việt)' nếu nguồn thuần Việt)."
 
 ---
 

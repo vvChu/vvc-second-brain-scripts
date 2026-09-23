@@ -76,6 +76,12 @@ DUPLICATE_GROUPS = [
         "url_key": "youtu.be/9EUTRL_4Cj8",
         "canonical": "2026-05-21_ky_nang_doc_sach_hieu_qua_youtube",
         "duplicates": ["2026-05-21_132933_ky_nang_doc_sach_hieu_qua_youtube"]
+    },
+    {
+        "name": "Uncle Bob - Software Fundamentals / Kỷ nguyên AI (zcLPGC-tvgk)",
+        "url_key": "youtube.com/live/zcLPGC-tvgk",
+        "canonical": "2026-09-22_ky_nguyen_ai_va_phuong_phap_cong_trinh",
+        "duplicates": ["2026-09-17_live_uncle_bob_on_software_fundamentals"]
     }
 ]
 
@@ -196,13 +202,16 @@ def run_deduplication(dry_run: bool = False) -> None:
             for c_file in concept_files:
                 try:
                     content = c_file.read_text(encoding="utf-8")
-                    # Tìm trường source: "canonical_stem" trong frontmatter
-                    source_match = re.search(r'^source:\s*["\']?(.*?)["\']?\s*$', content, re.MULTILINE)
-                    title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', content, re.MULTILINE)
-                    
-                    if source_match:
-                        source_val = source_match.group(1).replace("[[", "").replace("]]", "").replace(".md", "").strip()
-                        if source_val == canonical_stem:
+                    # Tìm trường source: hoặc sources: chứa canonical_stem trong frontmatter
+                    fm_match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
+                    if fm_match:
+                        fm_text = fm_match.group(1)
+                        has_source = (
+                            re.search(rf'^\s*source:\s*["\']?.*{re.escape(canonical_stem)}', fm_text, re.MULTILINE) is not None
+                            or re.search(rf'^\s*-\s*["\']?.*{re.escape(canonical_stem)}', fm_text, re.MULTILINE) is not None
+                        )
+                        if has_source:
+                            title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_text, re.MULTILINE)
                             title = title_match.group(1).strip() if title_match else c_file.stem.replace("_", " ").title()
                             updated_concepts.append({
                                 "stem": c_file.stem,

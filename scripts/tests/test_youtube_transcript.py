@@ -54,7 +54,7 @@ def test_fetch_youtube_transcript_fallback_whisper(mock_call_audio, mock_downloa
     res = fetch_youtube_transcript("https://www.youtube.com/watch?v=ABC123xyz")
     
     assert res == "Whisper transcription result."
-    mock_call_audio.assert_called_once_with(mock_path, model="audio-primary", language="vi")
+    mock_call_audio.assert_called_once_with(mock_path, model="audio-primary", language=None)
     # Should clean up audio file
     mock_path.unlink.assert_called_once()
 
@@ -195,4 +195,51 @@ def test_extract_transcript_skips_is_live(mock_ytdl_class):
 
     result = extract_transcript_via_ytdlp("https://youtube.com/live/active_stream")
     assert result is None
+
+
+def test_is_machine_translated():
+    """Test detection of tlang query parameter in subtitle formats."""
+    from services.youtube.transcript import _is_machine_translated
+
+    assert not _is_machine_translated([])
+    assert not _is_machine_translated([{"url": "https://youtube.com/api/timedtext?lang=en"}])
+    assert _is_machine_translated([{"url": "https://youtube.com/api/timedtext?lang=en&tlang=vi"}])
+
+
+@patch("yt_dlp.YoutubeDL")
+def test_extract_transcript_prioritizes_native_asr_over_translated(mock_ytdl_class):
+    """Test that native English ASR (en-orig, no tlang) is chosen over auto-translated vi (tlang=vi)."""
+    import json
+    from services.youtube.transcript import extract_transcript_via_ytdlp
+
+    mock_ytdl = MagicMock()
+    mock_ytdl_class.return_value = mock_ytdl
+    mock_context = MagicMock()
+    mock_ytdl.__enter__.return_value = mock_context
+
+    mock_context.extract_info.return_value = {
+        "is_live": False,
+        "subtitles": {},
+        "automatic_captions": {
+            "vi": [{"ext": "json3", "url": "https://youtube.com/api/timedtext?lang=ar&tlang=vi&fmt=json3"}],
+            "en": [{"ext": "json3", "url": "https://youtube.com/api/timedtext?lang=ar&tlang=en&fmt=json3"}],
+            "en-orig": [{"ext": "json3", "url": "https://youtube.com/api/timedtext?lang=en&fmt=json3"}],
+        }
+    }
+
+    sample_json3 = json.dumps({
+        "events": [
+            {"tStartMs": 0, "segs": [{"utf8": "Native English speech from Uncle Bob."}]}
+        ]
+    }).encode("utf-8")
+
+    mock_response = MagicMock()
+    mock_response.read.return_value = sample_json3
+    mock_context.urlopen.return_value = mock_response
+
+    result = extract_transcript_via_ytdlp("https://youtube.com/watch?v=zcLPGC-tvgk")
+    assert result is not None
+    assert "Native English speech from Uncle Bob." in result
+    # Verify that urlopen was called with the en-orig URL, not vi or translated en
+    mock_context.urlopen.assert_called_once_with("https://youtube.com/api/timedtext?lang=en&fmt=json3")
 

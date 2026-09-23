@@ -26,7 +26,8 @@ def verify_and_correct(concept_content: str, ground_truth: str) -> str:
     Returns:
         Corrected concept content (or unchanged if no issues found).
     """
-    if not ground_truth:
+    gt_clean = ground_truth.strip() if ground_truth else ""
+    if not gt_clean or gt_clean in ("(không có)", "None") or gt_clean.startswith("(không có"):
         _logger.debug("No Ground Truth, skipping self-correction")
         return concept_content
 

@@ -243,3 +243,22 @@ def test_hybrid_xml_marking_regex():
     
     assert result == "Đây là văn bản nguồn Highlight thứ nhất chứa <USED_HOOK>đoạn trích dẫn Dave Ulrich</USED_HOOK>."
 
+
+def test_verify_and_correct_skips_when_no_ground_truth():
+    """verify_and_correct should immediately bypass LLM call when ground truth is absent or (không có)."""
+    from unittest.mock import patch
+    from pipeline.self_correct import verify_and_correct
+
+    sample_concept = "---\ntitle: Sample\n---\n## Core Idea\n> some quote\n"
+    with patch("pipeline.self_correct.call_llm") as mock_llm:
+        # None or empty
+        assert verify_and_correct(sample_concept, "") == sample_concept
+        assert verify_and_correct(sample_concept, None) == sample_concept
+        # (không có) fallback variants
+        assert verify_and_correct(sample_concept, "(không có)") == sample_concept
+        assert verify_and_correct(sample_concept, "(không có — nguồn nạp là tài liệu tiếng Việt)") == sample_concept
+        assert verify_and_correct(sample_concept, "None") == sample_concept
+
+        # Ensure call_llm was never invoked
+        mock_llm.assert_not_called()
+

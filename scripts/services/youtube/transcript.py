@@ -31,6 +31,42 @@ def get_base_ydl_opts() -> dict[str, Any]:
     }
 
 
+def _is_machine_translated(sub_formats: list) -> bool:
+    """Returns True if the subtitle format entry is machine-translated (contains tlang= query param)."""
+    if not sub_formats:
+        return False
+    first_url = sub_formats[0].get("url", "")
+    return "tlang=" in first_url
+
+
+def _find_lang(sub_dict: dict, lang_prefix: str) -> list | None:
+    """Find matching subtitle format list by exact key, orig suffix, or prefix."""
+    orig_key = f"{lang_prefix}-orig"
+    if orig_key in sub_dict:
+        return sub_dict[orig_key]
+    if lang_prefix in sub_dict:
+        return sub_dict[lang_prefix]
+    for k, v in sub_dict.items():
+        if k.startswith(f"{lang_prefix}-"):
+            return v
+    return None
+
+
+def _find_native_asr(auto_dict: dict, lang_prefix: str) -> list | None:
+    """Find a native ASR subtitle list for the language prefix (no tlang= param).
+    Prioritizes '<lang>-orig' if present, then '<lang>', then '<lang>-*'.
+    """
+    orig_key = f"{lang_prefix}-orig"
+    if orig_key in auto_dict and not _is_machine_translated(auto_dict[orig_key]):
+        return auto_dict[orig_key]
+    if lang_prefix in auto_dict and not _is_machine_translated(auto_dict[lang_prefix]):
+        return auto_dict[lang_prefix]
+    for k, v in auto_dict.items():
+        if k.startswith(f"{lang_prefix}-") and not _is_machine_translated(v):
+            return v
+    return None
+
+
 def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str | None:
     """Extract official or auto-generated subtitles directly using yt-dlp.
 
@@ -61,23 +97,39 @@ def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str
             subtitles = {k: v for k, v in (info.get("subtitles") or {}).items() if k not in _IGNORED_SUB_KEYS}
             auto_subtitles = {k: v for k, v in (info.get("automatic_captions") or {}).items() if k not in _IGNORED_SUB_KEYS}
 
-            # Priority: Manual vi -> Manual en -> Auto vi -> Auto en -> Any manual -> Any auto
+            # 4-Tier Selection Hierarchy:
+            # Tier 1: Manual human subtitles (Manual vi -> Manual en -> Any manual)
+            # Tier 2: Native ASR (Native vi ASR -> Native en ASR -> Any native ASR)
+            # Tier 3: Machine-translated auto captions (Auto-translated vi -> Auto-translated en -> Any auto)
+            # Tier 4: Downstream Whisper fallback (in caller)
             selected_sub = None
-            for lang in ["vi", "en"]:
-                if lang in subtitles:
-                    selected_sub = subtitles[lang]
-                    break
-                if lang in auto_subtitles:
-                    selected_sub = auto_subtitles[lang]
-                    break
 
+            # Tier 1: Manual human subtitles
             if not selected_sub:
-                if subtitles:
-                    first_lang = next(iter(subtitles.keys()))
-                    selected_sub = subtitles[first_lang]
-                elif auto_subtitles:
-                    first_lang = next(iter(auto_subtitles.keys()))
-                    selected_sub = auto_subtitles[first_lang]
+                selected_sub = _find_lang(subtitles, "vi")
+            if not selected_sub:
+                selected_sub = _find_lang(subtitles, "en")
+            if not selected_sub and subtitles:
+                selected_sub = next(iter(subtitles.values()))
+
+            # Tier 2: Native ASR (no tlang= parameter in URL)
+            if not selected_sub:
+                selected_sub = _find_native_asr(auto_subtitles, "vi")
+            if not selected_sub:
+                selected_sub = _find_native_asr(auto_subtitles, "en")
+            if not selected_sub:
+                for k, v in auto_subtitles.items():
+                    if not _is_machine_translated(v):
+                        selected_sub = v
+                        break
+
+            # Tier 3: Machine-translated auto captions fallback
+            if not selected_sub:
+                selected_sub = _find_lang(auto_subtitles, "vi")
+            if not selected_sub:
+                selected_sub = _find_lang(auto_subtitles, "en")
+            if not selected_sub and auto_subtitles:
+                selected_sub = next(iter(auto_subtitles.values()))
 
             if not selected_sub:
                 return None
@@ -295,7 +347,7 @@ def fetch_youtube_transcript(url: str, info_dict: dict | None = None) -> str:
     audio_path = _download_audio_via_ytdlp(url, info_dict=info_dict)
     if audio_path:
         try:
-            text = call_audio(audio_path, model="audio-primary", language="vi")
+            text = call_audio(audio_path, model="audio-primary", language=None)
             if audio_path.exists():
                 try:
                     audio_path.unlink()

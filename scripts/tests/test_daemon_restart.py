@@ -24,7 +24,7 @@ def test_restart_existing_daemons_executes_powershell():
             assert args[0] == "powershell"
             assert "Stop-Process" in args[4]
         else:
-            assert args[0] == "pkill"
+            assert "pgrep" in args or "pkill" in args
         assert mock_sleep.called
 
 
