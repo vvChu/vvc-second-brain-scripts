@@ -274,3 +274,25 @@ def test_sync_manifest_completeness(repo_root: Path):
         target_path = repo_root / target
         assert target_path.exists(), f"Sync Manifest target file does not exist on disk: {target_path}"
 
+
+def test_document_ergonomics_clean_wikilink_invariant(repo_root: Path):
+    """Verify that AGENTS.md and GEMINI.md preserve the full Clean Wikilink & Fenced Syntax Invariant."""
+    agents_md = repo_root / "AGENTS.md"
+    assert agents_md.exists(), "AGENTS.md must exist"
+    agents_content = agents_md.read_text(encoding="utf-8")
+    
+    assert "Clean Wikilink & Zero-Code-Pill Invariant" in agents_content
+    assert "fenced code block" in agents_content
+    assert "số thứ tự trích dẫn trong bảng phải đồng bộ 1-1 với danh mục tham chiếu cuối bài" in agents_content
+    assert "escape pipe" in agents_content
+
+    gemini_md = repo_root / "GEMINI.md"
+    assert gemini_md.exists(), "GEMINI.md must exist"
+    gemini_content = gemini_md.read_text(encoding="utf-8")
+    
+    assert "Clean Wikilinks & Deterministic Defense" in gemini_content
+    assert "fenced code block" in gemini_content
+    assert "đồng bộ 100% số trích dẫn trong bảng với danh mục cuối bài" in gemini_content
+    assert "Zero-Fencing Examples trong prompt SLM" in gemini_content
+    assert "clean_wikilink_quotes" in gemini_content
+
