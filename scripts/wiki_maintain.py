@@ -147,8 +147,16 @@ def _normalize_moc_name(name: str) -> str:
 def _render_source_moc_content(src: dict, linked_concepts: list[dict]) -> tuple[Path, str]:
     """Render Markdown content for a single Source MOC."""
     src_stem = src["_stem"]
-    aliases = src.get("aliases", [])
-    display_name = aliases[0] if aliases else src.get("title", src_stem)
+    raw_aliases = src.get("aliases", [])
+    if isinstance(raw_aliases, str):
+        aliases = [raw_aliases]
+    elif isinstance(raw_aliases, list):
+        aliases = [a for a in raw_aliases if isinstance(a, str)]
+    else:
+        aliases = []
+
+    valid_aliases = [a for a in aliases if not a.lower().startswith("test_")]
+    display_name = valid_aliases[0] if valid_aliases else (aliases[0] if aliases else src.get("title", src_stem))
 
     moc_name = _normalize_moc_name(display_name)
     moc_path = cfg.moc_dir / "sources" / f"MOC_{moc_name}.md"
@@ -427,7 +435,8 @@ def _build_master_index(concepts: list[dict], sources: list[dict]) -> None:
         "---\n\n",
         "> [!quote]+ 🌟 Kiệt Tác Chuyên Luận (Flagship Playbooks)\n",
         "> - 📘 **Bản Điều Phối Kiến Trúc 12 Chương**: [[ai_eos_playbook_master|AI-EOS Playbook Master — Cẩm Nang Vận Hành Doanh Nghiệp AI-Native]]\n",
-        "> - 📑 **Toàn Văn Bản Thảo Hợp Nhất (Full Manuscript)**: [[ai_eos_playbook_full_manuscript|Toàn Văn Bản Thảo AI-EOS Playbook]]\n\n",
+        "> - 📑 **Toàn Văn Bản Thảo Hợp Nhất (Full Manuscript)**: [[ai_eos_playbook_full_manuscript|Toàn Văn Bản Thảo AI-EOS Playbook]]\n",
+        "> - 🏛️ **Khung Pháp Lý & Tiêu Chuẩn 2026**: [[tong_quan_khung_phap_ly_xay_dung_2026|Tổng Quan Khung Pháp Lý Quản Lý Chất Lượng & Số Hóa Xây Dựng 2026]]\n\n",
         "---\n\n",
         "## 📖 Source Topics (Bản Đồ Nguồn)\n\n",
     ]
