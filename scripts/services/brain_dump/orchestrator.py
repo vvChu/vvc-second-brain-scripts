@@ -16,7 +16,7 @@ from pathlib import Path
 from core.config import cfg
 from core.llm import call_llm
 from core.log import log
-from services.text_chunker import orthographic_preprocess
+from services.orthography import orthographic_preprocess
 from services.brain_dump.inbox_io import (
     _find_pending_dump, _extract_inbox_sections,
     _commit_inbox_changes, _clear_inbox_only,

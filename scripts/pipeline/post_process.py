@@ -31,7 +31,7 @@ from pipeline.semantic_merger import (
     execute_cross_linking,
     log_subsume,
 )
-from services.command.citations import clean_wikilink_quotes
+from core.markdown_sanitizer import clean_wikilink_quotes
 
 # Backward-compatible aliases for internal callers & tests
 _find_md_dir = find_book_md_dir

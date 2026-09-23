@@ -68,6 +68,8 @@ scripts/
 │   ├── layouts/               ← 7 deterministic layout engines (Sugiyama, Radial, Cycle, Matrix, etc.)
 │   ├── layout_router.py       ← Topology auto-detection → engine dispatch
 │   ├── frontmatter.py         ← YAML frontmatter parse/build/normalize_stem
+│   ├── markdown_sanitizer.py  ← Centralized Markdown & Mermaid Invariants hygiene seam
+│   ├── text_chunker.py        ← Canonical large document heading-aware Map-Reduce chunker
 │   └── log.py                 ← Append-only logger → log.md (weekly rotation)
 │
 ├── pipeline/                  ← Ingestion stages (7 files)
@@ -89,7 +91,7 @@ scripts/
 │   ├── chat_history.py        ← Backward-compat shim (absorbed into command/inbox.py)
 │   ├── rag_builder.py         ← RAG Context XML formatter
 │   ├── url_fetcher.py         ← Web scraping & garbage detection
-│   ├── text_chunker.py        ← Semantic chunking & AI correction
+│   ├── orthography.py         ← Speech/ASR orthographic correction & Smart Bypass (w/ text_chunker shim)
 │   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment + Strict Abort
 │   ├── moc_mermaid.py         ← MOC Mermaid diagram generator (w/ chapter grouping SSOT)
@@ -124,7 +126,7 @@ The v8.12 compiler routes requests based on availability and capability using ti
 3. **Tier 3 (Direct)**: Gemini REST API (`gemini-3.1-flash-lite-preview`)
 
 **Round-Robin Load Balancing**: For high-volume background tasks (e.g. `wiki_health`), the router automatically distributes requests evenly across all 3 tiers (`call_llm(strategy="round_robin")`) to bypass standard API rate limits.
-**WinError 206 Protection**: By directly invoking the underlying OS `CreateProcessW` APIs (bypassing `cmd.exe`), payloads up to **30,000 characters** are now safely passed natively. Only payloads exceeding this limit trigger HTTP REST API fallback. This allows `text_chunker.py` to utilize a massive **25,000 max_chunk_size**, maximizing throughput.
+**WinError 206 Protection**: By directly invoking the underlying OS `CreateProcessW` APIs (bypassing `cmd.exe`), payloads up to **30,000 characters** are now safely passed natively. Only payloads exceeding this limit trigger HTTP REST API fallback. This allows `orthography.py` to utilize a massive **25,000 max_chunk_size**, maximizing throughput.
 
 ## Pipeline Flow (The Lean Compiler v8.12.1)
 

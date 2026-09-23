@@ -1,9 +1,9 @@
-"""Unit tests for services.text_chunker and Smart Bypass."""
+"""Unit tests for services.orthography and Smart Bypass (v8.15.11)."""
 
 import pytest
 from unittest.mock import patch, MagicMock
 
-from services.text_chunker import is_structured_article, orthographic_preprocess
+from services.orthography import is_structured_article, orthographic_preprocess
 
 
 CLEAN_MARKDOWN_ARTICLE = """# The Architecture of Modern Software
@@ -89,29 +89,28 @@ class TestIsStructuredArticle:
 class TestOrthographicPreprocessSmartBypass:
     """Tests for orthographic_preprocess with Smart Bypass."""
 
-    @patch("services.text_chunker.call_llm")
+    @patch("services.orthography.call_llm")
     def test_bypasses_clean_article_without_llm_call(self, mock_call_llm):
         result = orthographic_preprocess(CLEAN_MARKDOWN_ARTICLE)
         assert result == CLEAN_MARKDOWN_ARTICLE
         mock_call_llm.assert_not_called()
 
-    @patch("services.text_chunker.call_llm")
+    @patch("services.orthography.call_llm")
     def test_force_flag_triggers_llm_processing(self, mock_call_llm):
         mock_call_llm.return_value = "Corrected content from LLM."
         result = orthographic_preprocess(CLEAN_MARKDOWN_ARTICLE, force=True)
         assert mock_call_llm.called
         assert result == "Corrected content from LLM."
 
-    @patch("services.text_chunker.call_llm")
+    @patch("services.orthography.call_llm")
     def test_timestamped_transcript_calls_llm(self, mock_call_llm):
         mock_call_llm.return_value = "Structured transcript with [00:00] timestamps."
         result = orthographic_preprocess(TIMESTAMPED_TRANSCRIPT)
         assert mock_call_llm.called
         assert "Structured transcript" in result
 
-    @patch("services.text_chunker.call_llm")
+    @patch("services.orthography.call_llm")
     def test_large_unstructured_text_chunks_correctly(self, mock_call_llm):
-        # Create a 55,000 char speech text
         large_speech = (WALL_OF_SPEECH_TEXT + ".\n\n") * 150
         assert len(large_speech) > 50000
 
@@ -125,3 +124,16 @@ class TestOrthographicPreprocessSmartBypass:
     def test_short_text_returns_immediately(self):
         short = "Under 50 chars."
         assert orthographic_preprocess(short) == short
+
+
+class TestTextChunkerCompatibilityShim:
+    """Verify that services.text_chunker acts as a transparent, 100% faithful shim."""
+
+    def test_text_chunker_shim_delegates_to_orthography(self):
+        import services.text_chunker as shim
+        import services.orthography as target
+
+        assert shim.is_structured_article is target.is_structured_article
+        assert shim.orthographic_preprocess is target.orthographic_preprocess
+        assert shim.call_llm is target.call_llm
+        assert shim.__all__ == ["is_structured_article", "orthographic_preprocess"]

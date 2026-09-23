@@ -24,7 +24,8 @@ from services.rag_builder import build_rag_context
 
 import services.command as _pkg
 from services.command.styles import WRITING_STYLES, parse_style
-from services.command.citations import reindex_citations, clean_wikilink_quotes
+from core.markdown_sanitizer import clean_wikilink_quotes
+from services.command.citations import reindex_citations
 from services.command.inbox import (
     ensure_format,
     find_pending_query,

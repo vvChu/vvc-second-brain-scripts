@@ -13,7 +13,7 @@ Modules that consume these prompts:
     - services/excalidraw_worker.py
     - services/legal_sync_worker.py
     - services/mermaid_worker.py
-    - services/text_chunker.py
+    - services/orthography.py (kèm text_chunker shim)
     - services/vision_qc_worker.py
     - tools/classify_figures.py
 """
