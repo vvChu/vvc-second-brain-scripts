@@ -1,17 +1,18 @@
 # Danh Mục Hồ Sơ Hoàn Thành Công Trình - Master Checklist
-# Căn cứ: NĐ 06/2021/NĐ-CP (Phụ lục VIb), NĐ 35/2023/NĐ-CP
-# Cập nhật: 2026-03-28
+# Căn cứ: Nghị định 207/2026/NĐ-CP (Phụ lục Danh mục hồ sơ hoàn thành công trình)
+# Văn bản thay thế: Chính thức thay thế NĐ 06/2021/NĐ-CP từ ngày 01/07/2026
+# Cập nhật: 2026-09-17
 # Quản lý: CCBA - BIM RD
 
 metadata:
-  version: "1.0"
+  version: "2.0"
   legal_basis:
-    primary: "Nghị định 06/2021/NĐ-CP - Phụ lục VIb"
-    amendments:
-      - "Nghị định 35/2023/NĐ-CP"
-    pending:
-      - "Dự thảo NĐ QLCL 2026 (chưa áp dụng)"
-  last_updated: "2026-03-28"
+    primary: "Nghị định 207/2026/NĐ-CP - Danh mục hồ sơ hoàn thành công trình"
+    enabling_statute: "Luật Xây dựng 2025 (135/2025/QH15)"
+    transition_basis:
+      - "Nghị định 06/2021/NĐ-CP (Phụ lục VIb) - Áp dụng chuyển tiếp cho công trình hoàn thành trước 01/07/2026"
+      - "Văn bản hợp nhất 19/VBHN-BXD ngày 25/03/2026"
+  last_updated: "2026-09-17"
   maintained_by: "CCBA"
   applies_to:
     - "Công trình dân dụng"
@@ -130,7 +131,7 @@ categories:
       - id: I.12
         document: "Tài liệu chứng minh năng lực nhà thầu"
         document_en: "Contractor Qualification Documents"
-        legal_ref: "NĐ 15/2021; NĐ 06/2021"
+        legal_ref: "NĐ 217/2026; NĐ 207/2026"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu"
@@ -147,7 +148,7 @@ categories:
       - id: II.1
         document: "Nhiệm vụ khảo sát xây dựng"
         document_en: "Survey Terms of Reference"
-        legal_ref: "NĐ 06/2021, Điều 5"
+        legal_ref: "NĐ 207/2026, Điều 5"
         required: true
         applies_to: [all]
         responsible: "CĐT"
@@ -155,7 +156,7 @@ categories:
       - id: II.2
         document: "Phương án kỹ thuật khảo sát xây dựng"
         document_en: "Survey Technical Methodology"
-        legal_ref: "NĐ 06/2021, Điều 6"
+        legal_ref: "NĐ 207/2026, Điều 6"
         required: true
         applies_to: [all]
         responsible: "TV Khảo sát"
@@ -163,7 +164,7 @@ categories:
       - id: II.3
         document: "Báo cáo kết quả khảo sát xây dựng"
         document_en: "Survey Results Report"
-        legal_ref: "NĐ 06/2021, Điều 7-8"
+        legal_ref: "NĐ 207/2026, Điều 7-8"
         required: true
         applies_to: [all]
         responsible: "TV Khảo sát"
@@ -172,7 +173,7 @@ categories:
       - id: II.4
         document: "Văn bản nghiệm thu kết quả khảo sát"
         document_en: "Survey Acceptance Certificate"
-        legal_ref: "NĐ 06/2021, Điều 9"
+        legal_ref: "NĐ 207/2026, Điều 9"
         required: true
         applies_to: [all]
         responsible: "CĐT"
@@ -180,7 +181,7 @@ categories:
       - id: II.5
         document: "Hồ sơ thiết kế xây dựng (BVTK + Thuyết minh)"
         document_en: "Design Documents (Drawings + Description)"
-        legal_ref: "Luật XD; NĐ 15/2021"
+        legal_ref: "Luật XD 2025; NĐ 217/2026"
         required: true
         applies_to: [all]
         responsible: "TV Thiết kế"
@@ -205,7 +206,7 @@ categories:
       - id: II.8
         document: "Chỉ dẫn kỹ thuật"
         document_en: "Technical Specifications"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: true
         applies_to: [all]
         responsible: "TV Thiết kế"
@@ -221,7 +222,7 @@ categories:
       - id: III.1
         document: "Bản vẽ hoàn công (kèm danh mục)"
         document_en: "As-built Drawings (with index)"
-        legal_ref: "NĐ 06/2021, Điều 27"
+        legal_ref: "NĐ 207/2026, Điều 27"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC"
@@ -230,7 +231,7 @@ categories:
       - id: III.2
         document: "Biên bản nghiệm thu công việc xây dựng"
         document_en: "Work Item Acceptance Records"
-        legal_ref: "NĐ 06/2021, Điều 21"
+        legal_ref: "NĐ 207/2026, Điều 21"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC + TVGS"
@@ -238,7 +239,7 @@ categories:
       - id: III.3
         document: "Biên bản nghiệm thu bộ phận / giai đoạn thi công"
         document_en: "Phase/Section Acceptance Records"
-        legal_ref: "NĐ 06/2021, Điều 22"
+        legal_ref: "NĐ 207/2026, Điều 22"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC + CĐT"
@@ -246,7 +247,7 @@ categories:
       - id: III.4
         document: "Kết quả thí nghiệm, kiểm tra vật liệu đầu vào"
         document_en: "Material Testing Results"
-        legal_ref: "NĐ 06/2021, Điều 12"
+        legal_ref: "NĐ 207/2026, Điều 12"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC"
@@ -255,7 +256,7 @@ categories:
       - id: III.5
         document: "Kết quả thí nghiệm, quan trắc trong thi công"
         document_en: "In-construction Testing & Monitoring Results"
-        legal_ref: "NĐ 06/2021, Điều 13"
+        legal_ref: "NĐ 207/2026, Điều 13"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC"
@@ -263,7 +264,7 @@ categories:
       - id: III.6
         document: "Kết quả thí nghiệm đối chứng (nếu có)"
         document_en: "Witness Testing Results"
-        legal_ref: "NĐ 06/2021, Điều 14"
+        legal_ref: "NĐ 207/2026, Điều 14"
         required: conditional
         condition: "Theo yêu cầu của CĐT hoặc cơ quan QLNN"
         applies_to: [all]
@@ -272,7 +273,7 @@ categories:
       - id: III.7
         document: "Kết quả kiểm định chất lượng (nếu có)"
         document_en: "Quality Inspection Results"
-        legal_ref: "NĐ 06/2021, Điều 15"
+        legal_ref: "NĐ 207/2026, Điều 15"
         required: conditional
         condition: "Theo yêu cầu"
         applies_to: [all]
@@ -281,7 +282,7 @@ categories:
       - id: III.8
         document: "Kết quả thí nghiệm khả năng chịu lực (nếu có)"
         document_en: "Load Testing Results"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: conditional
         condition: "Đối với kết cấu đặc biệt"
         applies_to: [bridge, special_structure]
@@ -290,7 +291,7 @@ categories:
       - id: III.9
         document: "Hồ sơ quản lý chất lượng thiết bị"
         document_en: "Equipment Quality Management Documents"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: conditional
         condition: "Công trình có lắp đặt thiết bị"
         applies_to: [all]
@@ -302,7 +303,7 @@ categories:
       - id: III.10
         document: "Nhật ký thi công xây dựng"
         document_en: "Construction Daily Log"
-        legal_ref: "NĐ 06/2021, Điều 16"
+        legal_ref: "NĐ 207/2026, Điều 16"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC"
@@ -310,7 +311,7 @@ categories:
       - id: III.11
         document: "Nhật ký giám sát"
         document_en: "Supervision Daily Log"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: true
         applies_to: [all]
         responsible: "TVGS"
@@ -318,7 +319,7 @@ categories:
       - id: III.12
         document: "Danh mục thay đổi thiết kế trong quá trình thi công"
         document_en: "Design Change Register"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: conditional
         condition: "Khi có thay đổi thiết kế"
         applies_to: [all]
@@ -328,7 +329,7 @@ categories:
       - id: III.13
         document: "Kế hoạch và biện pháp kiểm soát chất lượng thi công"
         document_en: "Quality Control Plan"
-        legal_ref: "NĐ 06/2021, Điều 11"
+        legal_ref: "NĐ 207/2026, Điều 11"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC"
@@ -336,7 +337,7 @@ categories:
       - id: III.14
         document: "Biện pháp thi công"
         document_en: "Construction Method Statement"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: true
         applies_to: [all]
         responsible: "Nhà thầu TC"
@@ -352,7 +353,7 @@ categories:
       - id: IV.1
         document: "Biên bản nghiệm thu hoàn thành hạng mục/công trình"
         document_en: "Project/Item Completion Acceptance Record"
-        legal_ref: "NĐ 06/2021, Điều 23"
+        legal_ref: "NĐ 207/2026, Điều 23"
         required: true
         applies_to: [all]
         responsible: "CĐT"
@@ -361,7 +362,7 @@ categories:
       - id: IV.2
         document: "Thông báo kết quả kiểm tra của cơ quan QLNN"
         document_en: "State Authority Inspection Report"
-        legal_ref: "NĐ 06/2021, Điều 24-25"
+        legal_ref: "NĐ 207/2026, Điều 24-25"
         required: conditional
         condition: "Công trình thuộc diện kiểm tra nghiệm thu"
         applies_to: [grade_I, grade_special]
@@ -371,7 +372,7 @@ categories:
       - id: IV.3
         document: "Quy trình vận hành, khai thác công trình"
         document_en: "Operation & Maintenance Manual"
-        legal_ref: "NĐ 06/2021"
+        legal_ref: "NĐ 207/2026"
         required: conditional
         condition: "Công trình có yêu cầu vận hành"
         applies_to: [all]
@@ -380,7 +381,7 @@ categories:
       - id: IV.4
         document: "Quy trình bảo trì công trình"
         document_en: "Maintenance Procedure"
-        legal_ref: "NĐ 06/2021, Chương V"
+        legal_ref: "NĐ 207/2026, Chương V"
         required: true
         applies_to: [all]
         responsible: "TV Thiết kế / CĐT"
@@ -388,7 +389,7 @@ categories:
       - id: IV.5
         document: "Hồ sơ giải quyết sự cố (nếu có)"
         document_en: "Incident Resolution Records"
-        legal_ref: "NĐ 06/2021, Chương IV"
+        legal_ref: "NĐ 207/2026, Chương IV"
         required: conditional
         condition: "Khi xảy ra sự cố trong thi công"
         applies_to: [all]
@@ -406,7 +407,7 @@ categories:
       - id: IV.7
         document: "Văn bản chấp thuận vận hành thang máy"
         document_en: "Elevator Operation Approval"
-        legal_ref: "Quy chuẩn QCVN; NĐ 06/2021"
+        legal_ref: "Quy chuẩn QCVN; NĐ 207/2026"
         required: conditional
         condition: "Công trình có thang máy"
         applies_to: [all]
@@ -425,6 +426,11 @@ categories:
 # CHANGELOG
 # ==============================================================================
 changelog:
+  - date: "2026-09-17"
+    version: "2.0"
+    changes: "Cập nhật căn cứ pháp lý hiện hành sang Nghị định 207/2026/NĐ-CP (thay thế NĐ 06/2021 từ 01/07/2026) và Luật Xây dựng 2025"
+    author: "CCBA Engineering Agent"
+    review_status: "Đã rà soát theo mốc hiệu lực 01/07/2026"
   - date: "2026-03-28"
     version: "1.0"
     changes: "Tạo master checklist dựa trên NĐ 06/2021 Phụ lục VIb"

@@ -51,19 +51,6 @@ skills:
   skill_path: .agents/skills/platform-loader/SKILL.md
   command: /platform-loader
   tier: kernel
-- name: ccba-spark-deploy
-  bundle: _core
-  description: Tự động hóa thiết lập và triển khai VvC Second Brain trên Server Spark (Linux) 24/7 với Google Drive GVFS và LiteLLM Gateway.
-  triggers:
-  - spark-deploy
-  - setup-spark
-  - deploy-spark
-  - host-spark
-  - ccba-spark-deploy
-  - server-spark
-  skill_path: .agents/skills/ccba-spark-deploy/SKILL.md
-  command: /ccba-spark-deploy
-  tier: kernel
 - name: bigbim-classification
   bundle: _bim
   description: Tự động hóa viết bảng thực thể (En) và phân loại vật tư (PM) theo Uniclass
@@ -337,6 +324,20 @@ skills:
   skill_path: .agents/skills/ccba-build-skill/SKILL.md
   command: /ccba-build-skill
   tier: kernel
+- name: ccba-chrome-debug
+  bundle: _software
+  description: Quản trị vòng đời Chrome CDP (Port 9222), Chrome DevTools MCP, Persistent
+    Profile và công cụ /browser cho Antigravity & CCBA Platform.
+  triggers:
+  - ccba-chrome-debug
+  - chrome debug
+  - cdp port 9222
+  - browser tools
+  - mở chrome debug
+  - kiểm tra kết nối browser
+  skill_path: .agents/skills/ccba-chrome-debug/SKILL.md
+  command: /ccba-chrome-debug
+  tier: kernel
 - name: ccba-code-review
   bundle: _software
   description: Rà soát chất lượng code song song trên hai trục Standards (Coding style/Smells)
@@ -518,11 +519,16 @@ skills:
   tier: kernel
 - name: ccba-excalidraw-diagram
   bundle: _core
-  description: Công cụ tạo sơ đồ Excalidraw JSON (.excalidraw) chuyên nghiệp cho Obsidian
-    và excalidraw.com.
+  description: Tạo và tối ưu sơ đồ kiến trúc Excalidraw tất định 16:9 với 8 layout
+    engines và Bảng Đặc Tả Ma Trận Markdown chuẩn công thái học.
   triggers:
-  - ccba-show-me
-  - show-me
+  - excalidraw
+  - vẽ sơ đồ
+  - diagram
+  - layout engine
+  - sơ đồ kiến trúc
+  - vẽ quy trình
+  - layout router
   skill_path: .agents/skills/ccba-excalidraw-diagram/SKILL.md
   command: /ccba-excalidraw-diagram
   tier: kernel
@@ -666,6 +672,26 @@ skills:
   - triage
   skill_path: .agents/skills/ccba-issue-to-hub/SKILL.md
   command: /ccba-issue-to-hub
+  tier: kernel
+- name: ccba-issue-tree
+  bundle: _core
+  description: Phân rã bài toán phức tạp theo cây vấn đề McKinsey MECE (Why, What,
+    How) và quản trị vòng đời kiểm chứng giả thuyết.
+  triggers:
+  - issue tree
+  - mece
+  - cây vấn đề
+  - why tree
+  - what tree
+  - how tree
+  - root cause analysis
+  - rca
+  - phân tích nguyên nhân
+  - phân rã vấn đề
+  - giải quyết vấn đề
+  - hypothesis testing
+  skill_path: .agents/skills/ccba-issue-tree/SKILL.md
+  command: /ccba-issue-tree
   tier: kernel
 - name: ccba-knowledge-loop
   bundle: _core
@@ -1178,6 +1204,10 @@ skills:
   - office
   - ccba-docx
   - docx
+  - điền form word
+  - fill form doc
+  - form-filler
+  - layout guard
   skill_path: .agents/skills/ccba-xu-ly-van-phong/SKILL.md
   command: /ccba-xu-ly-van-phong
   package_path: packages/ccba-ooxml
