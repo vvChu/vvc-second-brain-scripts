@@ -1,6 +1,7 @@
-# VvC Second Brain — Pipeline Scripts (v8.15.12 - Deep Module Seams: Core Markdown Sanitizer, Orthography Disambiguation & Diagram Base Hygiene)
+# VvC Second Brain — Pipeline Scripts (v8.15.13 - Deep Module Seams: Weekly Synthesis Extraction, RAG Deep Package & Clean Command Seams)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Karpathy, 2026).
+*Upgraded in v8.15.13: Deep Module Seams: Weekly Synthesis Extraction, RAG Deep Package & Clean Command Seams (ccba-codebase-design): extracted generate_weekly_synthesis (260 lines) into services/weekly_synthesis.py with backward-compatible wiki_health shim, consolidated hybrid RAG into deep module package services/rag/ (hybrid_search.py, context_builder.py, __init__.py) with 100% backward-compatible shims for rag_search.py and rag_builder.py, cleaned markdown sanitizer imports in services/command/__init__.py, attached formal DeprecationWarning to services/chat_history.py, added comprehensive tests (test_weekly_synthesis.py, test_rag_package.py), achieving 557/557 passed tests (100% pass, 0 regressions).*
 *Upgraded in v8.15.12: Deep Module Seams: Core Markdown Sanitizer, Orthography Disambiguation & Diagram Base Hygiene: extracted pure string transformation invariants into core/markdown_sanitizer.py eliminating pipeline/post_process.py coupling into services/command/citations.py (reducing cold import time by >20x), separated ASR/transcript orthographic preprocessing and smart bypass into services/orthography.py with backward-compatible text_chunker shim, consolidated diagram hygiene (wrap_label and sanitize_mermaid) into services/diagram_base.py with moc_mermaid re-export contract, added dedicated tests in test_diagram_base.py (550/550 passed), and cleaned unused worker imports.*
 *Upgraded in v8.15.11: 4-Tier Native ASR Caption Hierarchy, Ground Truth Fallback & Multi-Evidence Hooks: distinguished native ASR captions (no tlang=) from machine-translated subtitles, prioritized Manual vi/en -> Native ASR vi/en -> Auto-translated fallback -> Whisper (language=None), standardized Ground Truth fallback instructions in prompts and self_correct.py bypass, documented Multi-Evidence Hooks for Stage 5 Merged Notes in AGENTS.md §4.1, and healed 10 concept notes and registry via deduplicate_sources.py.*
 *Upgraded in v8.15.10: Mermaid Edge Label & Strict HTML Entity Context Isolation Invariants: formalized Mermaid Edge Label Invariant forbidding embedded text in arrow bodies (===="text"====>) and mandating pipe syntax (===>|"label"|), normalized comparison operators (>= -> ≥, <= -> ≤), established Strict HTML Entity Context Isolation confining #40;/#41; strictly to Mermaid blocks while reverting them to () on Markdown tables, implemented pure healing functions in citations.py and mermaid_worker.py integrated with clean_wikilink_quotes(), and expanded test suite.*
@@ -86,14 +87,16 @@ scripts/
 │   ├── command/               ← Interactive Command Deep Module Package (Zero I/O inbox, coordinator, styles)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Decomposition Package (transcripts & fallbacks)
+│   ├── rag/                   ← Hybrid RAG Deep Module Package (hybrid_search.py, context_builder.py)
+│   ├── weekly_synthesis.py    ← Weekly Synthesis & System Status Report Compiler
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
 │   ├── article_images.py      ← Web article image downloader & WebP compressor
 │   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
-│   ├── chat_history.py        ← Backward-compat shim (absorbed into command/inbox.py)
-│   ├── rag_builder.py         ← RAG Context XML formatter
+│   ├── chat_history.py        ← Backward-compat shim w/ DeprecationWarning (absorbed into command/inbox.py)
+│   ├── rag_builder.py         ← Backward-compat shim (absorbed into services/rag/)
+│   ├── rag_search.py          ← Backward-compat shim (absorbed into services/rag/)
 │   ├── url_fetcher.py         ← Web scraping & garbage detection
 │   ├── orthography.py         ← Speech/ASR orthographic correction & Smart Bypass (w/ text_chunker shim)
-│   ├── rag_search.py          ← Hybrid RAG (BM25 + Embedding + RRF fusion)
 │   ├── wiki_health.py         ← Consolidated: lint + heal + domain enrichment + Strict Abort
 │   ├── moc_mermaid.py         ← MOC Mermaid diagram generator (w/ chapter grouping SSOT)
 │   ├── diagram_base.py        ← Shared diagram infrastructure
@@ -101,7 +104,7 @@ scripts/
 │   ├── mermaid_worker.py      ← Mermaid diagram generation
 │   └── legal_sync_worker.py   ← Autonomous Legal Document Concept generation
 │
-└── tests/                     ← 266 unit tests (pytest) — coverage ≥ 50%
+└── tests/                     ← 557 unit tests (pytest) — coverage ≥ 50%
 ```
 
 ## Quick Start

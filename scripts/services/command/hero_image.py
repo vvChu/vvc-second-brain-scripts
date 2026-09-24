@@ -23,7 +23,7 @@ from core.llm import call_llm
 from core.log import log
 from core.prompts.services import COMMAND_RESPONSE as _RESPONSE_PROMPT
 from services.command.styles import WRITING_STYLES
-from services.rag_builder import build_rag_context
+from services.rag import build_rag_context
 
 _logger = logging.getLogger("vvc.command.hero_image")
 

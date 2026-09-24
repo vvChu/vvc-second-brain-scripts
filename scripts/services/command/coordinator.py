@@ -20,7 +20,7 @@ from core.prompts.services import COMMAND_RESPONSE as _RESPONSE_PROMPT
 
 from services.worker_dispatcher import trigger_workers
 from services.command.inbox import auto_archive_command, MAX_COMMAND_LEN
-from services.rag_builder import build_rag_context
+from services.rag import build_rag_context
 
 import services.command as _pkg
 from services.command.styles import WRITING_STYLES, parse_style

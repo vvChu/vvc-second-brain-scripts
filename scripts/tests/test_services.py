@@ -37,7 +37,7 @@ def test_parse_style():
 def test_find_pending_query():
     """Should find unanswered @AI queries inside the correct Input section."""
     from services.command import _find_pending_query
-    from services.chat_history import INPUT_MARKER, HISTORY_MARKER
+    from services.command.inbox import INPUT_MARKER, HISTORY_MARKER
 
     # Must use exact markers from command.py (## \U0001f4e5 Input / ## \U0001f570\ufe0f Lịch sử)
     content = f"{INPUT_MARKER}\n@AI: What is transformer? ---\n\n{HISTORY_MARKER}\n"
@@ -49,7 +49,7 @@ def test_find_pending_query():
 def test_find_pending_query_answered():
     """Should return None when Inbox has no pending @AI query."""
     from services.command import _find_pending_query
-    from services.chat_history import INPUT_MARKER, HISTORY_MARKER
+    from services.command.inbox import INPUT_MARKER, HISTORY_MARKER
 
     # Inbox is empty — query is only in history (already answered)
     content = f"{INPUT_MARKER}\n\n{HISTORY_MARKER}\n@AI: Old question ---\n> [!done] Answer here\n"

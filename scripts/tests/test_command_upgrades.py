@@ -23,7 +23,7 @@ from core.config import cfg
 from services.command.styles import parse_style, StyleParseResult
 from services.command.coordinator import generate_response, process_command, handle_command
 from services.diagram_base import find_diagram_context
-from services.rag_builder import resolve_explicit_references, build_rag_context
+from services.rag import resolve_explicit_references, build_rag_context
 
 
 # ── 1. Explicit Wikilink Resolution ──────────────────────────────────────────
@@ -104,7 +104,7 @@ def test_build_rag_context_prioritized_hybrid_and_deduplication(monkeypatch):
         encoding="utf-8",
     )
 
-    from services.rag_search import SearchResult
+    from services.rag import SearchResult
 
     searched_queries = []
 
@@ -127,7 +127,7 @@ def test_build_rag_context_prioritized_hybrid_and_deduplication(monkeypatch):
             ),
         ]
 
-    monkeypatch.setattr("services.rag_builder._rag_search", mock_search)
+    monkeypatch.setattr("services.rag.context_builder._rag_search", mock_search)
 
     query = "Đọc [[ref_doc|Tài liệu tham khảo]] và giải thích hệ thống"
     ctx, refs = build_rag_context(query)

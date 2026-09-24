@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from core.config import cfg
-from services.chat_history import (
+from services.command.inbox import (
     extract_sections,
     auto_archive_command,
     INPUT_MARKER,
@@ -864,9 +864,20 @@ def test_handle_command_hero_image_offline_fallback(tmp_path, monkeypatch):
 # ── Refactoring Deepening Tests (v8.13.2) ──────────────────────────────────────
 
 def test_chat_history_backward_compatibility_shim():
-    """Verify chat_history shim re-exports exact objects from services.command.inbox."""
-    import services.chat_history as ch
+    """Verify chat_history shim re-exports exact objects from services.command.inbox and emits DeprecationWarning."""
+    import importlib
+    import warnings
     import services.command.inbox as inbox
+
+    with warnings.catch_warnings(record=True) as recorded_warnings:
+        warnings.simplefilter("always")
+        import services.chat_history as ch
+        importlib.reload(ch)
+
+    assert any(
+        issubclass(w.category, DeprecationWarning) and "services.chat_history is deprecated" in str(w.message)
+        for w in recorded_warnings
+    )
 
     assert ch.MAX_COMMAND_LEN == inbox.MAX_COMMAND_LEN
     assert ch.INPUT_MARKER == inbox.INPUT_MARKER

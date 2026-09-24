@@ -17,8 +17,8 @@ from core.config import cfg
 from core.llm import call_llm
 
 from services.command.styles import WRITING_STYLES, parse_style
-from services.command.citations import (
-    reindex_citations,
+from services.command.citations import reindex_citations
+from core.markdown_sanitizer import (
     clean_wikilink_quotes,
     heal_mermaid_edge_syntax,
     heal_html_entity_leakage,
