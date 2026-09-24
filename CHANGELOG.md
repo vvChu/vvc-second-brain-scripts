@@ -2,12 +2,13 @@
 
 Lịch sử thay đổi kiến trúc pipeline. Xem `AGENTS.md` cho quy tắc hiện hành.
 
-## v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG Deep Package & Clean Command Seams
+## v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages
 Tối ưu hóa cấu trúc mô-đun sâu (Deep Modules) và làm sạch ranh giới tương tác (Clean Seams) theo chuẩn `ccba-codebase-design`:
-- **Tách Báo Cáo Weekly Synthesis (`services.weekly_synthesis`)**: Tách hàm `generate_weekly_synthesis` (260 dòng) từ `services/wiki_health.py` sang module chuyên biệt `services/weekly_synthesis.py`, áp dụng kỹ thuật lazy import triệt tiêu 100% circular dependencies, giữ shim re-export tại `wiki_health.py` và cập nhật các callers nội bộ (`close_session.py`, `sleep.py`).
+- **Phân Rã Dịch Vụ Wiki Health Thành Package Chuyên Biệt (`services.wiki_health`)**: Phân rã tệp `scripts/services/wiki_health.py` (1.050 dòng) thành Deep Module Package `services/wiki_health/` gồm 6 submodules chuyên trách: `linter.py` (VaultLinter), `link_healer.py` (LinkHealer kèm chuẩn hóa đường dẫn `config.yaml`), `stub_lifecycle.py` (quản lý lifecycle stubs), `domain_enricher.py` (làm giàu domain YAML), `code_pill_cleaner.py` (làm sạch code-pill wikilinks), `title_standardizer.py` (chuẩn hóa tiêu đề note); toàn bộ submodule đều tuân thủ nghiêm ngặt ngân sách dòng (≤ 289 dòng so với trần 350 dòng); re-export đầy đủ 20 symbols qua Central Facade `__init__.py` bảo toàn 100% hợp đồng giao diện cho tất cả các callers.
+- **Tách Báo Cáo Weekly Synthesis (`services.weekly_synthesis`)**: Tách hàm `generate_weekly_synthesis` (260 dòng) từ `services/wiki_health.py` sang module chuyên biệt `services/weekly_synthesis.py`, áp dụng kỹ thuật lazy import triệt tiêu 100% circular dependencies, giữ shim re-export tại `wiki_health` và cập nhật các callers nội bộ (`close_session.py`, `sleep.py`).
 - **Đóng Gói Phân Hệ RAG Thành Package (`services.rag`)**: Hợp nhất và đóng gói `rag_search.py` và `rag_builder.py` thành package `services/rag/` (`hybrid_search.py`, `context_builder.py`, `__init__.py`) với Deep Seam trung tâm; rút gọn 2 module cũ thành shims tương thích ngược 100%; chuyển các caller live (`coordinator.py`, `hero_image.py`) sang import trực tiếp từ `services.rag`.
 - **Chuẩn Hóa Seams Command & Deprecation Warning**: Chuẩn hóa import trong `command/__init__.py`, loại bỏ dead imports, bổ sung `DeprecationWarning` chính quy cho legacy shim `services/chat_history.py`, dọn dẹp import tests sang `services.command.inbox`.
-- **Nâng Cấp Bộ Test Suite**: Bổ sung unit tests toàn diện (`test_weekly_synthesis.py`, `test_rag_package.py`), nâng tổng số test lên 557/557 passed (100% pass, 0 regressions).
+- **Nâng Cấp Bộ Test Suite**: Bổ sung unit tests toàn diện (`test_wiki_health_package.py`, `test_weekly_synthesis.py`, `test_rag_package.py`), nâng tổng số test lên 564/564 passed (100% pass, 0 regressions).
 
 ## v8.15.12 — Deep Module Seams: Core Markdown Sanitizer, Orthography Disambiguation & Diagram Base Hygiene
 Chuẩn hóa kiến trúc phân tầng một chiều, tách ranh giới module sâu (Deep Seams) và loại bỏ hoàn toàn hiện tượng phụ thuộc ngược giữa các tầng (`core/markdown_sanitizer.py`, `services/orthography.py`, `services/diagram_base.py`, `services/moc_mermaid.py`, `pipeline/post_process.py`, `services/mermaid_worker.py`):
