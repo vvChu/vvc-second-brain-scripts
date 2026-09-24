@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Agent Constitution (v8.15.12)
+# 🧠 VvC Second Brain — Agent Constitution (v8.15.13)
 
 > This file is the "operating manual" for any AI agent working with this Obsidian vault.
 > It defines the structure, rules, and behavior for the LLM OS autonomous ingestion pipeline.

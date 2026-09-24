@@ -34,8 +34,8 @@ from services.wiki_health import (
     lint_vault, 
     heal_broken_links, 
     heal_orthography,
-    generate_weekly_synthesis
 )
+from services.weekly_synthesis import generate_weekly_synthesis
 from wiki_maintain import rebuild_all, DOMAIN_MOC_THRESHOLD
 
 # Configure Logging

@@ -1,6 +1,6 @@
 """VvC Second Brain — RAG Search Shim (v8.15.13).
 
-DEPRECATED: Prefer importing from `services.rag` or `services.rag.search`.
+DEPRECATED: Prefer importing from `services.rag` or `services.rag.hybrid_search`.
 Maintained for 100% backward compatibility.
 """
 

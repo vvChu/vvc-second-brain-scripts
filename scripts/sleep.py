@@ -35,8 +35,9 @@ from core.vault import scan_all_concepts, scan_all_sources
 try:
     from services.wiki_health import (
         lint_vault, heal_broken_links, heal_orthography,
-        standardize_titles, enrich_domains, generate_weekly_synthesis,
+        standardize_titles, enrich_domains,
     )
+    from services.weekly_synthesis import generate_weekly_synthesis
     _HAS_HEALTH = True
 except ImportError:
     _HAS_HEALTH = False
