@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Mental Model & Kiến Trúc Tổng Thể (v8.15.11)
+# 🧠 VvC Second Brain — Mental Model & Kiến Trúc Tổng Thể (v8.15.13)
 
 > **Tài liệu tham chiếu kỹ thuật (Technical Pointer & Living Architecture Reference)**  
 > **Tuân thủ quy chuẩn**: Global Rule §1 (Knowledge Projects Central KB) & ADR-0057 / ADR-0058  

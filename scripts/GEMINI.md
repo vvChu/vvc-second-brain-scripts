@@ -38,7 +38,7 @@ In this mode, enforce these rules with maximum strictness:
 - Single-shot response (no follow-ups)
 - Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML frontmatter, etc.)
 
-## Architecture Reference (v8.15.11 — 4-Tier Native ASR Caption Hierarchy, Ground Truth Fallback & Multi-Evidence Hooks)
+## Architecture Reference (v8.15.13 — 4-Tier Native ASR Caption Hierarchy, Ground Truth Fallback & Multi-Evidence Hooks)
 
 ### LLM Routing (3-Tier Cascade)
 - **Reasoning Tier 1 (Primary)**: Antigravity CLI cục bộ (`agy.exe`) — `claude-opus-4-6-thinking` (Zero VPN, Zero 429, ~6.5s)

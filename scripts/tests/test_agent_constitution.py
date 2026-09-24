@@ -1,4 +1,4 @@
-"""Unit tests for Vault Living Architecture, Mental Model, and Constitution Integrity (v8.15.12).
+"""Unit tests for Vault Living Architecture, Mental Model, and Constitution Integrity (v8.15.13).
 
 Verifies that all context files, instructions, rules, and workspace metadata
 comply with the canonical schemas and guardrails.
@@ -295,4 +295,68 @@ def test_document_ergonomics_clean_wikilink_invariant(repo_root: Path):
     assert "đồng bộ 100% số trích dẫn trong bảng với danh mục cuối bài" in gemini_content
     assert "Zero-Fencing Examples trong prompt SLM" in gemini_content
     assert "clean_wikilink_quotes" in gemini_content
+
+
+def test_deep_manifest_version_synchronization(repo_root: Path):
+    """Enforce canonical version synchronization across all manifest layers and internal sections."""
+    from core.__version__ import __version__, VERSION
+    canonical = VERSION  # e.g. "v8.15.13"
+
+    # 1. SSoT Workspace Context
+    ctx_path = repo_root / ".md/workspace_context.yaml"
+    ctx_text = ctx_path.read_text(encoding="utf-8")
+    ctx_data = yaml.safe_load(ctx_text)
+    assert ctx_data["project"]["version"] == canonical, f"workspace_context.yaml version mismatch"
+    assert canonical in ctx_data["project"]["current_milestone"], (
+        f"workspace_context.yaml current_milestone must contain {canonical}"
+    )
+    assert canonical in ctx_data.get("acknowledgment_format", ""), (
+        f"workspace_context.yaml acknowledgment_format is stale! Expected {canonical}"
+    )
+
+    # 2. Header and Internal Section Scan
+    target_surfaces = {
+        "AGENTS.md": [canonical],
+        "GEMINI.md": [canonical, f"Living Architecture & Mental Model** ({canonical})"],
+        "CHANGELOG.md": [f"## {canonical}"],
+        "scripts/GEMINI.md": [canonical, f"Architecture Reference ({canonical}"],
+        "scripts/README.md": [canonical],
+        ".md/vault_mental_model_and_architecture.md": [f"# 🧠 VvC Second Brain — Mental Model & Kiến Trúc Tổng Thể ({canonical})"],
+        "scripts/daemon.py": [f'"""VvC Second Brain — Main Daemon ({canonical}).'],
+        "scripts/book_ingest.py": [f'"""VvC Second Brain — Book Ingestion Daemon ({canonical}).'],
+    }
+    for rel_path, required_tokens in target_surfaces.items():
+        content = (repo_root / rel_path).read_text(encoding="utf-8")
+        for token in required_tokens:
+            assert token in content, f"File {rel_path} is missing expected version token: '{token}'"
+
+    # 3. Test Docstring Consistency
+    const_test_text = (repo_root / "scripts/tests/test_agent_constitution.py").read_text(encoding="utf-8")
+    assert canonical in const_test_text.splitlines()[0], (
+        f"test_agent_constitution.py module docstring header must be updated to {canonical}"
+    )
+
+
+def test_readme_directory_tree_parity(repo_root: Path):
+    """Enforce that all deep module packages in scripts/core/ and scripts/services/ are in scripts/README.md."""
+    readme_path = repo_root / "scripts/README.md"
+    assert readme_path.exists(), "scripts/README.md must exist"
+    readme_content = readme_path.read_text(encoding="utf-8")
+
+    scripts_dir = repo_root / "scripts"
+    deep_packages: list[str] = []
+    for parent in ["core", "services"]:
+        parent_dir = scripts_dir / parent
+        if not parent_dir.exists():
+            continue
+        for child in sorted(parent_dir.iterdir()):
+            if child.is_dir() and (child / "__init__.py").exists():
+                deep_packages.append(f"{child.name}/")
+
+    missing = [pkg for pkg in deep_packages if pkg not in readme_content]
+    assert not missing, (
+        f"The following deep module packages are missing from scripts/README.md directory tree: {missing}. "
+        f"Update scripts/README.md § 2. Directory Structure."
+    )
+
 

@@ -1,4 +1,4 @@
-"""VvC Second Brain — Main Daemon (v7.5 Batching + Stability Guard).
+"""VvC Second Brain — Main Daemon (v8.15.13).
 
 Watchdog-based daemon that monitors 05-Fleeting/ for new images
 and processes them through the 5-stage pipeline:
@@ -37,6 +37,7 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 from core.daemon_utils import harden_headless_stdio, is_file_stable
 harden_headless_stdio()
 
+from core.__version__ import __version__
 from core.config import cfg
 from core.file_lock import CrossProcessFileLock
 from core.log import log
@@ -532,9 +533,9 @@ def main(argv: list[str] | None = None) -> None:
         _logger.warning("Another daemon instance is already running")
         return
 
-    log("lifecycle", "Daemon v7.5 started")
+    log("lifecycle", f"Daemon v{__version__} started")
     _logger.info("=" * 50)
-    _logger.info("VvC Second Brain — Daemon v7.5 (Batching + Stability Guard)")
+    _logger.info(f"VvC Second Brain — Daemon v{__version__} (Batching + Stability Guard)")
     _logger.info(f"Vault: {cfg.vault_root}")
     _logger.info(f"Backend: {cfg.backend} | Fallback: {cfg.fallback}")
     _logger.info("=" * 50)
@@ -630,7 +631,7 @@ def main(argv: list[str] | None = None) -> None:
         if worker.is_alive():
             _logger.warning("Worker thread did not finish in time — forcing exit")
         _release_daemon_lock()
-        log("lifecycle", "Daemon v7.5 stopped")
+        log("lifecycle", f"Daemon v{__version__} stopped")
         _logger.info("Daemon stopped")
 
 

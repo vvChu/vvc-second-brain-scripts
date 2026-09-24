@@ -1,4 +1,4 @@
-"""VvC Second Brain — Book Ingestion Daemon (v7.0).
+"""VvC Second Brain — Book Ingestion Daemon (v8.15.13).
 
 Watches 03-Resources/books/ for new EPUB/PDF files.
 Converts to chunked markdown corpus for BM25 matching.
@@ -28,6 +28,7 @@ sys.path.insert(0, str(_SCRIPT_DIR))
 from core.daemon_utils import harden_headless_stdio, is_file_stable
 harden_headless_stdio()
 
+from core.__version__ import __version__
 from core.config import cfg
 from core.frontmatter import build_frontmatter
 from core.llm import call_llm
@@ -363,7 +364,7 @@ def main() -> None:
     except Exception as sig_err:
         _logger.warning(f"Failed to register signal handlers (normal in headless/service mode): {sig_err}")
 
-    _logger.info("Book Ingestion Daemon v8.0 (Watchdog-driven) started")
+    _logger.info(f"Book Ingestion Daemon v{__version__} (Watchdog-driven) started")
 
     if _check_pid():
         _logger.warning("Another book ingestion daemon instance is already running. Exiting.")

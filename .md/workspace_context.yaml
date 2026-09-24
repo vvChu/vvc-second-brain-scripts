@@ -11,9 +11,9 @@ project:
   type: "Second Brain / Autonomous Zettelkasten Knowledge Base"
   project_type: "knowledge_corpus"
   version: "v8.15.13"
-  current_milestone: "v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG Deep Package & Clean Command Seams"
-  hub_path: "D:/GitHubProjects/ccba-agent-platform" # Windows primary; Linux fallback: /home/vvc/ccba/ccba-agent-platform, or CCBA_HUB_PATH env var
-  hub_path_linux: "/home/vvc/ccba/ccba-agent-platform"
+  current_milestone: "v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages"
+  hub_path: "D:/GitHubProjects/ccba-agent-platform" # ccba:allow-machine-path Windows primary; Linux fallback: /home/vvc/ccba/ccba-agent-platform, or CCBA_HUB_PATH env var
+  hub_path_linux: "/home/vvc/ccba/ccba-agent-platform" # ccba:allow-machine-path
   hub_path_env: "CCBA_HUB_PATH"
   description: "Personal knowledge management system following the LLM Compiler Pattern (Andrej Karpathy, 2026), operating as an autonomous 'Zero-Touch' LLM OS."
 
@@ -79,7 +79,7 @@ must_read:
       why: "Quy tắc vận hành pipeline mode và kiến trúc microservices"
 
 acknowledgment_required: true
-acknowledgment_format: "Tôi đã đọc workspace_context.yaml. Đây là Vault 'vvc-second-brain' (v8.15.11). Sẵn sàng làm việc!"
+acknowledgment_format: "Tôi đã đọc workspace_context.yaml. Đây là Vault 'vvc-second-brain' (v8.15.13). Sẵn sàng làm việc!"
 
 pipeline_mode_bypass: true
 pipeline_mode_rationale: "When invoked with [PIPELINE] prefix or running headless daemon scripts, bypass interactive 2-3 sentence acknowledgment to maintain pure text stream."
