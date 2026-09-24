@@ -7,6 +7,7 @@ concept notes in the permanent vault via standard Quality Gate & VectorStore.
 from __future__ import annotations
 
 import logging
+import os
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -23,10 +24,12 @@ _logger = logging.getLogger("vvc.legal_sync")
 
 def _find_legal_registry() -> Path | None:
     """Find the legal registry yaml file in local spoke or hub platform."""
+    hub_path_str = os.environ.get("CCBA_HUB_PATH", r"D:\GitHubProjects\ccba-agent-platform")  # ccba:allow-machine-path
+    hub_root = Path(hub_path_str)
     candidates = [
         cfg.vault_root / ".agents" / "skills" / "ccba-legal-document-tracker" / "resources" / "legal_registry.yaml",
-        Path(r"D:\GitHubProjects\ccba-agent-platform\.agents\skills\ccba-legal-document-tracker\resources\legal_registry.yaml"),
-        Path(r"D:\GitHubProjects\ccba-agent-platform\.md\data\legal_registry.yaml"),
+        hub_root / ".agents" / "skills" / "ccba-legal-document-tracker" / "resources" / "legal_registry.yaml",
+        hub_root / ".md" / "data" / "legal_registry.yaml",
     ]
     for p in candidates:
         if p.exists():

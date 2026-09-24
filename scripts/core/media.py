@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import functools
 import logging
+import os
 import shutil
 import subprocess
 import tempfile
@@ -18,76 +19,55 @@ from pathlib import Path
 _logger = logging.getLogger("vvc.core.media")
 
 
+def _find_win_binary(bin_name: str) -> str | None:
+    """Find Windows executable for ffmpeg or ffprobe with fallback resolution."""
+    found = shutil.which(bin_name)
+    if found:
+        return found
+
+    # Dynamic WinGet packages directory resolution
+    local_appdata = os.environ.get("LOCALAPPDATA")
+    base_dir = Path(local_appdata) if local_appdata else Path.home() / "AppData" / "Local"
+    pkg_dir = base_dir / "Microsoft" / "WinGet" / "Packages"
+    if pkg_dir.exists():
+        try:
+            for match in pkg_dir.glob(f"**/{bin_name}.exe"):
+                if match.is_file():
+                    return str(match)
+        except Exception as e:
+            _logger.debug(f"Failed to scan WinGet packages directory for {bin_name}: {e}")
+
+    # Standard Windows root fallback
+    system_drive = os.environ.get("SystemDrive", "C:")
+    standard_fallback = Path(f"{system_drive}\\ffmpeg\\bin\\{bin_name}.exe")  # ccba:allow-machine-path
+    if standard_fallback.exists():
+        return str(standard_fallback)
+
+    return None
+
+
 def find_ffmpeg_bin() -> str | None:
     """Find the system path to the FFmpeg executable.
 
     Uses shutil.which first, then searches known Windows fallback directories
-    such as C:\\ffmpeg\\bin and WinGet packages.
+    such as WinGet packages and standard C:\\ffmpeg\\bin.
 
     Returns:
         Absolute path to ffmpeg executable as string, or None if not found.
     """
-    ffmpeg_bin = shutil.which("ffmpeg")
-    if ffmpeg_bin:
-        return ffmpeg_bin
-
-    fallbacks: list[Path] = [
-        Path("C:\\ffmpeg\\bin\\ffmpeg.exe"),
-        Path(
-            "C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\"
-            "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffmpeg.exe"
-        ),
-    ]
-
-    pkg_dir = Path("C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages")
-    if pkg_dir.exists():
-        try:
-            for fb in pkg_dir.glob("**/ffmpeg.exe"):
-                fallbacks.append(fb)
-        except Exception as e:
-            _logger.debug(f"Failed to scan WinGet packages directory for ffmpeg: {e}")
-
-    for fb in fallbacks:
-        if fb.exists():
-            return str(fb)
-
-    return None
+    return _find_win_binary("ffmpeg")
 
 
 def find_ffprobe_bin() -> str | None:
     """Find the system path to the FFprobe executable.
 
     Uses shutil.which first, then searches known Windows fallback directories
-    such as C:\\ffmpeg\\bin and WinGet packages.
+    such as WinGet packages and standard C:\\ffmpeg\\bin.
 
     Returns:
         Absolute path to ffprobe executable as string, or None if not found.
     """
-    ffprobe_bin = shutil.which("ffprobe")
-    if ffprobe_bin:
-        return ffprobe_bin
-
-    fallbacks: list[Path] = [
-        Path("C:\\ffmpeg\\bin\\ffprobe.exe"),
-        Path(
-            "C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages\\"
-            "Gyan.FFmpeg_Microsoft.Winget.Source_8wekyb3d8bbwe\\ffmpeg-8.1.1-full_build\\bin\\ffprobe.exe"
-        ),
-    ]
-
-    pkg_dir = Path("C:\\Users\\chuvu\\AppData\\Local\\Microsoft\\WinGet\\Packages")
-    if pkg_dir.exists():
-        try:
-            for fb in pkg_dir.glob("**/ffprobe.exe"):
-                fallbacks.append(fb)
-        except Exception as e:
-            _logger.debug(f"Failed to scan WinGet packages directory for ffprobe: {e}")
-
-    for fb in fallbacks:
-        if fb.exists():
-            return str(fb)
-
-    return None
+    return _find_win_binary("ffprobe")
 
 
 def transcode_audio_to_mp3(
