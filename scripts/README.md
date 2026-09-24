@@ -6,7 +6,7 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 > - **Full Constitution & Rules**: [`AGENTS.md`](../AGENTS.md) (Authoritative Source of Truth)
 > - **Pipeline Mode Override**: [`scripts/GEMINI.md`](GEMINI.md) (Automated daemon JIT prompt instructions)
 > - **Complete Version History**: [`CHANGELOG.md`](../CHANGELOG.md) (All releases and architectural seam milestones)
-> - **Current Milestone**: `v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages` (564/564 tests passed, 100% GREEN).
+> - **Current Milestone**: `v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages` (100% tests passed, 0 regressions).
 
 ---
 
@@ -109,7 +109,7 @@ scripts/
 │   ├── diagram_template_builder.py ← Excalidraw template scaffold builder
 │   └── hydrate_url_registry.py← URL registry hydration from legacy notes
 │
-└── tests/                     ← 564 unit tests (pytest) — 100% Green, coverage ≥ 50%
+└── tests/                     ← Comprehensive unit test suite (pytest) — 100% Green, coverage ≥ 50%
 ```
 
 ---
@@ -186,7 +186,7 @@ scripts\.venv\Scripts\activate
 | **Rebuild All MOCs** | `python scripts/wiki_maintain.py` | Rebuild Source MOCs, Domain MOCs, and Master Index |
 | **Web Clipper** | `python scripts/web_clip.py "<URL>"` | Clip web article into `05 - Fleeting/` |
 | **EPUB Converter** | `python scripts/epub_convert.py "<file.epub>"` | Extract clean Markdown corpus and generate `_toc.json` |
-| **Run Test Suite** | `pytest scripts/tests/ -v` | Run full test suite (564 unit tests, 100% Green) |
+| **Run Test Suite** | `pytest scripts/tests/ -v` | Run full test suite (100% Green) |
 | **Run Health Test Only** | `pytest scripts/tests/test_wiki_health_package.py -v` | Run wiki_health contract tests (7 tests) |
 | **Import Depth Guard** | `python scripts/check_hub_import_depth.py` | Verify 0 deep imports from Hub to Spoke |
 | **Spoke Cleanliness** | `python scripts/check_spoke_cleanliness.py` | Check spoke script budget ($\le 15$ standalone scripts) |
