@@ -42,3 +42,4 @@ Vault vận hành như một **Hệ Điều Hành Tri Thức Tự Trị** ("Zero
    - Sơ đồ nhỏ $\le 8$ nodes $\rightarrow$ Mermaid Academic Grayscale với pipe syntax `===>|"label"|`, toán tử Unicode `≥`/`≤`.
 4. **Clean Wikilinks & Zero-Code-Pill**: Cấm bọc backticks quanh wikilinks trên mọi bề mặt Markdown (`[[slug]]`). Trong bảng Markdown, bắt buộc escape pipe: `[[slug\|alias]]`.
 5. **Strict HTML Entity Context Isolation**: `#40;` và `#41;` CHỈ dùng bên trong khối ````mermaid`. Ngoài mermaid (bảng biểu, văn bản), dùng dấu ngoặc đơn tròn chuẩn `()`.
+6. **Architectural Budgets & Zero-Slack Ratchets (v8.15.13)**: Tệp Python sản xuất mới bắt buộc $\le 350$ dòng; hàm mới bắt buộc $\le 50$ dòng (AST analysis). 29 tệp logic legacy và 83 tệp hàm legacy được khóa bánh cóc 0-slack, chỉ được giảm, cấm tăng (`test_architectural_budgets.py`).

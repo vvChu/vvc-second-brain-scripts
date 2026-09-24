@@ -54,3 +54,15 @@ def test_hub_import_depth_zero_violations(repo_root: Path):
     assert len(all_violations) == 0, (
         f"Found {len(all_violations)} Hub Import Depth violations (ADR 0044):\n" + "\n".join(all_violations)
     )
+
+
+def test_machine_state_regex_captures_raw_strings_and_no_trailing_slash():
+    """Ensure regex catches raw strings r'd:/...' and paths without trailing slashes."""
+    from check_spoke_cleanliness import MACHINE_STATE_LEAK_PATTERNS
+    win_pattern = MACHINE_STATE_LEAK_PATTERNS[0][0]
+    assert win_pattern.search('VAULT_ROOT = Path(r"d:/VvC_Notes")')
+    assert win_pattern.search('path = "D:\\\\VvC_Notes"')
+    assert win_pattern.search('default_root = "C:/ffmpeg/bin"')
+    assert not win_pattern.search('url = "https://example.com"')
+    assert not win_pattern.search('key = "normal_variable_name"')
+

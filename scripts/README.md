@@ -188,5 +188,7 @@ scripts\.venv\Scripts\activate
 | **EPUB Converter** | `python scripts/epub_convert.py "<file.epub>"` | Extract clean Markdown corpus and generate `_toc.json` |
 | **Run Test Suite** | `pytest scripts/tests/ -v` | Run full test suite (100% Green) |
 | **Run Health Test Only** | `pytest scripts/tests/test_wiki_health_package.py -v` | Run wiki_health contract tests (7 tests) |
+| **Architectural Budgets** | `pytest scripts/tests/test_architectural_budgets.py -v` | Verify file line budget ($\le 350$) and AST function budgets ($\le 50$) |
+| **Constitution Parity** | `pytest scripts/tests/test_agent_constitution.py -v` | Verify SSoT versioning, manifest sync, and README tree parity |
 | **Import Depth Guard** | `python scripts/check_hub_import_depth.py` | Verify 0 deep imports from Hub to Spoke |
 | **Spoke Cleanliness** | `python scripts/check_spoke_cleanliness.py` | Check spoke script budget ($\le 15$ standalone scripts) |

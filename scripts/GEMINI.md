@@ -38,7 +38,7 @@ In this mode, enforce these rules with maximum strictness:
 - Single-shot response (no follow-ups)
 - Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML frontmatter, etc.)
 
-## Architecture Reference (v8.15.13 — 4-Tier Native ASR Caption Hierarchy, Ground Truth Fallback & Multi-Evidence Hooks)
+## Architecture Reference (v8.15.13 — Deep Module Seams, SSoT Versioning & Architectural Budgets)
 
 ### LLM Routing (3-Tier Cascade)
 - **Reasoning Tier 1 (Primary)**: Antigravity CLI cục bộ (`agy.exe`) — `claude-opus-4-6-thinking` (Zero VPN, Zero 429, ~6.5s)
@@ -50,6 +50,10 @@ In this mode, enforce these rules with maximum strictness:
 - **WinError 206 Safeguard**: CLI payload limits are safely raised to **30,000 chars** by natively invoking `CreateProcessW` (bypassing `cmd.exe`). Only payloads > 30,000 chars bypass CLI to HTTP REST APIs.
 - **Round-Robin Load Balancing**: For bulk tasks, `call_llm(strategy="round_robin")` rotates the primary tier across all 3 tiers to multiply the total RPM capacity and avoid rate-limiting.
 - **Deterministic Defense-in-Depth (v8.15.7 / v8.15.10)**: Pre-save regex sanitizer `clean_wikilink_quotes()` bóc tách triệt để backticks bao quanh wikilinks, tự động chữa chimeric Mermaid edge labels thành pipe syntax `===>|"label"|`, đảo ngược thực thể `#40;` và `#41;` bị rò rỉ ngoài Mermaid về `()` chuẩn, và chuẩn hóa toán tử `≥`/`≤`; prompt cấm dùng backticks trong ví dụ cú pháp (dùng thẻ `<example>`).
+- **Deterministic Governance Test Suites (v8.15.13)**: Codebase được bảo vệ bởi 3 chốt kiểm soát tự động:
+  1. `test_agent_constitution.py`: Đồng bộ sâu phiên bản toàn bộ 10 bề mặt SSoT và kiểm tra cây thư mục README sống.
+  2. `test_codebase_cleanliness.py`: Đảm bảo 100% không rò rỉ đường dẫn máy (Machine-State Clean) và độ sâu import Hub hợp lệ.
+  3. `test_architectural_budgets.py`: Giám sát ngân sách dòng tệp $\le 350$ dòng và ngân sách hàm AST $\le 50$ dòng qua bảng Bánh cóc (Zero-Slack Ratchets).
 
 ### Model Assignments
 - **Vision/OCR**: Gemini REST API (`gemini-3.1-flash-lite-preview`) — `google-genai` SDK
