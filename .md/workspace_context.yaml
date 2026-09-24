@@ -8,8 +8,10 @@ project:
   name: "vvc-second-brain"
   corpus_name: "vvChu/vvc-second-brain-scripts"
   archetype: "knowledge_corpus"
-  type: "Second Brain / Autonomous Zettelkasten Knowledge Base"
+  type: "knowledge_corpus"
   project_type: "knowledge_corpus"
+  additional_bundles:
+    - "_software"
   version: "v8.15.13"
   current_milestone: "v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages"
   hub_path: "D:/GitHubProjects/ccba-agent-platform" # ccba:allow-machine-path Windows primary; Linux fallback: /home/vvc/ccba/ccba-agent-platform, or CCBA_HUB_PATH env var

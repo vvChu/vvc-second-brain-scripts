@@ -7,6 +7,9 @@ bundle: _software
 tier: kernel
 user-invocable: true
 command: /ccba-diagnosing-bugs
+metadata:
+  version: "1.0.0"
+  author: "CCBA Hub"
 gpi:
   s: 4.0
   k: 2.0
@@ -105,6 +108,8 @@ Do not proceed until you have reproduced **and** minimised.
 ## Phase 3 — Hypothesise
 
 Generate **3–5 ranked hypotheses** before testing any of them. Single-hypothesis generation anchors on the first plausible idea.
+
+- **Complex & Non-Deterministic Failures:** For multi-service, distributed, or non-deterministic bugs where hypotheses risk being fragmented or anchored, invoke [`/ccba-issue-tree`](../ccba-issue-tree/SKILL.md) to construct a Diagnostic Why-Tree (MECE) before proceeding to falsification tests.
 
 Each hypothesis must be **falsifiable**: state the prediction it makes.
 

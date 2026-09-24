@@ -100,7 +100,7 @@ Khi người dùng chọn một issue từ backlog, Agent thực hiện quy trì
 1. **Chuẩn bị môi trường & Sanitize dữ liệu:**
    - Tạo thư mục scratch: `mkdir -p .md/scratch`
    - Sanitize slug từ tiêu đề issue (chỉ giữ ký tự `[a-z0-9\-]`, tối đa 40 ký tự) để chống Shell Injection.
-   - Xác định branch chuẩn: `${TYPE}/issue-${ID}-${SLUG}`
+   - Xác định branch chuẩn: `feat/issue-<id>-<slug>` (hoặc `fix/issue-<id>-<slug>`).
 2. **Đăng Claim Notice máy-đọc-được (Machine-Parseable Claim Notice):**
    - Soạn thảo nội dung khóa tại `.md/scratch/claim_notice_${ID}.md`:
      ```markdown

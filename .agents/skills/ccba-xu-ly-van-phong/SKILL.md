@@ -28,6 +28,13 @@ triggers:
 - office
 - ccba-docx
 - docx
+- điền form word
+- fill form doc
+- form-filler
+- layout guard
+metadata:
+  author: CCBA
+  version: 2.1.0
 ---
 
 # Xử lý Văn phòng
@@ -54,6 +61,7 @@ Cách dùng tool, thư viện, quy trình kỹ thuật. Đọc file phù hợp v
 | `resources/pdf.md` | Xử lý PDF cục bộ. Phân biệt PDF digital vs PDF scan |
 | `resources/office-xml.md` | Kỹ thuật Unpack/Pack XML — giữ nguyên format file mẫu, chỉ thay nội dung |
 | `resources/convert.md` | Pipeline chuyển đổi: MD→DOCX, PDF→DOCX, DOCX→PDF |
+| `resources/form-filling.md` | Điền form Word (.doc/.docx) bảo toàn bố cục & chống vỡ trang (Dual-Engine) |
 
 ---
 
@@ -168,5 +176,12 @@ Khi thực thi các tác vụ chuyên sâu, Agent sử dụng công cụ `view_f
 
 | Tệp Tham Chiếu | Ngữ Cảnh Triệu Hồi & Mục Đích Sử Dụng |
 | :--- | :--- |
+| `references/office_standards_overview.md` | Bộ tiêu chuẩn xử lý văn bản, tài liệu, bảng biểu & báo cáo doanh nghiệp |
 | `references/docx_engine_guide.md` | Hướng dẫn chi tiết chèn nhận xét (comments) và theo dõi thay đổi (tracked changes) trong tài liệu Word |
+| `references/docx-js.md` | Hướng dẫn tạo lập, định dạng và xuất bản tài liệu docx bằng thư viện docx (JavaScript) |
+| `references/ooxml.md` | Hướng dẫn phân giải, thao tác trực tiếp với cấu trúc Office Open XML (OOXML) |
 
+## Bộc Lộ Dần & Cấu Trúc Tinh Gọn (Progressive Disclosure)
+* **Cấu trúc tài liệu Level 3:** Phân tách rõ ràng giữa quy trình cốt lõi và tài liệu hướng dẫn chuyên sâu qua bảng chỉ mục Level 3.
+* **Tham chiếu liên kết:** Mọi tài liệu mở rộng tuân thủ cơ chế bộc lộ dần theo cấp độ (Level 1/2/3 Progressive Disclosure) và được dẫn xuất qua bảng chỉ mục Level 3.
+* **Chống rác dữ liệu (Anti-Debris Invariant):** Không để lại comment nháp, TODO tạm thời hay các chỉ thị thừa không cần thiết.
