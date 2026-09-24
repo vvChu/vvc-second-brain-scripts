@@ -21,6 +21,12 @@ from core.config import cfg
 from core.file_lock import CrossProcessFileLock
 from core.frontmatter import normalize_stem
 from core.log import log
+from core.taxonomy import (
+    DOMAIN_ALIASES,
+    GRAND_DOMAINS,
+    normalize_domain_tag,
+    resolve_grand_domains,
+)
 from core.vault import scan_all_concepts, scan_all_sources
 from services.moc_mermaid import (
     build_mermaid_overview as _build_mermaid_overview,
@@ -34,83 +40,7 @@ from services.moc_mermaid import (
 _logger = logging.getLogger("vvc.maintain")
 
 DOMAIN_MOC_THRESHOLD = 15  # Min concepts to create a Domain MOC
-
-def _normalize_domain_tag(raw_tag: str) -> str:
-    """Normalize a domain tag by stripping Vietnamese diacritics and symbols."""
-    s = raw_tag.replace("đ", "d").replace("Đ", "D")
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(c for c in s if not unicodedata.combining(c))
-    return s.replace("-", "_").replace("/", "_").lower().strip()
-
-
-# Canonical taxonomy mapping to prevent domain fragmentation
-DOMAIN_ALIASES: dict[str, str] = {
-    "ai": "artificial_intelligence",
-    "hr": "human_resources",
-    "phat_trien_ban_than": "personal_development",
-    "organization_design": "organizational_design",
-    "learning_methods": "learning_methodology",
-    "business_management": "management",
-    "quan_tri": "management",
-    "quan_ly": "management",
-    "chien_luoc": "strategy",
-    "cong_nghe": "technology",
-    "nhan_su": "human_resources",
-    "nhan_thuc": "cognition",
-    "tri_tue_nhan_tao": "artificial_intelligence",
-    "tam_ly": "psychology",
-    "triet_hoc": "philosophy",
-    "giao_duc": "education",
-    "phuong_phap_luan": "learning_methodology",
-    "ban_hang": "business",
-    "kinh_doanh": "business",
-    "quan_tri_kinh_doanh": "business",
-    "to_chuc": "organizational_design",
-    "quan_tri_to_chuc": "organizational_design",
-    "tri_thuc": "learning_methodology",
-    "quyet_dinh": "cognition",
-    "ra_quyet_dinh": "cognition",
-}
-
-GRAND_DOMAINS = {
-    "tech": {
-        "title": "💻 Công Nghệ & Hệ Thống (Technology & Systems)",
-        "keywords": [
-            "ai", "artificial_intelligence", "machine_learning", "deep_learning",
-            "computing", "digital", "data", "engineering", "software", "technology",
-            "computer_science", "security", "bim", "system"
-        ],
-    },
-    "cognition": {
-        "title": "🧠 Nhận Thức & Phát Triển (Cognition & Growth)",
-        "keywords": [
-            "cognition", "cognitive", "learning", "neuroscience", "psychology", "philosophy",
-            "phat_trien", "personal", "education", "epistemology", "decision_making",
-            "mental_model", "thinking"
-        ],
-    },
-    "business": {
-        "title": "💰 Kinh Doanh & Tài Chính (Business & Economics)",
-        "keywords": [
-            "business", "economics", "entrepreneurship", "finance", "sales",
-            "marketing", "pricing", "commerce"
-        ],
-    },
-    "management": {
-        "title": "👥 Quản Trị & Chiến Lược (Management & Strategy)",
-        "keywords": [
-            "management", "culture", "hr", "human_resources", "innovation",
-            "leadership", "organization", "organizational_behavior",
-            "organizational_design", "strategy", "productivity", "knowledge_management"
-        ],
-    },
-    "society_science": {
-        "title": "🌐 Xã Hội, Pháp Luật & Khoa Học (Society, Law & Science)",
-        "keywords": [
-            "society", "sociology", "law", "legal", "game_theory", "policy", "science"
-        ],
-    },
-}
+_normalize_domain_tag = normalize_domain_tag
 
 
 def _safe_write_text(path: Path, content: str) -> bool:

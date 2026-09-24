@@ -1,7 +1,7 @@
 """Tests for services.wiki_health Deep Module Package Interface Contracts.
 
 Verifies:
-1. Direct package imports for all 20 symbols and backward compatibility contracts.
+1. Direct package imports for all 22 symbols and backward compatibility contracts.
 2. Identity preservation with individual submodules.
 3. Weekly synthesis re-export preservation.
 4. Whitelist stubs loading contract (preventing config.yaml relative path regressions).
@@ -17,6 +17,7 @@ import pytest
 
 import services.weekly_synthesis as ws
 import services.wiki_health as wh
+import services.wiki_health.bridge_finder as bf
 import services.wiki_health.code_pill_cleaner as cpc
 import services.wiki_health.domain_enricher as de
 import services.wiki_health.link_healer as lh
@@ -26,8 +27,9 @@ import services.wiki_health.title_standardizer as ts
 
 
 def test_package_exports_all_symbols():
-    """Verify all 20 symbols are exported and accessible directly from services.wiki_health."""
+    """Verify all 22 symbols are exported and accessible directly from services.wiki_health."""
     # Types & Constants
+    assert hasattr(wh, "BridgeCandidate")
     assert hasattr(wh, "LintReport")
     assert hasattr(wh, "_CODE_PILL_LINK_PATTERN")
     assert hasattr(wh, "_REJECT_PATTERNS")
@@ -36,6 +38,7 @@ def test_package_exports_all_symbols():
     assert hasattr(wh, "MEDIA_EXTENSIONS")
 
     # Core Classes
+    assert hasattr(wh, "BridgeCandidateFinder")
     assert hasattr(wh, "VaultLinter")
     assert hasattr(wh, "LinkHealer")
     assert hasattr(wh, "DomainEnricher")
@@ -58,6 +61,9 @@ def test_package_exports_all_symbols():
 
 def test_symbol_identities_with_submodules():
     """Verify package symbols are identical references to their submodule origins."""
+    assert wh.BridgeCandidateFinder is bf.BridgeCandidateFinder
+    assert wh.BridgeCandidate is bf.BridgeCandidate
+
     assert wh.VaultLinter is lint.VaultLinter
     assert wh.lint_vault is lint.lint_vault
     assert wh._LINK_PATTERN is lint._LINK_PATTERN

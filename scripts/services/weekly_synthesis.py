@@ -25,6 +25,33 @@ _logger = logging.getLogger("vvc.weekly_synthesis")
 __all__ = ["generate_weekly_synthesis"]
 
 
+def _render_bridge_candidates(candidates: list[dict]) -> list[str]:
+    """Render the Bridge Candidates table for cross-domain synthesis.
+
+    Enforces visual ergonomics: table pipe escaping [[stem\\|title]] and zero code-pills.
+    """
+    if not candidates:
+        return []
+    lines = [
+        f"## 🌉 Cầu Nối Tri Thức Liên Miền (Bridge Candidates) [{len(candidates)}]\n\n",
+        "> [!tip]+ Top Khái Niệm Cầu Nối Tri Thức (Cross-Domain Bridges)\n",
+        "> Các khái niệm có độ đa dạng kết nối cao giữa các đại lĩnh vực, thích hợp để tổng hợp chéo chủ đề.\n>\n",
+        "| Điểm Cầu Nối | Khái Niệm | Lĩnh Vực Gốc | Kết Nối Đến | Bậc |\n",
+        "|:---:|---|---|---|:---:|\n",
+    ]
+    for c in candidates:
+        score = f"{c.get('bridge_score', 0.0):.3f}"
+        stem = c.get("stem", "")
+        raw_title = str(c.get("title") or stem)
+        clean_title = raw_title.replace(r"\|", "|").replace("|", r"\|")
+        domains = ", ".join(c.get("domains", [])) or "*(chưa gắn)*"
+        connected = ", ".join(c.get("connected_domains", [])) or "*(không có)*"
+        deg = c.get("degree", 0)
+        lines.append(f"| `{score}` | [[{stem}\\|{clean_title}]] | {domains} | {connected} | {deg} |\n")
+    lines.append("\n")
+    return lines
+
+
 def generate_weekly_synthesis(
     report: LintReport | None = None,
     healed_links: int = 0,
@@ -204,6 +231,11 @@ def generate_weekly_synthesis(
     # Knowledge Gaps & Advice
     if academic_advice and academic_advice.strip():
         lines.append(academic_advice.strip() + "\n\n")
+
+    # Bridge Candidates for Cross-Domain Synthesis
+    bridge_candidates = report.get("bridge_candidates", [])
+    if bridge_candidates:
+        lines.extend(_render_bridge_candidates(bridge_candidates))
 
     # Check for domain suggestions from sleep
     suggestion_file = cfg.state_dir / ".domain_suggestions.json"
