@@ -31,7 +31,7 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ('utf-8', 'utf8'):
 SCRIPT_DIR = Path(__file__).resolve().parent
 GRAPH_DATA_PATH = SCRIPT_DIR / "graph_data.json"
 
-VAULT_ROOT = Path(r"d:/VvC_Notes")
+VAULT_ROOT = Path(__file__).resolve().parent.parent.parent
 DIR_CONCEPTS = VAULT_ROOT / "04 - Permanent" / "concepts"
 DIR_SOURCES = VAULT_ROOT / "04 - Permanent" / "sources"
 DIR_TRANSCRIPTS = VAULT_ROOT / "04 - Permanent" / "sources" / "transcripts"
@@ -436,7 +436,7 @@ def main() -> int:
         print(
             f"{RED}ERROR: {GRAPH_DATA_PATH} not found.{RESET}\n"
             "  Run parse_graph.py first to generate graph_data.json.\n"
-            "  Example:  python d:/VvC_Notes/scripts/knowledge_graph/parse_graph.py"
+            "  Example:  python scripts/knowledge_graph/parse_graph.py"
         )
         return 1
 

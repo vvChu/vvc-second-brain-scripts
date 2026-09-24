@@ -142,7 +142,7 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
         raw: dict[str, Any] = yaml.safe_load(f)
 
     vault = raw.get("vault", {})
-    root = Path(os.environ.get("VVC_VAULT_ROOT", vault.get("root", "D:\\VvC_Notes")))
+    root = Path(os.environ.get("VVC_VAULT_ROOT", vault.get("root", "D:\\VvC_Notes")))  # ccba:allow-machine-path
 
     # 2. Load env from vault root if it exists
     _load_env_file(root / ".env")
