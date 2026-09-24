@@ -11,7 +11,7 @@ user-invocable: true
 disable-model-invocation: true
 command: /ccba-release-feature
 metadata:
-  version: "1.1.0"
+  version: "1.2.1"
   author: "CCBA Hub"
 triggers:
 - release
@@ -22,11 +22,18 @@ triggers:
 
 Quy trình tự động hóa tích hợp mã nguồn (merge), kiểm tra Copilot Review, tự động đóng issue và dọn dẹp môi trường.
 
-## Bước 0: Thực thi Kiểm thử Toàn diện Slow Integration Tests (Pre-release Gate)
+## Bước 0: Kiểm soát Buồng kín & Kiểm thử Toàn diện (Hermetic Pre-release Gate)
 
-*Quy tắc bắt buộc:* Trước khi thực hiện merge PR, Agent **bắt buộc phải chạy kiểm thử toàn bộ tập test `slow` và `stress`** để đảm bảo các bài test cào mạng/tích hợp không bị hỏng ngầm (test decay):
+*Quy tắc bắt buộc:* Trước khi thực hiện merge PR, Agent **bắt buộc phải tuân thủ Giao thức TRIHT (Tiered Release Integrity & Hermetic Teardown)** gồm 3 giai đoạn để ngăn chặn hoàn toàn nguy cơ mất mã nguồn và chống gián đoạn chuyển nhánh:
 
-1. **Kiểm tra môi trường hiện tại (Hub vs Spoke):**
+1. **Cổng 0.1 — Khóa Sạch Sẽ Tiền Kiểm Tra (Pre-Flight Cleanliness Lock):**
+   - *Bắt buộc kiểm tra:* Repository phải ở trạng thái sạch sẽ 100% (không có tệp modified hoặc untracked chưa commit). Tuyệt đối cấm release khi mã nguồn cục bộ chưa được commit vào PR:
+     ```bash
+     python scripts/validation/check_release_cleanliness.py --phase pre
+     ```
+   - Nếu phát hiện tệp chưa commit, Agent **phải dừng quy trình ngay lập tức** để commit hoặc stash có chủ đích trước khi tiếp tục.
+
+2. **Cổng 0.2 — Thực thi Kiểm thử Toàn diện Slow Integration Tests:**
    - **Tại Hub Platform (`ccba-agent-platform`):**
      ```bash
      python scripts/eval/run_isolated_tests.py --all --stress
@@ -38,11 +45,18 @@ Quy trình tự động hóa tích hợp mã nguồn (merge), kiểm tra Copilot
      # hoặc chạy toàn bộ test cô lập cục bộ:
      python scripts/eval/run_isolated_tests.py --all
      ```
-2. Nếu có bài test nào thất bại, Agent **phải dừng quy trình release ngay lập tức** để tiến hành sửa lỗi trước khi tiếp tục.
+   - Nếu có bài test nào thất bại, Agent **phải dừng quy trình release ngay lập tức** để sửa lỗi.
+
+3. **Cổng 0.3 — Hàng rào Thu hồi Tệp tạm Sau Kiểm thử (Post-Test Scoped Teardown Gate):**
+   - *Bắt buộc kiểm tra:* Sau khi bài test chạy xong, đối soát delta trạng thái working tree. Tự động thu hồi an toàn các cache kiểm thử đã biết (`embeddings.npy`, `ci_log.txt`, `tmp_*.json`) và chặn đứng nếu có test suite sửa đổi mã nguồn:
+     ```bash
+     python scripts/validation/check_release_cleanliness.py --phase post
+     ```
+   - Nếu lệnh trả về exit code 1 (phát hiện mã nguồn bị sửa đổi hoặc tệp lạ), Agent **dừng khẩn cấp** để điều tra bài test vi phạm.
 
 ---
 
-**Tiêu chí hoàn thành:** 100% bài kiểm thử slow và stress đều vượt qua thành công.
+**Tiêu chí hoàn thành:** Cổng 0.1 sạch 100%, 100% bài kiểm thử Cổng 0.2 pass, và Cổng 0.3 dọn dẹp buồng kín thành công.
 
 ---
 
@@ -51,8 +65,13 @@ Quy trình tự động hóa tích hợp mã nguồn (merge), kiểm tra Copilot
 1. **Lấy thông tin PR và Branch hiện hành (Platform-Agnostic):**
    ```bash
    git branch --show-current
-   gh pr view --json number,title,state,headRefName
+   gh pr view --json number,title,state,headRefName,body
    ```
+
+   - **Sàng lọc Mức độ Nguy hiểm (Merge Danger Triage):**
+     * Đọc trường `## Merge Danger Assessment` từ mô tả PR:
+       - Nếu **Two-way door** và bán kính **Localized**: Áp dụng *Fast-path review* (kiểm tra nhanh CI và Copilot comments để merge).
+       - Nếu **One-way door** hoặc bán kính **Monorepo-wide / Spoke-affecting**: Bắt buộc tiến hành *Deep review*, kiểm tra kỹ lưỡng các ảnh hưởng gãy vỡ hợp đồng giao diện, tính tương thích ngược với Spoke downstream trước khi quyết định merge.
 
 2. **Kiểm tra xác thực GitHub CLI (`gh`):**
    ```bash
@@ -126,15 +145,41 @@ Quy trình tự động hóa tích hợp mã nguồn (merge), kiểm tra Copilot
    ```
    *Lưu ý:* Nếu có thay đổi chưa commit, hãy commit hoặc stash trước khi chuyển nhánh.
 
-2. Quay về branch `main` và kéo code mới nhất:
+2. Thu hồi tiến trình kiểm thử mồ côi và quay về branch `main` an toàn (chống treo Pager):
    ```bash
-   git checkout main && git pull origin main
+   python -c "from scripts.eval.process_safety import ensure_single_instance; ensure_single_instance('pytest')"
+   git --no-pager checkout main && git pull origin main
    ```
 
 3. Xóa branch feature cục bộ an toàn:
    ```bash
    git branch -D [feature_branch_name]
    ```
+
+3b. **Dọn dẹp triệt để Stale Tracking Refs & Nhánh Mồ Côi Remote Đã Merge (ADR-0045 & Git Hygiene):**
+   - Đồng bộ và dọn sạch các nhánh remote đã bị xóa:
+     ```bash
+     git fetch --prune
+     ```
+   - Rà soát các nhánh tạm trên remote có liên quan đến tính năng vừa phát hành:
+     ```bash
+     git ls-remote --heads origin "*[feature_keyword]*"
+     ```
+   - *Quy tắc An Toàn Xóa Nhánh Remote (Safe Remote Deletion Invariant):*
+     Agent **CHỈ ĐƯỢC PHÉP** xóa nhánh remote nếu nhánh đó thỏa mãn một trong hai điều kiện bất biến:
+     1. Là nhánh head chính thức của chính PR vừa được squash-merge thành công (`gh pr view --json headRefName`).
+     2. Hoặc nhánh remote đó đã được tích hợp hoàn toàn vào `origin/main` (kiểm tra `git log origin/main..origin/[branch_name]` trả về rỗng).
+     Tuyệt đối cấm xóa các nhánh chưa merge (có commit mới hơn `origin/main`) để tránh xóa nhầm nhánh đang phát triển dở dang của đồng đội trên thiết bị khác!
+     ```bash
+     # Kiểm tra diff (nếu không có output tức là nhánh đã được merge 100% vào main):
+     git log origin/main..origin/[orphan_branch_name] --oneline
+     # Chỉ thực hiện xóa an toàn khi lệnh trên không trả về commit nào:
+     git push origin --delete [orphan_branch_name]
+     ```
+   - Nếu đang thao tác trên Hub, đồng bộ bản cập nhật kỹ năng sang Spoke:
+     ```bash
+     python scripts/sync_spoke.py --spoke [spoke_path] --sync-item ccba-release-feature --apply
+     ```
 
 4. **Tự động đóng Issue Cục bộ (Offline Knowledge Base Mirror):**
    - Nếu PR giải quyết một issue cụ thể (ví dụ `#228`), kiểm tra tệp tin tương ứng tại `.md/knowledge/issues/issue-XXX.md`.

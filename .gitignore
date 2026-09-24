@@ -15,6 +15,7 @@ __pycache__/
 !.md/**/
 !.md/**/*.md
 !.md/**/*.yaml
+.md/backups/
 .trash/
 .stignore
 .env

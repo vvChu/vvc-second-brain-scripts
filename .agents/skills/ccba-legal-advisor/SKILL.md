@@ -27,6 +27,7 @@ Khi tiếp nhận yêu cầu từ người dùng, Agent phân loại câu hỏi 
 * **Cấp độ 1 (Câu hỏi tra cứu trực diện / Khái niệm chung):** Đã đủ thông tin hoặc chỉ hỏi định nghĩa $\rightarrow$ Chuyển thẳng sang Bước 3 (Fast-track, không hỏi lại).
 * **Cấp độ 2 (Câu hỏi dự án đơn mục tiêu nhưng thiếu 1–2 tham số cốt lõi):** Ví dụ thiếu chiều cao, diện tích, hoặc cấp công trình $\rightarrow$ Kích hoạt phỏng vấn ngắn 1 lượt.
 * **Cấp độ 3 (Dự án tổ hợp phức tạp / Vướng mắc tranh chấp / Điều khoản chuyển tiếp):** Kích hoạt cơ chế Phỏng vấn Thích ứng Nhiều Nấc (Adaptive Diagnostic Depth).
+  - *Tranh chấp đa bên & Khiếu nại hợp đồng:* Triệu hồi [`/ccba-issue-tree`](../ccba-issue-tree/SKILL.md) để dựng Diagnostic Why-Tree (bóc tách chuỗi trách nhiệm giữa Chủ đầu tư, Nhà thầu, Tư vấn giám sát) và Solution How-Tree (đánh giá phương án hòa giải vs trọng tài VIAC) trước khi xuất Phiếu Ý kiến Pháp lý chính thức.
 - **Tiêu chí hoàn thành:** Phân loại chính xác cấp độ phức tạp của câu hỏi để định tuyến xử lý phù hợp.
 
 ---
@@ -49,10 +50,19 @@ Khi tiếp nhận yêu cầu từ người dùng, Agent phân loại câu hỏi 
 > [!CRITICAL]
 > **MANDATORY GROUNDING INVARIANT (RÀO CHẮN BẮT BUỘC):**
 > Tuyệt đối **KHÔNG ĐƯỢC** xuất kết luận pháp lý chỉ dựa trên bộ nhớ mô hình (LLM parametric memory).
-> Agent **BẮT BUỘC** phải thực thi lệnh gọi công cụ kiểm chứng (`grep_search`, `find_by_name` hoặc `view_file`)
-> theo thứ tự phân giải đường dẫn 3 tầng:
-> 1. **Tầng 1 (Cục bộ Spoke):** Quét thư mục `.\.md\legal_docs\` tại Spoke hiện tại.
-> 2. **Tầng 2 (Spoke Tri Thức Gốc):** Tự động quét thư mục lân cận `<ccba-legal-knowledge>/legal_docs/` (Virtual Hub Fallback).
+> Agent **BẮT BUỘC** phải thực thi kiểm chứng thực tế và ưu tiên sử dụng Deep Seam CLI để chống cháy ngữ cảnh (tiết kiệm 95% token so với đọc file thô):
+> - **Lệnh trích xuất điều khoản trực tiếp (Ưu tiên số 1):**
+>   ```bash
+>   python -m ccba_legal get-clause --doc <doc_id> --clause <clause_id>
+>   ```
+> - **Lệnh tìm kiếm ngữ nghĩa:**
+>   ```bash
+>   python -m ccba_legal query "<nội_dung_cần_tra_cứu>"
+>   ```
+> 
+> Thứ tự phân giải đường dẫn 3 tầng tự động:
+> 1. **Tầng 1 (Virtual-First / Cục bộ Spoke):** Trích xuất qua Deep Seam CLI hoặc quét thư mục `.\.md\legal_docs\` tại Spoke. Khi cần cô lập ngoại tuyến, kéo chọn lọc đúng văn bản dự án: `python -m ccba_legal sync --pull-latest --doc <doc_id>`.
+> 2. **Tầng 2 (Spoke Tri Thức Gốc):** Tự động phát hiện vị trí `ccba-legal-knowledge` trên máy tính thông qua con trỏ `hub_path` trong `.md/workspace_context.yaml` (tra cứu tự động qua Hub registry) hoặc biến môi trường `CCBA_LEGAL_KNOWLEDGE_PATH`.
 > 3. **Tầng 3 (Danh mục SSOT):** Kiểm tra `legal_registry.yaml` và `metadata.yaml` của từng gói để xác nhận trường `relations.replaces` nhằm loại bỏ triệt để văn bản/quy chuẩn đã hết hiệu lực.
 
 * Truy xuất cây điều khoản AST `clauses.json` và văn bản thuần khiết `<slug>.md` của các gói văn bản.
@@ -103,3 +113,13 @@ Mọi câu trả lời cuối cùng bắt buộc phải được định dạng 
 - [x] Trích dẫn đúng 100% Điều khoản, Phụ lục và Bảng số liệu từ kho tri thức OKF v2.4 kèm link file nguồn thực tế.
 - [x] Tuân thủ Mandatory Grounding Invariant, cấm hoàn toàn suy đoán từ bộ nhớ tham số mà không có công cụ đọc file.
 - [x] Vượt qua cổng `ccba-harness verify-patch --preset doc` với Exit Code 0 trước khi bàn giao cho người dùng.
+
+## 5. Rào Chắn Điểm Liệt & Cập Nhật Hiệu Lực Văn Bản (Hard Floor Invariant)
+* **TUYỆT ĐỐI KHÔNG** trích dẫn các văn bản quy phạm pháp luật đã hết hiệu lực thi hành hoặc bị thay thế:
+  - Nghị định 10/2021/NĐ-CP -> Bắt buộc sử dụng **Nghị định 206/2026/NĐ-CP** (Quản lý Chi phí).
+  - Nghị định 15/2021/NĐ-CP & Nghị định 175/2024/NĐ-CP (đã bị thay thế) -> Bắt buộc sử dụng **Nghị định 217/2026/NĐ-CP** (Quản lý Hoạt động Xây dựng).
+  - Nghị định 06/2021/NĐ-CP (đã bị thay thế) -> Bắt buộc sử dụng **Nghị định 207/2026/NĐ-CP** (Quản lý Chất lượng & Bảo trì).
+  - Nghị định 136/2020/NĐ-CP -> Bắt buộc sử dụng **Nghị định 105/2025/NĐ-CP** (PCCC & CNCH).
+  - QCVN 06:2020/BXD -> Bắt buộc sử dụng **QCVN 06:2022/BXD & Sửa đổi 1:2023** (An toàn cháy cho nhà và công trình).
+  - Thông tư 149/2020/TT-BCA -> Bắt buộc tra cứu văn bản cập nhật mới nhất.
+* Mọi vi phạm trích dẫn văn bản hết hiệu lực sẽ bị đánh rớt ngay lập tức (Hard Floor Fail-Fast: 0.0%).
