@@ -15,6 +15,7 @@ from pathlib import Path
 from core.config import cfg
 from core.llm import call_llm
 from core.log import log
+from core.vector_store import VectorStore
 from pipeline.post_process import save_concept
 
 _logger = logging.getLogger("vvc.md_process")
@@ -64,22 +65,23 @@ def process_markdown_file(file_path: Path) -> bool:
     saved_count = 0
     saved_paths: list[Path] = []
 
-    for concept in concepts:
-        concept = concept.strip()
-        if len(concept) < 100:
-            continue
+    with VectorStore.get_instance().batch():
+        for concept in concepts:
+            concept = concept.strip()
+            if len(concept) < 100:
+                continue
 
-        # Strip markdown fences
-        concept = re.sub(r"^```(?:markdown|md)?\s*\n", "", concept)
-        concept = re.sub(r"\n```\s*$", "", concept)
+            # Strip markdown fences
+            concept = re.sub(r"^```(?:markdown|md)?\s*\n", "", concept)
+            concept = re.sub(r"\n```\s*$", "", concept)
 
-        if not concept.startswith("---"):
-            continue
+            if not concept.startswith("---"):
+                continue
 
-        saved_path = save_concept(concept)
-        if saved_path:
-            saved_count += 1
-            saved_paths.append(saved_path)
+            saved_path = save_concept(concept)
+            if saved_path:
+                saved_count += 1
+                saved_paths.append(saved_path)
 
     log("synth", f"Created {saved_count} concepts from {file_path.name}")
     _logger.info(f"Created {saved_count} concepts from {file_path.name}")
