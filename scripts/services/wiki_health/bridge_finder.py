@@ -46,11 +46,12 @@ class BridgeCandidateFinder:
     def __init__(self, concepts: list[dict] | None = None) -> None:
         """Initialize with concepts list or lazy-load from vault."""
         if concepts is not None:
-            self.concepts = concepts
+            raw_concepts = concepts
         else:
             from core.vault import scan_all_concepts
 
-            self.concepts = scan_all_concepts()
+            raw_concepts = scan_all_concepts()
+        self.concepts = sorted(raw_concepts, key=lambda c: str(c.get("_stem", "")))
 
     def _build_alias_resolver(self) -> dict[str, str]:
         """Build resolver mapping stems and aliases to canonical concept stems."""
