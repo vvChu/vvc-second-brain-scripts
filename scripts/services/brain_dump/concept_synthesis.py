@@ -15,6 +15,7 @@ from core.config import cfg
 from core.llm import call_llm
 from core.log import log
 from core.frontmatter import normalize_stem
+from core.vector_store import VectorStore
 from pipeline.post_process import save_concept
 from pipeline.synthesize import fix_section_ordering
 from services.url_fetcher import fetch_url_title
@@ -24,8 +25,6 @@ _logger = logging.getLogger("vvc.dump")
 
 from core.prompts.services import BRAIN_DUMP_MAP as _MAP_PROMPT  # noqa: E402
 from core.prompts.services import BRAIN_DUMP_REDUCE as _REDUCE_PROMPT  # noqa: E402
-
-
 
 def _determine_callout_style(alt_text: str) -> tuple[str, str, str]:
     """Determines premium callout type, emoji, and display title based on alt-text.
@@ -490,57 +489,57 @@ def _synthesize_and_save_concepts(dump_text: str, url_content: str, source_ref: 
 
     # --- REDUCE STEP (Synthesis) ---
     saved_stems = []
-    for idx, concept_meta in enumerate(concepts_list):
-        c_title = concept_meta.get("title", f"Concept {idx+1}")
-        c_summary = concept_meta.get("summary", "")
-        
-        _logger.info(f"Reducing concept {idx+1}/{len(concepts_list)}: {c_title}")
-        
-        reduce_prompt = _REDUCE_PROMPT.format(
-            dump_text=dump_text,
-            url_content=url_content or "(không có URL content)",
-            concept_title=c_title,
-            concept_summary=c_summary,
-            today=today,
-            source_ref=source_ref
-        )
-        
-        concept_body = call_llm(reduce_prompt, task="synthesis")
-        if not concept_body or len(concept_body) < 100:
-            _logger.warning(f"Failed to generate concept: {c_title}")
-            continue
+    with VectorStore.get_instance().batch():
+        for idx, concept_meta in enumerate(concepts_list):
+            c_title = concept_meta.get("title", f"Concept {idx+1}")
+            c_summary = concept_meta.get("summary", "")
+            _logger.info(f"Reducing concept {idx+1}/{len(concepts_list)}: {c_title}")
             
-        # Robustly extract from the first YAML marker (support CRLF and LF)
-        match = re.search(r"(---\r?\n.*)", concept_body, re.DOTALL)
-        if not match:
-            _logger.warning(f"Failed to find YAML frontmatter for: {c_title}")
-            continue
-            
-        concept_clean = match.group(1)
-        concept_clean = re.sub(r"\n```\s*$", "", concept_clean)
-        
-        # Apply strict section ordering
-        concept_clean = fix_section_ordering(concept_clean)
-        
-        # Tự động làm giàu các tham chiếu neo block từ ảnh được nhúng JIT
-        concept_clean = _enrich_concept_references(concept_clean, source_ref)
-        
-        # Add Premium Source Callout at the bottom of the concept
-        if original_url:
-            import datetime as dt
-            time_str = dt.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
-            source_callout = (
-                f"\n\n> [!info]- 🌐 Nguồn thu thập\n"
-                f"> Ghi chép được thu thập từ internet (click để mở)\n"
-                f"> - **Đường dẫn gốc:** [{original_url}]({original_url})\n"
-                f"> - **Thời gian thu thập:** {time_str}\n"
-                f"> - **Tệp nguồn thô:** [[{source_ref}]]\n"
+            reduce_prompt = _REDUCE_PROMPT.format(
+                dump_text=dump_text,
+                url_content=url_content or "(không có URL content)",
+                concept_title=c_title,
+                concept_summary=c_summary,
+                today=today,
+                source_ref=source_ref
             )
-            concept_clean = f"{concept_clean.rstrip()}{source_callout}"
             
-        saved_path = save_concept(concept_clean)
-        if saved_path:
-            saved_stems.append((saved_path.stem, c_title))
+            concept_body = call_llm(reduce_prompt, task="synthesis")
+            if not concept_body or len(concept_body) < 100:
+                _logger.warning(f"Failed to generate concept: {c_title}")
+                continue
+                
+            # Robustly extract from the first YAML marker (support CRLF and LF)
+            match = re.search(r"(---\r?\n.*)", concept_body, re.DOTALL)
+            if not match:
+                _logger.warning(f"Failed to find YAML frontmatter for: {c_title}")
+                continue
+                
+            concept_clean = match.group(1)
+            concept_clean = re.sub(r"\n```\s*$", "", concept_clean)
+            
+            # Apply strict section ordering
+            concept_clean = fix_section_ordering(concept_clean)
+            
+            # Tự động làm giàu các tham chiếu neo block từ ảnh được nhúng JIT
+            concept_clean = _enrich_concept_references(concept_clean, source_ref)
+            
+            # Add Premium Source Callout at the bottom of the concept
+            if original_url:
+                import datetime as dt
+                time_str = dt.datetime.now().strftime('%d/%m/%Y %H:%M:%S')
+                source_callout = (
+                    f"\n\n> [!info]- 🌐 Nguồn thu thập\n"
+                    f"> Ghi chép được thu thập từ internet (click để mở)\n"
+                    f"> - **Đường dẫn gốc:** [{original_url}]({original_url})\n"
+                    f"> - **Thời gian thu thập:** {time_str}\n"
+                    f"> - **Tệp nguồn thô:** [[{source_ref}]]\n"
+                )
+                concept_clean = f"{concept_clean.rstrip()}{source_callout}"
+                
+            saved_path = save_concept(concept_clean)
+            if saved_path:
+                saved_stems.append((saved_path.stem, c_title))
 
     # Two-way cross-link: Source Note → Concept Note
     if saved_stems:

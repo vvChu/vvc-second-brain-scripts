@@ -21,6 +21,7 @@ from core.config import cfg
 from core.llm.gateway_client import call_gateway_vision  # noqa: F401
 from core.log import log
 from core.types import PageData
+from core.vector_store import VectorStore
 from pipeline.book_assets import (
     find_book_md_dir,
     is_decorative_image,
@@ -293,119 +294,117 @@ def process_image_batch(image_paths: list[Path]) -> bool:
     segmented = None
     processed_images: set[Path] = set()
     exclude_hooks: list[str] = []
-
     # Trigger Map-Reduce if we have 1 or more usable pages
     if len(pages_data) >= 1:
         _logger.info(f"Triggering Map-Reduce for {len(pages_data)} pages")
         segmented = segment_concepts([p.to_dict() for p in pages_data], book_name)
-        
         if segmented is not None:
             if not segmented:
                 _logger.info("Map-Reduce actively decided 0 concepts from the input. Skipping concept creation.")
                 processed_images.update(p.image_path for p in pages_data)
                 created_count = -1
             else:
-                for idx, concept in enumerate(segmented):
-                    title = concept["title"]
-                    page_start = concept["page_start"]
-                    page_end = concept["page_end"]
-                    
-                    # Filter pages belonging to this concept
-                    concept_pages = [
-                        p for p in pages_data
-                        if p.page_number is not None and page_start <= p.page_number <= page_end
-                    ]
-                    
-                    if not concept_pages:
-                        _logger.warning(f"Map-Reduce Mismatch: No pages found for concept '{title}' within [{page_start}, {page_end}]. Fallback to index-based.")
-                        # Safe fallback: assign pages based on proportional division of index
-                        chunk_size = max(1, len(pages_data) // len(segmented))
-                        start_idx = idx * chunk_size
-                        end_idx = min(len(pages_data), (idx + 1) * chunk_size)
-                        concept_pages = pages_data[start_idx:end_idx]
-                    
-                    if not concept_pages:
-                        continue
-
-                    combined_h = "\n\n".join(p.highlighted for p in concept_pages)
-                    combined_c = "\n\n".join(p.context for p in concept_pages)
-                    first_p = str(concept_pages[0].page_number or 0)
-                    primary_img = concept_pages[0].image_path
-
-                    # Reduce Step: BM25 Ground Truth Correction
-                    ground_truth = find_ground_truth(combined_h, book_name, page=int(first_p) if first_p and first_p != "0" else None)
-                    if ground_truth.paragraph:
-                        combined_h = correct_ocr(combined_h, ground_truth.paragraph)
-                        _logger.info(f"BM25 matched for concept '{title}': score={ground_truth.score:.1f}")
-
-                    # Reduce Step: Synthesis with structural title guideline
-                    source_ref = find_source_ref(book_name)
-                    guideline = f"\n\n[GUIDELINE: Bạn BẮT BUỘC phải tạo concept note cho khái niệm mang tên chính xác là '{title}']"
-                    
-                    # Add Hook Overlap Prevention Directive and Hybrid XML Marking
-                    exclude_directive = ""
-                    if exclude_hooks:
-                        exclude_directive = (
-                            "\n\n[CRITICAL DIRECTIVE: Để tránh trùng lặp trích dẫn giữa các ghi chú trong cùng một cụm trang (Hook Overlap), bạn TUYỆT ĐỐI KHÔNG ĐƯỢC phép chọn hoặc sử dụng các đoạn trích dẫn sau đây làm Evidence Hook (blockquote đầu ghi chú):\n"
-                        )
-                        for h in exclude_hooks:
-                            exclude_directive += f'- "{h}"\n'
-                            # Hybrid XML Marking: wrap matches in highlighted text
-                            if len(h) > 10:
-                                try:
-                                    escaped_h = re.escape(h)
-                                    pattern = re.compile(escaped_h, re.IGNORECASE)
-                                    combined_h = pattern.sub(lambda m: f"<USED_HOOK>{m.group(0)}</USED_HOOK>", combined_h)
-                                except Exception:
-                                    pass
-                        exclude_directive += "Hãy chọn một câu trích dẫn/highlight khác trong văn bản nguồn để làm Evidence Hook. Các đoạn trích dẫn đã bị hệ thống trước đó dùng làm Hook đã được bọc trong thẻ <USED_HOOK>...</USED_HOOK> ngay trong văn bản nguồn phía trên để bạn dễ nhận biết và tránh xa.]"
-
-                    gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
-                    
-                    # Get JIT chapter diagrams XML catalog for batch
-                    chapter_diagrams = ""
-                    if ground_truth.paragraph and ground_truth.chapter:
-                        chapter_diagrams = _get_chapter_diagrams(
-                            book_name=book_name,
-                            chapter_stem=ground_truth.chapter,
-                            ground_truth_text=ground_truth.paragraph,
-                            page=first_p if first_p != "0" else "",
-                        )
-
-                    content = synthesize_concept(
-                        highlighted=combined_h + guideline + exclude_directive,
-                        context=combined_c,
-                        ground_truth=gt_for_synthesis,
-                        source_name=book_name,
-                        source_ref=source_ref,
-                        chapter="",
-                        page=first_p if first_p != "0" else "",
-                        gt_page=str(ground_truth.page or "") if ground_truth.page else "",
-                        gt_chapter=ground_truth.chapter,
-                        book_macro_context=book_macro_context,
-                        chapter_diagrams=chapter_diagrams,
-                    )
-
-                    if content:
-                        # Reduce Step: Self-Correction
-                        if ground_truth.paragraph:
-                            content = verify_and_correct(content, ground_truth.paragraph)
+                with VectorStore.get_instance().batch():
+                    for idx, concept in enumerate(segmented):
+                        title = concept["title"]
+                        page_start = concept["page_start"]
+                        page_end = concept["page_end"]
                         
-                        # Track hook for subsequent synthesis calls in the same batch
-                        from pipeline.self_correct import _extract_core_idea_blockquote
-                        bq = _extract_core_idea_blockquote(content)
-                        if bq:
-                            clean_bq = _clean_blockquote_quote(bq)
-                            if clean_bq:
-                                exclude_hooks.append(clean_bq)
-                                _logger.info(f"Registered processed hook to exclusion list: '{clean_bq[:40]}...'")
+                        # Filter pages belonging to this concept
+                        concept_pages = [
+                            p for p in pages_data
+                            if p.page_number is not None and page_start <= p.page_number <= page_end
+                        ]
+                        
+                        if not concept_pages:
+                            _logger.warning(f"Map-Reduce Mismatch: No pages found for concept '{title}' within [{page_start}, {page_end}]. Fallback to index-based.")
+                            # Safe fallback: assign pages based on proportional division of index
+                            chunk_size = max(1, len(pages_data) // len(segmented))
+                            start_idx = idx * chunk_size
+                            end_idx = min(len(pages_data), (idx + 1) * chunk_size)
+                            concept_pages = pages_data[start_idx:end_idx]
+                        
+                        if not concept_pages:
+                            continue
+                        combined_h = "\n\n".join(p.highlighted for p in concept_pages)
+                        combined_c = "\n\n".join(p.context for p in concept_pages)
+                        first_p = str(concept_pages[0].page_number or 0)
+                        primary_img = concept_pages[0].image_path
 
-                        # Reduce Step: Save Note & Concept-Centric Image Renaming
-                        saved = save_concept(content, image_path=primary_img, book_name=book_name)
-                        if saved:
-                            created_count += 1
-                            saved_concepts.append(saved)
-                            processed_images.add(primary_img)
+                        # Reduce Step: BM25 Ground Truth Correction
+                        ground_truth = find_ground_truth(combined_h, book_name, page=int(first_p) if first_p and first_p != "0" else None)
+                        if ground_truth.paragraph:
+                            combined_h = correct_ocr(combined_h, ground_truth.paragraph)
+                            _logger.info(f"BM25 matched for concept '{title}': score={ground_truth.score:.1f}")
+
+                        # Reduce Step: Synthesis with structural title guideline
+                        source_ref = find_source_ref(book_name)
+                        guideline = f"\n\n[GUIDELINE: Bạn BẮT BUỘC phải tạo concept note cho khái niệm mang tên chính xác là '{title}']"
+                        
+                        # Add Hook Overlap Prevention Directive and Hybrid XML Marking
+                        exclude_directive = ""
+                        if exclude_hooks:
+                            exclude_directive = (
+                                "\n\n[CRITICAL DIRECTIVE: Để tránh trùng lặp trích dẫn giữa các ghi chú trong cùng một cụm trang (Hook Overlap), bạn TUYỆT ĐỐI KHÔNG ĐƯỢC phép chọn hoặc sử dụng các đoạn trích dẫn sau đây làm Evidence Hook (blockquote đầu ghi chú):\n"
+                            )
+                            for h in exclude_hooks:
+                                exclude_directive += f'- "{h}"\n'
+                                # Hybrid XML Marking: wrap matches in highlighted text
+                                if len(h) > 10:
+                                    try:
+                                        escaped_h = re.escape(h)
+                                        pattern = re.compile(escaped_h, re.IGNORECASE)
+                                        combined_h = pattern.sub(lambda m: f"<USED_HOOK>{m.group(0)}</USED_HOOK>", combined_h)
+                                    except Exception:
+                                        pass
+                            exclude_directive += "Hãy chọn một câu trích dẫn/highlight khác trong văn bản nguồn để làm Evidence Hook. Các đoạn trích dẫn đã bị hệ thống trước đó dùng làm Hook đã được bọc trong thẻ <USED_HOOK>...</USED_HOOK> ngay trong văn bản nguồn phía trên để bạn dễ nhận biết và tránh xa.]"
+
+                        gt_for_synthesis = "" if _is_vietnamese(ground_truth.paragraph) else ground_truth.paragraph
+                        
+                        # Get JIT chapter diagrams XML catalog for batch
+                        chapter_diagrams = ""
+                        if ground_truth.paragraph and ground_truth.chapter:
+                            chapter_diagrams = _get_chapter_diagrams(
+                                book_name=book_name,
+                                chapter_stem=ground_truth.chapter,
+                                ground_truth_text=ground_truth.paragraph,
+                                page=first_p if first_p != "0" else "",
+                            )
+
+                        content = synthesize_concept(
+                            highlighted=combined_h + guideline + exclude_directive,
+                            context=combined_c,
+                            ground_truth=gt_for_synthesis,
+                            source_name=book_name,
+                            source_ref=source_ref,
+                            chapter="",
+                            page=first_p if first_p != "0" else "",
+                            gt_page=str(ground_truth.page or "") if ground_truth.page else "",
+                            gt_chapter=ground_truth.chapter,
+                            book_macro_context=book_macro_context,
+                            chapter_diagrams=chapter_diagrams,
+                        )
+
+                        if content:
+                            # Reduce Step: Self-Correction
+                            if ground_truth.paragraph:
+                                content = verify_and_correct(content, ground_truth.paragraph)
+                            
+                            # Track hook for subsequent synthesis calls in the same batch
+                            from pipeline.self_correct import _extract_core_idea_blockquote
+                            bq = _extract_core_idea_blockquote(content)
+                            if bq:
+                                clean_bq = _clean_blockquote_quote(bq)
+                                if clean_bq:
+                                    exclude_hooks.append(clean_bq)
+                                    _logger.info(f"Registered processed hook to exclusion list: '{clean_bq[:40]}...'")
+
+                            # Reduce Step: Save Note & Concept-Centric Image Renaming
+                            saved = save_concept(content, image_path=primary_img, book_name=book_name)
+                            if saved:
+                                created_count += 1
+                                saved_concepts.append(saved)
+                                processed_images.add(primary_img)
 
     # Fallback to Classic Flow (Gộp thành 1 note) if Map-Reduce is bypassed or yielded zero notes
     if created_count == 0 and segmented is None:

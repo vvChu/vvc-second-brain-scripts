@@ -15,6 +15,8 @@ import logging
 import os
 import shutil
 import time
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import TypedDict
 
@@ -53,13 +55,13 @@ class VectorStore:
         self._index_map: dict[str, int] = {}
         self._mtime: float = 0.0
         self._loaded: bool = False
+        self._dirty: bool = False
+        self._batch_depth: int = 0
+        self._pending_updates: dict[str, tuple[str, np.ndarray]] = {}
 
     @classmethod
     def get_instance(cls, index_path: Path | str | None = None) -> VectorStore:
-        """Lấy singleton instance của VectorStore cho đường dẫn index_path.
-        
-        Tự động nạp lại dữ liệu nếu tệp tin trên đĩa bị thay đổi bởi tiến trình khác.
-        """
+        """Lấy singleton instance của VectorStore cho đường dẫn index_path."""
         path = (Path(index_path).resolve() if index_path is not None 
                 else (cfg.state_dir / "_embedding_index.npz").resolve())
         key = str(path)
@@ -71,6 +73,9 @@ class VectorStore:
             return store
 
         store = cls._instances[key]
+        if store._batch_depth > 0:
+            return store
+
         current_mtime = 0.0
         if path.exists():
             try:
@@ -89,11 +94,7 @@ class VectorStore:
 
     @staticmethod
     def _read_index_data(path: Path) -> tuple[list[np.ndarray], list[str], list[str]]:
-        """Read index data from a .npz file safely.
-        
-        Supports both modern schema ('embeddings', 'sources', optional 'texts')
-        and legacy schema ('vectors', 'stems').
-        """
+        """Read index data from modern or legacy .npz schema safely."""
         try:
             with np.load(path, allow_pickle=True) as data:
                 if "embeddings" in data and "sources" in data:
@@ -144,13 +145,14 @@ class VectorStore:
         self._index_map = {}
         self._mtime = 0.0
         self._loaded = True
+        self._dirty = False
+        self._pending_updates.clear()
 
     def load(self) -> VectorStore:
-        """Nạp chỉ mục vector từ tệp .npz hoặc .npz.bak.
-        
-        Luôn sử dụng context manager `with np.load(...)` để giải phóng file descriptor
-        ngay sau khi đọc xong, tránh rò rỉ tài nguyên trên Windows.
-        """
+        """Nạp chỉ mục vector từ tệp .npz hoặc .npz.bak."""
+        if self._batch_depth > 0:
+            return self
+
         loaded_path = None
         if self.index_path.exists():
             loaded_path = self.index_path
@@ -178,6 +180,8 @@ class VectorStore:
             except OSError:
                 self._mtime = time.time()
             self._loaded = True
+            self._dirty = False
+            self._pending_updates.clear()
             _logger.info(f"Vector store loaded successfully: {len(self.sources)} entries from {loaded_path.name}")
         else:
             self._reset_empty()
@@ -198,16 +202,7 @@ class VectorStore:
         top_k: int = 10,
         threshold: float = 0.0,
     ) -> list[tuple[str, float]]:
-        """Tìm kiếm cosine similarity trả về danh sách (stem, score) sắp xếp giảm dần.
-        
-        Args:
-            query_vec: Vector truy vấn (1D).
-            top_k: Số lượng kết quả tối đa cần lấy.
-            threshold: Ngưỡng điểm similarity tối thiểu (từ 0.0 đến 1.0).
-            
-        Returns:
-            Danh sách các cặp (stem, similarity_score).
-        """
+        """Tìm kiếm cosine similarity trả về danh sách (stem, score) sắp xếp giảm dần."""
         if self.embeddings.size == 0 or len(self.sources) == 0 or query_vec is None:
             return []
 
@@ -271,122 +266,148 @@ class VectorStore:
         indexed = sorted(enumerate(similarities), key=lambda x: x[1], reverse=True)
         return [(i, float(s)) for i, s in indexed[:top_k] if s >= threshold]
 
-    def hot_insert(
-        self,
-        stem: str,
-        content: str,
-        embedding: np.ndarray | list[float] | None = None,
-    ) -> bool:
-        """Hot-insert hoặc update vector embedding của một ghi chú vào _embedding_index.npz.
-        
-        Đảm bảo:
-            - Lấy vector embedding trước khi chiếm khóa tệp (tránh nghẽn IO do HTTP latency).
-            - Đồng bộ hóa đa tiến trình an toàn bằng CrossProcessFileLock.
-            - Ghi đĩa nguyên tử (Atomic Write) qua tệp tạm + os.replace.
-            - Đóng tệp tức thời bằng context manager `with np.load(...)`.
-            - Tự động đồng bộ hóa tệp dự phòng .npz.bak.
-        """
-        stem = stem.replace(".md", "").strip()
-        if not stem:
+    def _atomic_save(self, embeddings: np.ndarray | list[np.ndarray], texts: list[str], sources: list[str]) -> bool:
+        """Atomic write to index_path with temporary file and backup synchronization."""
+        self.index_path.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = self.index_path.parent / f"{self.index_path.stem}_tmp.npz"
+        bak_tmp = self.bak_path.with_suffix(".npz.bak.tmp")
+        try:
+            arr_embs = np.array(embeddings, dtype=np.float32)
+            if arr_embs.ndim == 1 and arr_embs.size > 0:
+                arr_embs = arr_embs.reshape(1, -1)
+            elif arr_embs.size == 0:
+                arr_embs = np.empty((0, 0), dtype=np.float32)
+            np.savez_compressed(
+                tmp_path,
+                embeddings=arr_embs,
+                texts=np.array(texts, dtype=object),
+                sources=np.array(sources, dtype=object),
+            )
+            os.replace(tmp_path, self.index_path)
+            try:
+                shutil.copy2(self.index_path, bak_tmp)
+                os.replace(bak_tmp, self.bak_path)
+            except Exception as bak_err:
+                _logger.warning(f"Failed to sync backup index: {bak_err}")
+            return True
+        except Exception as e:
+            _logger.error(f"Failed to atomic save vector store: {e}")
             return False
+        finally:
+            for p in (tmp_path, bak_tmp):
+                if p.exists():
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
 
-        # 1. Fetch embedding trước khi lấy khóa
-        if embedding is None:
-            emb_vec = get_embedding(content)
-            if emb_vec is None:
-                _logger.warning(f"Could not fetch embedding for hot-insert of '{stem}'")
-                return False
-        else:
-            emb_vec = np.array(embedding, dtype=np.float32)
-            if emb_vec.ndim > 1:
-                emb_vec = emb_vec.flatten()
-            norm = np.linalg.norm(emb_vec)
-            if norm > 0:
-                emb_vec = emb_vec / norm
-
-        content_hash = f"hash:{hashlib.md5(content.encode('utf-8')).hexdigest()}"
-
-        # 2. Chiếm khóa và thực hiện nạp/ghi nguyên tử
+    def flush(self) -> bool:
+        """Ghi các cập nhật đang chờ trong RAM xuống tệp chỉ mục trên đĩa."""
+        if not self._dirty:
+            return True
         try:
             with CrossProcessFileLock(self.lock_path):
-                existing_embeddings: list[np.ndarray] = []
-                existing_texts: list[str] = []
-                existing_sources: list[str] = []
-
-                loaded_path = None
-                if self.index_path.exists():
-                    loaded_path = self.index_path
-                elif self.bak_path.exists():
-                    loaded_path = self.bak_path
-
-                if loaded_path:
-                    existing_embeddings, existing_texts, existing_sources = self._read_index_data(loaded_path)
-
-                # Cập nhật hoặc chèn mới
-                if stem in existing_sources:
-                    idx = existing_sources.index(stem)
-                    existing_embeddings[idx] = emb_vec
-                    existing_texts[idx] = content_hash
-                    _logger.info(f"Updated existing entry in index for '{stem}'")
+                current_mtime = self.index_path.stat().st_mtime if self.index_path.exists() else 0.0
+                if current_mtime > self._mtime:
+                    embs_list, texts, sources = self._read_index_data(self.index_path)
+                    if not sources and self.bak_path.exists():
+                        embs_list, texts, sources = self._read_index_data(self.bak_path)
+                    if not sources and self.sources:
+                        save_embs, save_texts, save_sources = self.embeddings, self.texts, self.sources
+                    else:
+                        idx_map = {src: i for i, src in enumerate(sources)}
+                        for stem, (c_hash, emb_vec) in self._pending_updates.items():
+                            if stem in idx_map:
+                                i = idx_map[stem]
+                                embs_list[i] = emb_vec
+                                texts[i] = c_hash
+                            else:
+                                sources.append(stem)
+                                texts.append(c_hash)
+                                embs_list.append(emb_vec)
+                                idx_map[stem] = len(sources) - 1
+                        save_embs = np.array(embs_list, dtype=np.float32) if embs_list else np.empty((0, 0), dtype=np.float32)
+                        save_texts, save_sources = texts, sources
                 else:
-                    existing_embeddings.append(emb_vec)
-                    existing_texts.append(content_hash)
-                    existing_sources.append(stem)
-                    _logger.info(f"Appended new entry to index for '{stem}'")
+                    save_embs, save_texts, save_sources = self.embeddings, self.texts, self.sources
 
-                # Ghi đĩa nguyên tử
-                tmp_path = self.index_path.parent / f"{self.index_path.stem}_tmp.npz"
-                try:
-                    save_embeddings = np.array(existing_embeddings, dtype=np.float32)
-                    np.savez_compressed(
-                        tmp_path,
-                        embeddings=save_embeddings,
-                        texts=np.array(existing_texts, dtype=object),
-                        sources=np.array(existing_sources, dtype=object),
-                    )
-                    os.replace(tmp_path, self.index_path)
-                    _logger.info(f"Hot-insert successful: Index size is now {len(existing_sources)}")
-                except Exception as save_err:
-                    _logger.error(f"Failed to save hot-inserted embedding index: {save_err}")
+                if not self._atomic_save(save_embs, save_texts, save_sources):
                     return False
-                finally:
-                    if tmp_path.exists():
-                        try:
-                            tmp_path.unlink()
-                        except OSError:
-                            pass
 
-                # Đồng bộ backup nguyên tử
-                bak_tmp = self.bak_path.with_suffix(".npz.bak.tmp")
-                try:
-                    shutil.copy2(self.index_path, bak_tmp)
-                    os.replace(bak_tmp, self.bak_path)
-                except Exception as bak_err:
-                    _logger.warning(f"Failed to sync backup index during hot-insert: {bak_err}")
-                finally:
-                    if bak_tmp.exists():
-                        try:
-                            bak_tmp.unlink()
-                        except OSError:
-                            pass
-
-                # Cập nhật state in-memory
-                self.sources = existing_sources
-                self.texts = existing_texts
-                self.embeddings = np.array(existing_embeddings, dtype=np.float32)
+                self.sources = list(save_sources)
+                self.texts = list(save_texts)
+                self.embeddings = np.array(save_embs, dtype=np.float32) if self.sources else np.empty((0, 0), dtype=np.float32)
                 self._index_map = {src: i for i, src in enumerate(self.sources)}
                 try:
                     self._mtime = self.index_path.stat().st_mtime
                 except OSError:
                     self._mtime = time.time()
-
+                self._dirty = False
+                self._loaded = True
+                self._pending_updates.clear()
                 return True
-
-        except TimeoutError as te:
-            _logger.error(f"Lock timeout during hot-insert for '{stem}': {te}")
-            return False
         except Exception as e:
-            _logger.error(f"Unexpected error during hot-insert for '{stem}': {e}")
+            _logger.error(f"Failed to flush vector store: {e}")
+            return False
+
+    @contextmanager
+    def batch(self) -> Generator[VectorStore, None, None]:
+        """Context manager gộp các thao tác hot_insert thành một lần flush duy nhất."""
+        if not self._loaded and (self.index_path.exists() or self.bak_path.exists()):
+            self.load()
+        self._batch_depth += 1
+        try:
+            yield self
+        finally:
+            self._batch_depth = max(0, self._batch_depth - 1)
+            if self._batch_depth == 0 and self._dirty:
+                self.flush()
+
+    def hot_insert(
+        self,
+        stem: str,
+        content: str,
+        embedding: np.ndarray | list[float] | None = None,
+        auto_save: bool = True,
+    ) -> bool:
+        """Hot-insert or update embedding vector in memory and conditionally flush."""
+        stem = stem.replace(".md", "").strip()
+        if not stem:
+            return False
+        try:
+            if not self._loaded and (self.index_path.exists() or self.bak_path.exists()):
+                self.load()
+            if embedding is None:
+                emb_vec = get_embedding(content)
+            else:
+                emb_vec = np.array(embedding, dtype=np.float32).flatten()
+                norm = np.linalg.norm(emb_vec)
+                emb_vec = emb_vec / norm if norm > 0 else emb_vec
+            if emb_vec is None or emb_vec.size == 0:
+                _logger.warning(f"Invalid embedding for hot-insert of '{stem}'")
+                return False
+            if self.embeddings.size > 0 and emb_vec.shape[0] != self.embeddings.shape[1]:
+                _logger.error(f"Dimension mismatch for '{stem}': {self.embeddings.shape[1]} vs {emb_vec.shape[0]}")
+                return False
+            content_hash = f"hash:{hashlib.md5(content.encode('utf-8')).hexdigest()}"
+            if stem in self._index_map:
+                idx = self._index_map[stem]
+                self.embeddings[idx] = emb_vec
+                self.texts[idx] = content_hash
+            else:
+                new_embs = emb_vec.reshape(1, -1) if self.embeddings.size == 0 else np.vstack([self.embeddings, emb_vec.reshape(1, -1)])
+                self.embeddings = new_embs
+                self.sources.append(stem)
+                self.texts.append(content_hash)
+                self._index_map[stem] = len(self.sources) - 1
+            self._pending_updates[stem] = (content_hash, emb_vec)
+            self._dirty = True
+            self._loaded = True
+            if self._batch_depth == 0 and auto_save:
+                return self.flush()
+            return True
+        except Exception as e:
+            _logger.error(f"Unexpected error in hot_insert for '{stem}': {e}")
             return False
 
     def sync_all(self, concepts: list[dict] | None = None) -> dict[str, int]:
@@ -504,48 +525,22 @@ class VectorStore:
                     _logger.warning("No valid embeddings to save.")
                     return {"new": 0, "updated": 0, "deleted": deleted_count, "total": 0}
 
-                # Lưu đĩa nguyên tử
-                tmp_path = self.index_path.parent / f"{self.index_path.stem}_tmp.npz"
-                try:
-                    np.savez_compressed(
-                        tmp_path,
-                        embeddings=np.array(new_embeddings, dtype=np.float32),
-                        texts=np.array(new_texts, dtype=object),
-                        sources=np.array(new_sources, dtype=object),
-                    )
-                    os.replace(tmp_path, self.index_path)
-                    _logger.info(f"Embedding index saved successfully: {len(new_sources)} concepts.")
-
-                    bak_tmp = self.bak_path.with_suffix(".npz.bak.tmp")
-                    try:
-                        shutil.copy2(self.index_path, bak_tmp)
-                        os.replace(bak_tmp, self.bak_path)
-                        _logger.info("Embedding index backup created successfully.")
-                    except Exception as bak_err:
-                        _logger.warning(f"Failed to create embedding index backup: {bak_err}")
-                    finally:
-                        if bak_tmp.exists():
-                            try:
-                                bak_tmp.unlink()
-                            except OSError:
-                                pass
-
-                    self.sources = new_sources
-                    self.texts = new_texts
-                    self.embeddings = np.array(new_embeddings, dtype=np.float32)
-                    self._index_map = {src: i for i, src in enumerate(self.sources)}
-                    self._mtime = self.index_path.stat().st_mtime
-                    return {"new": new_count, "updated": updated_count, "deleted": deleted_count, "total": len(new_sources)}
-
-                except Exception as save_err:
-                    _logger.error(f"Failed to save embedding index: {save_err}")
+                if not self._atomic_save(new_embeddings, new_texts, new_sources):
+                    _logger.error("Failed to save embedding index.")
                     return {"new": new_count, "updated": updated_count, "deleted": deleted_count, "total": 0}
-                finally:
-                    if tmp_path.exists():
-                        try:
-                            tmp_path.unlink()
-                        except OSError:
-                            pass
+
+                self.sources = new_sources
+                self.texts = new_texts
+                self.embeddings = np.array(new_embeddings, dtype=np.float32)
+                self._index_map = {src: i for i, src in enumerate(self.sources)}
+                try:
+                    self._mtime = self.index_path.stat().st_mtime
+                except OSError:
+                    self._mtime = time.time()
+                self._dirty = False
+                self._pending_updates.clear()
+                _logger.info(f"Embedding index saved successfully: {len(new_sources)} concepts.")
+                return {"new": new_count, "updated": updated_count, "deleted": deleted_count, "total": len(new_sources)}
 
         except Exception as e:
             _logger.error(f"Failed in sync_all: {e}")
