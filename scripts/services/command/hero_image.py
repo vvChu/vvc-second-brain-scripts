@@ -37,6 +37,39 @@ def set_custom_image_generator(fn: Callable[[str, Path], bool] | None) -> None:
     _custom_image_generator = fn
 
 
+def _resolve_topic_candidate(target_raw: str, topics_dir: Path) -> tuple[str, Path] | None:
+    """Resolve raw link or query string to an existing topic note stem and path."""
+    clean = target_raw.strip()
+    if clean.endswith(".md"):
+        clean = clean[:-3]
+    target_stem = Path(clean).stem
+    slug = normalize_stem(target_stem) or "topic"
+
+    for cand in [topics_dir / f"{clean}.md", topics_dir / f"{target_stem}.md", topics_dir / f"{slug}.md"]:
+        if cand.exists():
+            return cand.stem, cand
+
+    if not topics_dir.exists():
+        return None
+
+    for f in topics_dir.glob("*.md"):
+        if f.stem.lower() in (slug.lower(), target_stem.lower()):
+            return f.stem, f
+        try:
+            fm = parse_frontmatter(f.read_text(encoding="utf-8"))
+            title = str(fm.get("title", ""))
+            if title and (target_stem.lower() == title.lower() or slug == normalize_stem(title)):
+                return f.stem, f
+            aliases = fm.get("aliases", [])
+            if isinstance(aliases, list):
+                for a in aliases:
+                    if isinstance(a, str) and (target_stem.lower() == a.lower() or slug == normalize_stem(a)):
+                        return f.stem, f
+        except Exception:
+            continue
+    return None
+
+
 def find_topic_note(query: str, topics_dir: Path) -> tuple[str, Path | None]:
     """Identify topic note from query wikilink(s), title, or slug.
 
@@ -51,58 +84,17 @@ def find_topic_note(query: str, topics_dir: Path) -> tuple[str, Path | None]:
         tuple of (slug, topic_path). topic_path is None if not found on disk.
     """
     wikilinks = re.findall(r"\[\[([^\]|]+)(?:\|[^\]]*)?\]\]", query)
-
-    def _resolve_candidate(target_raw: str) -> tuple[str, Path] | None:
-        clean = target_raw.strip()
-        if clean.endswith(".md"):
-            clean = clean[:-3]
-        target_stem = Path(clean).stem
-        slug = normalize_stem(target_stem) or "topic"
-
-        candidates = [
-            topics_dir / f"{clean}.md",
-            topics_dir / f"{target_stem}.md",
-            topics_dir / f"{slug}.md",
-        ]
-        for cand in candidates:
-            if cand.exists():
-                return cand.stem, cand
-
-        # Search existing topic files for title or alias match
-        if topics_dir.exists():
-            for f in topics_dir.glob("*.md"):
-                if f.stem.lower() == slug.lower() or f.stem.lower() == target_stem.lower():
-                    return f.stem, f
-                try:
-                    fm = parse_frontmatter(f.read_text(encoding="utf-8"))
-                    title = fm.get("title", "")
-                    if title and (target_stem.lower() == str(title).lower() or slug == normalize_stem(str(title))):
-                        return f.stem, f
-                    aliases = fm.get("aliases", [])
-                    if isinstance(aliases, list):
-                        for a in aliases:
-                            if isinstance(a, str) and (
-                                target_stem.lower() == a.lower() or slug == normalize_stem(a)
-                            ):
-                                return f.stem, f
-                except Exception:
-                    continue
-        return None
-
-    # 1. Check each wikilink in query
     for link in wikilinks:
-        res = _resolve_candidate(link)
+        res = _resolve_topic_candidate(link, topics_dir)
         if res is not None:
             return res
 
-    # 2. If no wikilink matched an existing file, try matching plain query
     clean_q = query.strip()
     if clean_q:
-        res = _resolve_candidate(clean_q)
+        res = _resolve_topic_candidate(clean_q, topics_dir)
         if res is not None:
             return res
 
-    # 3. Fallback: determine slug from wikilink or query
     fallback_target = wikilinks[0] if wikilinks else clean_q
     if fallback_target.endswith(".md"):
         fallback_target = fallback_target[:-3]
@@ -205,6 +197,30 @@ def extract_image_prompt(response: str) -> str:
     return _clean_candidate(response[:500])
 
 
+def _save_gateway_image_response(resp: Any, output_path: Path) -> bool:
+    """Extract and persist base64 or URL image from AI Gateway response."""
+    from core.llm.utils import http_session
+
+    if resp.status_code != 200:
+        _logger.warning(f"Gateway image generation returned HTTP {resp.status_code}")
+        return False
+
+    item = resp.json().get("data", [{}])[0]
+    if "b64_json" in item:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_bytes(base64.b64decode(item["b64_json"]))
+        _logger.info(f"Hero image saved from gateway b64: {output_path.name}")
+        return True
+    if "url" in item:
+        img_resp = http_session.get(item["url"], timeout=30)
+        if img_resp.status_code == 200:
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(img_resp.content)
+            _logger.info(f"Hero image downloaded and saved: {output_path.name}")
+            return True
+    return False
+
+
 def generate_hero_image(prompt: str, output_path: Path, active_cfg: Any = None) -> bool:
     """Generate hero image from prompt and save to output_path.
 
@@ -237,46 +253,46 @@ def generate_hero_image(prompt: str, output_path: Path, active_cfg: Any = None) 
             "Authorization": f"Bearer {target_cfg.gateway_api_key}",
             "Content-Type": "application/json",
         }
-        payload: dict[str, Any] = {
-            "prompt": prompt,
-            "n": 1,
-            "size": "1792x1024",  # 16:9 cinematic
-            "response_format": "b64_json",
-        }
-        image_model = (
+        model = (
             os.environ.get("IMAGE_MODEL")
             or getattr(target_cfg, "gateway_image_model", None)
             or "gemini-3.1-flash-image"
         )
-        if image_model:
-            payload["model"] = image_model
-        resp = http_session.post(
-            f"{target_cfg.gateway_url}/images/generations",
-            headers=headers,
-            json=payload,
-            timeout=60,
-        )
-        if resp.status_code == 200:
-            data = resp.json()
-            item = data.get("data", [{}])[0]
-            if "b64_json" in item:
-                img_bytes = base64.b64decode(item["b64_json"])
-                output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_bytes(img_bytes)
-                _logger.info(f"Hero image saved from gateway b64: {output_path.name}")
-                return True
-            elif "url" in item:
-                img_resp = http_session.get(item["url"], timeout=30)
-                if img_resp.status_code == 200:
-                    output_path.parent.mkdir(parents=True, exist_ok=True)
-                    output_path.write_bytes(img_resp.content)
-                    _logger.info(f"Hero image downloaded and saved: {output_path.name}")
-                    return True
-        _logger.warning(f"Gateway image generation returned HTTP {resp.status_code}")
+        payload: dict[str, Any] = {
+            "prompt": prompt,
+            "n": 1,
+            "size": "1792x1024",
+            "response_format": "b64_json",
+            "model": model,
+        }
+        url = f"{target_cfg.gateway_url}/images/generations"
+        resp = http_session.post(url, headers=headers, json=payload, timeout=60)
+        return _save_gateway_image_response(resp, output_path)
     except Exception as e:
         _logger.warning(f"Gateway image generation error: {e}")
+        return False
 
-    return False
+
+def _prepare_hero_rag_context(topic_slug: str, topic_path: Path | None, clean_query: str) -> str:
+    """Build RAG context from topic note body or hybrid RAG search."""
+    if topic_path and topic_path.exists():
+        topic_text = extract_topic_context(topic_path)
+        return f"NỘI DUNG TOPIC NOTE ĐƯỢC THAM CHIẾU [[{topic_slug}]]:\n---\n{topic_text}\n---"
+    rag_context, _ = build_rag_context(clean_query)
+    return rag_context or f"(Chủ đề cần tạo Hero Image: {clean_query})"
+
+
+def _embed_in_topic_safe(topic_path: Path, image_name: str) -> None:
+    """Embed hero image tag in topic note file with error handling and logging."""
+    try:
+        original = topic_path.read_text(encoding="utf-8")
+        updated = embed_hero_image_in_topic(original, image_name)
+        if updated != original:
+            topic_path.write_text(updated, encoding="utf-8")
+            _logger.info(f"Embedded {image_name} beneath H1 in {topic_path.name}")
+            log("compile", f"Hero image embedded in topic: {topic_path.stem}")
+    except OSError as e:
+        _logger.error(f"Failed to embed hero image in topic note: {e}")
 
 
 def process_hero_image(
@@ -297,17 +313,7 @@ def process_hero_image(
     llm = call_llm_fn or call_llm
     topics_dir = active_cfg.vault_root / "04 - Permanent" / "topics"
     topic_slug, topic_path = find_topic_note(clean_query, topics_dir)
-
-    if topic_path and topic_path.exists():
-        topic_text = extract_topic_context(topic_path)
-        rag_context = (
-            f"NỘI DUNG TOPIC NOTE ĐƯỢC THAM CHIẾU [[{topic_slug}]]:\n"
-            f"---\n{topic_text}\n---"
-        )
-    else:
-        rag_context, _ = build_rag_context(clean_query)
-        if not rag_context:
-            rag_context = f"(Chủ đề cần tạo Hero Image: {clean_query})"
+    rag_context = _prepare_hero_rag_context(topic_slug, topic_path, clean_query)
 
     style = WRITING_STYLES["hero-image"]
     prompt = _RESPONSE_PROMPT.format(
@@ -315,12 +321,10 @@ def process_hero_image(
         rag_context=rag_context,
         query=clean_query,
     )
-
     response = llm(prompt, task="synthesis")
     if not response:
         return "", topic_path, None
 
-    # Determine image details
     image_name = f"{topic_slug}_hero.jpg"
     attachments_dir = active_cfg.attachments_dir
     attachments_dir.mkdir(parents=True, exist_ok=True)
@@ -331,24 +335,11 @@ def process_hero_image(
 
     if image_generated:
         log("image", f"Hero image generated: {image_name}")
-        # Seamlessly embed beneath H1 in topic note if note exists
         if topic_path and topic_path.exists():
-            try:
-                original_text = topic_path.read_text(encoding="utf-8")
-                updated_text = embed_hero_image_in_topic(original_text, image_name)
-                if updated_text != original_text:
-                    topic_path.write_text(updated_text, encoding="utf-8")
-                    _logger.info(f"Embedded {image_name} beneath H1 in {topic_path.name}")
-                    log("compile", f"Hero image embedded in topic: {topic_path.stem}")
-            except OSError as e:
-                _logger.error(f"Failed to embed hero image in topic note: {e}")
-
-        # Ensure image preview embed is at top of response for Command.md
+            _embed_in_topic_safe(topic_path, image_name)
         if f"![[{image_name}" not in response:
             response = f"![[{image_name}|100%]]\n\n" + response
-    else:
-        # If image generation wasn't performed, append info notice
-        if f"![[{image_name}" not in response:
-            response = f"> ℹ️ **Hero Banner Placeholder:** `![[{image_name}|100%]]`\n\n" + response
+    elif f"![[{image_name}" not in response:
+        response = f"> ℹ️ **Hero Banner Placeholder:** `![[{image_name}|100%]]`\n\n" + response
 
     return response, topic_path, (image_path if image_generated else None)
