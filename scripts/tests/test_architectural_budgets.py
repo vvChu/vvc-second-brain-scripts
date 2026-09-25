@@ -26,7 +26,7 @@ PROMPT_FILE_ALLOWLIST = {
 LEGACY_LINE_RATCHET: dict[str, int] = {
     "book_ingest.py": 456,
     "check_hub_import_depth.py": 445,
-    "core/vector_store.py": 552,
+    "core/vector_store.py": 547,
     "daemon.py": 639,
     "epub_convert.py": 482,
     "knowledge_graph/parse_graph.py": 366,
@@ -84,7 +84,7 @@ LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "core/media.py": 1,
     "core/text_chunker.py": 2,
     "core/vault.py": 3,
-    "core/vector_store.py": 3,
+    "core/vector_store.py": 1,
     "daemon.py": 1,
     "epub_convert.py": 1,
     "heal_existing_tocs.py": 1,
