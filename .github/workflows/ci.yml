@@ -1,0 +1,44 @@
+name: CI & Cleanliness Guard
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify Codebase Quality & Cleanliness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: "scripts/requirements.txt"
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r scripts/requirements.txt
+          pip install pytest
+
+      - name: Spoke Cleanliness & Script Budget Check
+        run: python scripts/check_spoke_cleanliness.py
+
+      - name: Hub Import Depth Gate
+        run: python scripts/check_hub_import_depth.py
+
+      - name: Architectural Budgets & Codebase Cleanliness Tests
+        run: pytest scripts/tests/test_architectural_budgets.py scripts/tests/test_codebase_cleanliness.py
