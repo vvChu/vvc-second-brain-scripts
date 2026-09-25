@@ -55,6 +55,7 @@ In this mode, enforce these rules with maximum strictness:
   1. `test_agent_constitution.py`: Đồng bộ sâu phiên bản toàn bộ 10 bề mặt SSoT và kiểm tra cây thư mục README sống.
   2. `test_codebase_cleanliness.py`: Đảm bảo 100% không rò rỉ đường dẫn máy (Machine-State Clean) và độ sâu import Hub hợp lệ.
   3. `test_architectural_budgets.py`: Giám sát ngân sách dòng tệp $\le 350$ dòng và ngân sách hàm AST $\le 50$ dòng qua bảng Bánh cóc (Zero-Slack Ratchets).
+    - *Quy tắc thực thi kiểm thử*: Trên Server Linux Spark (hoặc môi trường đa repo), cấm chạy `pytest` trần do lệnh trong `$PATH` toàn cục trỏ sang venv dự án khác. BẮT BUỘC luôn chạy qua `scripts/.venv/bin/pytest` hoặc kích hoạt venv trước (`source scripts/.venv/bin/activate`).
 
 ### Model Assignments
 - **Vision/OCR**: Gemini REST API (`gemini-3.1-flash-lite-preview`) — `google-genai` SDK

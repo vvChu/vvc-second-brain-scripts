@@ -187,6 +187,7 @@ Mỗi thư mục sách trong `05 - Fleeting/<Book_Name>/` bắt buộc có `_toc
 - **Alias-First Resolution (v8.12.6)**: Khi xử lý broken links do lệch slug, thêm biến thể gọi vào `aliases` của DUY NHẤT note đích. Tuyệt đối không sửa hàng loạt hàng chục concept notes nguồn.
 - **Zero-Graph Contamination**: Báo cáo meta, diagnostic reports (như `Weekly_Synthesis.md`, lint logs) tuyệt đối KHÔNG chứa live wikilinks trỏ vào broken links hay orphan notes. Bọc tên slug lỗi trong backticks `` `slug` ``.
 - **Linter Scope**: Linter nạp đầy đủ 6 bề mặt (concepts, sources, topics, chapters, fleeting, MOCs); phân biệt rõ `broken_body_links` (cần sửa ngay) và `prospective_related_seeds` (trong YAML related).
+- **Session Artifact Buffer Isolation (.md/scratch/)**: Mọi tệp tạm thời sinh ra trong phiên làm việc của AI Agents (kế hoạch triển khai, task list, walkthrough, claim notices) BẮT BUỘC phải lưu trong `.md/scratch/` (được `.gitignore` L100 bảo vệ), không lưu trực tiếp tại gốc `.md/` nhằm triệt tiêu nguy cơ làm bẩn `git status` do xung đột với quy tắc un-ignore `!.md/**/*.md`.
 
 ### 4.4 Document Ergonomics & Visual Invariants (v8.15.10)
 Toàn bộ tài liệu tri thức trong Vault bắt buộc tuân thủ 10 bộ quy chuẩn công thái học:
@@ -226,6 +227,7 @@ Vault vận hành thông qua các Python background daemons theo mô hình **LLM
   2. **Tiered Line Budget (≤ 350 lines)**: Mọi tệp Python mã nguồn sản xuất mới (production, ngoại trừ `tests/`) trong `scripts/` bắt buộc $\le 350$ dòng (ngoại trừ whitelist `core/prompts/*.py` do yêu cầu đồng bộ hiến pháp). 29 tệp logic legacy được khóa bằng bảng Bánh cóc (Ratchet) đo lường chính xác 0 slack — chỉ được giảm, cấm tăng.
   3. **AST Function Length Budget (≤ 50 lines)**: Cưỡng chế Global Rule 5 thông qua phân tích tĩnh cú pháp AST. Mọi hàm mới và tệp mới bắt buộc $\le 50$ dòng; 83 tệp legacy được khóa ngân sách trần số lượng hàm dài.
   4. **Live Directory Tree Parity**: 100% các deep module packages trong `scripts/core/` và `scripts/services/` bắt buộc phải được ghi nhận đầy đủ trong `scripts/README.md` (kiểm tra tự động qua `test_readme_directory_tree_parity`).
+  5. **Concurrent Zero-Slack Tightening & Decomposition Principle**: Khi mã nguồn trong tệp legacy được tối ưu giảm dòng hoặc giảm số hàm dài, lập trình viên BẮT BUỘC phải cập nhật siết chặt ngân sách ratchet tương ứng trong `scripts/tests/test_architectural_budgets.py` ngay trong cùng commit để duy trì trạng thái 100% Zero-Slack. Đối với các tệp legacy đã chạm trần (slack = 0) và có các hàm tiệm cận trần 50 dòng AST (tiêu biểu như `core/vector_store.py`), cấm refactor inline tạo thêm hàm phụ nội bộ mà giải pháp mở rộng bắt buộc là bóc tách thành deep module package (`scripts/core/<module>/`).
 
 > [!TIP] Progressive Disclosure — Tra Cứu Mã Nguồn & Vận Hành Pipeline
 > Khi làm việc, phát triển hoặc sửa lỗi trong thư mục `scripts/`, Agent chuyển sang **Pipeline Mode** và tra cứu tài liệu chuyên sâu tại:

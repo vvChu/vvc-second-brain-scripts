@@ -74,6 +74,14 @@ def test_gitignore_unignores_md_files(repo_root: Path):
     )
     assert result_txt.returncode == 0, ".md/extracted_docs/sample.txt MUST be ignored by git"
 
+    # Verify transient session artifacts under .md/scratch/ ARE ignored (even if .md)
+    result_scratch = subprocess.run(
+        ["git", "check-ignore", "-q", ".md/scratch/sample.md"],
+        cwd=repo_root,
+        capture_output=True,
+    )
+    assert result_scratch.returncode == 0, ".md/scratch/sample.md MUST be ignored by git"
+
 
 def test_workspace_context_canonical_schema(repo_root: Path):
     """Verify that .md/workspace_context.yaml conforms to the canonical schema and paths exist."""
@@ -112,7 +120,7 @@ def test_workspace_context_canonical_schema(repo_root: Path):
         db_path = repo_root / db_info["path"]
         assert db_path.exists(), f"database path does not exist on disk: {db_path}"
     
-    # Operational invariants validations (all 6 core invariants)
+    # Operational invariants validations (all 7 core invariants)
     invariants = data["operational_invariants"]
     expected_invariants = [
         "active_passive_single_runner",
@@ -121,6 +129,7 @@ def test_workspace_context_canonical_schema(repo_root: Path):
         "clean_wikilinks_zero_code_pill",
         "html_entity_isolation",
         "cli_autonomous_artifact_ingestion",
+        "session_artifact_buffer",
     ]
     for inv in expected_invariants:
         assert inv in invariants, f"missing operational invariant: '{inv}'"

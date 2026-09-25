@@ -66,6 +66,9 @@ operational_invariants:
   cli_autonomous_artifact_ingestion: >
     Antigravity CLI (agy) may output artifact file URIs (file:///...);
     gemini_client.py automatically resolves and ingests full content.
+  session_artifact_buffer: >
+    All temporary agent artifacts (plans, tasks, walkthroughs, claim notices)
+    MUST be stored in .md/scratch/ to avoid dirtying git working tree.
 
 must_read:
   always:
