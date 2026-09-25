@@ -169,8 +169,10 @@ All commands should be executed from the **Vault Root** with the virtual environ
 
 ### Environment Setup
 ```bash
-# Linux Server Spark:
+# Linux Server Spark (always activate, or use venv binary directly to avoid wrapper collision):
 source scripts/.venv/bin/activate
+# Or directly:
+scripts/.venv/bin/pytest scripts/tests/ -v
 
 # Windows Workstation:
 scripts\.venv\Scripts\activate
