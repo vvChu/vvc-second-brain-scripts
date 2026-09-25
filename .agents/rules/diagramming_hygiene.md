@@ -196,6 +196,7 @@ Mọi tệp `.excalidraw.md` **BẮT BUỘC** tuân thủ cấu trúc 3 tầng c
    - Tuyệt đối KHÔNG viết dấu gạch đứng trần `|` bên trong ô bảng Markdown khi sử dụng liên kết có bí danh (alias).
    - Bắt buộc phải thoát ký tự (escape) bằng dấu gạch chéo ngược: `[[slug\|[3]]]` hoặc `[[Note Title\|Display Name]]`.
    - Ngăn chặn triệt để hiện tượng gãy parser bảng, rách mép hiển thị và mất thẻ đóng `]]`.
+   - **Thoát Ký Tự Pipe Trong Tiêu Đề (Embedded Title Pipe Escaping)**: Khi hiển thị tiêu đề chứa dấu gạch đứng (ví dụ: `Thuật toán | Giải thuật`), bắt buộc chuẩn hóa qua `clean_title = raw_title.replace(r"\|", "|").replace("|", r"\|")` trước khi đưa vào `[[stem\|clean_title]]` để chống vỡ cột bảng Markdown.
 2. **Quy tắc Khoá Mũi tên Điều hướng Chống Rớt Dòng (Non-Breaking Arrow Invariant)**:
    - Khi sử dụng ký tự phân cấp, mũi tên luồng (`↳`, `→`, `•`) sau thẻ ngắt dòng `<br>`, BẮT BUỘC phải dùng khoảng trắng không ngắt dòng `&nbsp;` liền kề: `↳&nbsp;Nội dung`.
 3. **Thiết lập Độ rộng Đáy Tự nhiên (Baseline Width Stabilization)**:
