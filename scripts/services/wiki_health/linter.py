@@ -18,6 +18,7 @@ from core.config import cfg
 from core.frontmatter import normalize_stem
 from core.log import log
 from core.vault import scan_all_concepts, scan_all_sources
+from .bridge_finder import BridgeCandidateFinder
 from .code_pill_cleaner import _CODE_PILL_LINK_PATTERN
 
 _logger = logging.getLogger("vvc.health.linter")
@@ -31,7 +32,7 @@ class LintReport(TypedDict, total=False):
     broken_links: List[Dict[str, str]]
     missing_frontmatter: List[Dict[str, List[str]]]
     duplicates: List[List[str]]
-    bridge_candidates: List[str]
+    bridge_candidates: List[Dict[str, Any]]
     tag_clusters: Dict[str, int]
     total_concepts: int
     broken_body_links: List[Dict[str, str]]
@@ -225,6 +226,10 @@ class VaultLinter:
         for prefix, items in by_prefix.items():
             if len(items) > 1:
                 report["duplicates"].append(items)
+
+        # Check 7: Bridge candidates for cross-domain knowledge synthesis
+        finder = BridgeCandidateFinder(self.concepts)
+        report["bridge_candidates"] = [c.to_dict() for c in finder.score_candidates(top_n=10)]
 
         _logger.info(
             f"Lint: {len(report['orphans'])} orphans, "

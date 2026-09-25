@@ -498,6 +498,31 @@ Raw Media Stream ──► [TẦNG 1: BỘ LỌC TẤT ĐỊNH (Zero-Token)]
 
 ---
 
+## Pattern 16: Deterministic Graph & Taxonomy Normalization
+
+### Vấn đề
+1. Tag phân cấp ghép nối (`domain/software_engineering`) bị bỏ sót khi dùng exact keyword match (`"software"`, `"engineering"`), hoặc bị dính false-positives nếu dùng substring match (`"ai"` khớp `"grain"`).
+2. Sắp xếp đa tiêu chí đảo ngược thứ tự từ điển A $\to$ Z khi dùng `reverse=True`.
+3. Số thực không bằng nhau tuyệt đối theo chuẩn IEEE 754 khiến tie-breaking theo chuỗi bị tê liệt nếu không làm tròn.
+4. `os.scandir()` trả về theo thứ tự inode khác nhau giữa Linux và Windows, làm nạp sai alias khi có trùng lặp.
+
+### Giải pháp
+1. **Padded Token Matching**: Đệm ký tự phân cách trước khi so khớp:
+   ```python
+   padded = f"_{alias}_"
+   matched = any(f"_{kw}_" in padded or alias == kw for kw in keywords)
+   ```
+2. **Deterministic Float Multi-Key Sort**:
+   ```python
+   items.sort(key=lambda x: (-round(x.score, 4), -x.degree, x.stem))
+   ```
+3. **Filesystem Inode Ordering Invariance**:
+   ```python
+   concepts = sorted(raw_concepts, key=lambda c: str(c.get("_stem", "")))
+   ```
+
+---
+
 ## Quick Reference — Model Routing cho Pipeline Tasks
 
 | Task trong pipeline | Model khuyến nghị | Lý do |
@@ -528,6 +553,7 @@ Raw Media Stream ──► [TẦNG 1: BỘ LỌC TẤT ĐỊNH (Zero-Token)]
 | Heading-Aware Map-Reduce | `D:\VvC_Notes\scripts\core\text_chunker.py` |
 | Conditional Multi-turn Memory | `D:\VvC_Notes\scripts\services\command\coordinator.py` |
 | Two-Tier Multimodal Noise Defense | `D:\VvC_Notes\scripts\services\youtube\transcript.py` + `visual_extractor.py` |
+| Deterministic Graph & Taxonomy | `scripts/core/taxonomy.py` + `bridge_finder.py` |
 
 ## Bất Biến Vận Hành & Khóa Cứng Hoàn Tất (ADR-0058)
 * **Tiêu chí hoàn thành tất định:** Mọi thay đổi mã nguồn, kỹ năng hoặc tài liệu bắt buộc phải vượt qua bộ kiểm thử tự động.

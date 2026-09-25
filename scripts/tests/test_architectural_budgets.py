@@ -52,7 +52,7 @@ LEGACY_LINE_RATCHET: dict[str, int] = {
     "tools/batch_ingest_books.py": 648,
     "tools/diagram_template_builder.py": 478,
     "tools/heal_video_frames.py": 459,
-    "wiki_maintain.py": 691,
+    "wiki_maintain.py": 621,
 }
 
 # Monotonic function count ratchets for legacy files with functions > 50 lines (83 files).

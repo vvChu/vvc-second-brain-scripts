@@ -15,6 +15,10 @@ from __future__ import annotations
 # Re-export generate_weekly_synthesis from weekly_synthesis for backward compatibility
 from services.weekly_synthesis import generate_weekly_synthesis
 
+from .bridge_finder import (
+    BridgeCandidate,
+    BridgeCandidateFinder,
+)
 from .code_pill_cleaner import (
     _CODE_PILL_LINK_PATTERN,
     scan_wikilink_code_pills,
@@ -49,6 +53,7 @@ from .title_standardizer import (
 
 __all__ = [
     # Types & Constants
+    "BridgeCandidate",
     "LintReport",
     "_CODE_PILL_LINK_PATTERN",
     "_REJECT_PATTERNS",
@@ -56,6 +61,7 @@ __all__ = [
     "_LINK_PATTERN",
     "MEDIA_EXTENSIONS",
     # Core Classes
+    "BridgeCandidateFinder",
     "VaultLinter",
     "LinkHealer",
     "DomainEnricher",

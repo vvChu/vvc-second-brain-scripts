@@ -50,6 +50,16 @@ def test_weekly_synthesis_compilation(isolated_vault: Path):
         ],
         "broken_body_links": [{"from": "note_a", "to": "broken_target", "origin": "body"}],
         "prospective_related_seeds": [{"from": "note_b", "to": "prospective_idea", "origin": "related"}],
+        "bridge_candidates": [
+            {
+                "stem": "bridge_concept",
+                "title": "Bridge Concept",
+                "domains": ["cognition"],
+                "connected_domains": ["business", "tech"],
+                "degree": 3,
+                "bridge_score": 0.7925,
+            }
+        ],
     }
     concepts = [
         {"_stem": "orphan_concept", "title": "Orphan Concept", "source": "Book A.md", "date_created": "2026-09-20"},
@@ -75,6 +85,10 @@ def test_weekly_synthesis_compilation(isolated_vault: Path):
     assert "broken_target" in content
     assert "prospective_idea" in content
     assert "Focus on Core Modules." in content
+    assert "Bridge Candidates" in content
+    assert "[[bridge_concept\\|Bridge Concept]]" in content
+    assert "`0.792`" in content
+    assert "`[[bridge_concept" not in content
 
 
 def test_weekly_synthesis_consumes_domain_and_subsume_state(isolated_vault: Path):
