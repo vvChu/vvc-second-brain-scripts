@@ -21,16 +21,15 @@ PROMPT_FILE_ALLOWLIST = {
     "core/prompts/services.py",
 }
 
-# Monotonic line budget ratchets for legacy production files > 350 lines (4 files).
+# Monotonic line budget ratchets for legacy production files > 350 lines (3 files).
 # Files may ONLY decrease in size. Any increase will fail the test, forcing decomposition.
 LEGACY_LINE_RATCHET: dict[str, int] = {
     "daemon.py": 639,
     "services/diagram_base.py": 785,
     "services/youtube/visual_extractor.py": 1114,
-    "wiki_maintain.py": 621,
 }
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (59 files).
+# Monotonic function count ratchets for legacy files with functions > 50 lines (58 files).
 # Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
 LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "check_spoke_cleanliness.py": 1,
@@ -91,7 +90,6 @@ LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "tools/enrich_figure_inventory.py": 2,
     "tools/hydrate_url_registry.py": 1,
     "web_clip.py": 1,
-    "wiki_maintain.py": 2,
 }
 
 

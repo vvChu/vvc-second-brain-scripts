@@ -121,10 +121,12 @@ def test_ai_eos_master_index_showcase():
     assert "[[ai_eos_playbook_master" in idx_content
     assert "[[ai_eos_playbook_full_manuscript" in idx_content
 
-    # Check that wiki_maintain._build_master_index generates this callout
-    from wiki_maintain import _build_master_index
+    # Check that wiki_maintain and master_index generate this callout
     import inspect
-    source_code = inspect.getsource(_build_master_index)
+    from services.master_index import _render_header_and_playbooks
+    from wiki_maintain import _build_master_index
+
+    source_code = inspect.getsource(_build_master_index) + inspect.getsource(_render_header_and_playbooks)
     assert "Kiệt Tác Chuyên Luận (Flagship Playbooks)" in source_code
 
 

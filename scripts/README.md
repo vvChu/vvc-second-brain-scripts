@@ -94,6 +94,8 @@ scripts/
 │   ├── article_images.py      ← Web article diagram extractor & WebP compressor
 │   ├── article_image_parser.py ← Smart Filter noise heuristics & React ThemeImage parser
 │   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
+│   ├── moc_builder.py         ← Source & Domain MOC constructor and markdown renderer
+│   ├── master_index.py        ← Master Index dashboard compiler & Playbooks showcase
 │   ├── orthography.py         ← ASR phonetic correction & Smart Bypass seam
 │   ├── url_fetcher.py         ← Web scraping & garbage detection engine
 │   ├── diagram_base.py        ← Shared diagram layout & Mermaid hygiene seam
