@@ -13,7 +13,7 @@ project:
   additional_bundles:
     - "_software"
   version: "v8.15.13"
-  current_milestone: "v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages"
+  current_milestone: "v8.15.13 — Deep Module Seams: Diagram Base & YouTube Graduation (0 Legacy Line Ratchets, 100% Line Budget Compliance)"
   hub_path: "D:/GitHubProjects/ccba-agent-platform" # ccba:allow-machine-path Windows primary; Linux fallback: /home/vvc/ccba/ccba-agent-platform, or CCBA_HUB_PATH env var
   hub_path_linux: "/home/vvc/ccba/ccba-agent-platform" # ccba:allow-machine-path
   hub_path_env: "CCBA_HUB_PATH"
