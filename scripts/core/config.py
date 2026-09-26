@@ -122,16 +122,79 @@ class VaultConfig:
 
 
 
+def _build_vault_paths(root: Path, vault: dict) -> dict[str, Any]:
+    """Build filesystem directory paths for VaultConfig."""
+    return {
+        "vault_root": root,
+        "fleeting_dir": _resolve(root, vault.get("fleeting_dir", "05 - Fleeting")),
+        "concepts_dir": _resolve(root, vault.get("concepts_dir", "04 - Permanent/concepts")),
+        "sources_dir": _resolve(root, vault.get("sources_dir", "04 - Permanent/sources")),
+        "archive_dir": _resolve(root, vault.get("archive_dir", "99 - Archive")),
+        "resources_books_dir": _resolve(root, vault.get("resources_books_dir", "03 - Resources/books")),
+        "moc_dir": _resolve(root, vault.get("moc_dir", "00 - Maps of Content")),
+        "attachments_dir": _resolve(root, vault.get("attachments_dir", "03 - Resources/attachments")),
+        "command_file": _resolve(root, vault.get("command_file", "00 - Maps of Content/Command.md")),
+        "dump_file": _resolve(root, vault.get("dump_file", "05 - Fleeting/Brain_Dump.md")),
+        "log_file": _resolve(root, vault.get("log_file", "log.md")),
+        "index_file": _resolve(root, vault.get("index_file", "00 - Maps of Content/index.md")),
+        "log_dir": _resolve(root, vault.get("log_dir", "scripts/logs")),
+        "state_dir": _resolve(root, vault.get("state_dir", "scripts/.state")),
+    }
+
+
+def _build_ai_gateway_params(gw: dict) -> dict[str, Any]:
+    """Build AI Gateway parameters for VaultConfig."""
+    return {
+        "gateway_url": os.environ.get("VVC_GATEWAY_URL", gw.get("url", "")),
+        "gateway_api_key": os.environ.get("VVC_GATEWAY_KEY", gw.get("api_key", "")),
+        "gateway_proxy_url": os.environ.get("VVC_GATEWAY_PROXY_URL", gw.get("proxy_url", "http://100.83.192.30:8045/v1")),
+        "gateway_proxy_api_key": os.environ.get("VVC_GATEWAY_PROXY_KEY", gw.get("proxy_api_key", "")),
+        "gateway_proxy_model": gw.get("proxy_model", ""),
+        "gateway_direct_model": gw.get("direct_model", ""),
+        "gateway_synthesis_model": gw.get("synthesis_model", ""),
+        "gateway_correction_model": gw.get("correction_model", ""),
+        "gateway_image_model": os.environ.get("VVC_GATEWAY_IMAGE_MODEL", gw.get("image_model", "gemini-3.1-flash-image")),
+    }
+
+
+def _build_cli_and_model_params(gcli: dict, ccli: dict, reasoning: dict, models: dict, theme: dict, raw: dict) -> dict[str, Any]:
+    """Build CLI backends, models, reasoning, and theme parameters."""
+    return {
+        "backend": raw.get("backend", "gateway"),
+        "fallback": raw.get("fallback", "copilot-cli"),
+        "gemini_cmd": gcli.get("cmd", ""),
+        "gemini_model": gcli.get("model", ""),
+        "gemini_vision_model": gcli.get("vision_model", ""),
+        "gemini_vision_model_batch": gcli.get("vision_model_batch", ""),
+        "gemini_text_synthesis_model": gcli.get("text_synthesis_model", ""),
+        "gemini_text_correction_model": gcli.get("text_correction_model", ""),
+        "gemini_api_key": os.environ.get("GEMINI_API_KEY", gcli.get("api_key", "")),
+        "gemini_vision_rpd_limit": gcli.get("vision_rpd_limit", 15),
+        "gemini_text_rpd_limit": gcli.get("text_rpd_limit", 450),
+        "gemini_timeout": gcli.get("timeout", 60),
+        "gemini_vision_timeout": gcli.get("vision_timeout", 300),
+        "copilot_cmd": ccli.get("cmd", ""),
+        "copilot_model": ccli.get("model", ""),
+        "copilot_vision_model": ccli.get("vision_model", ""),
+        "copilot_correction_model": ccli.get("correction_model", ""),
+        "copilot_timeout": ccli.get("timeout", 60),
+        "copilot_vision_timeout": ccli.get("vision_timeout", 300),
+        "reasoning_primary_tier": reasoning.get("primary_tier", "antigravity-cli"),
+        "reasoning_cli_model": reasoning.get("cli_model", "claude-opus-4-6-thinking"),
+        "reasoning_gateway_model": reasoning.get("gateway_model", ""),
+        "reasoning_timeout": reasoning.get("timeout", 600),
+        "model_default": models.get("default", ""),
+        "model_ocr_vision": models.get("ocr_vision", ""),
+        "model_ocr_vision_fallback": models.get("ocr_vision_fallback", ""),
+        "excalidraw_stroke_color": theme.get("stroke_color", "#000000"),
+        "excalidraw_background_color": theme.get("background_color", "transparent"),
+        "excalidraw_font_family": theme.get("font_family", 3),
+        "excalidraw_stroke_width": theme.get("stroke_width", 2),
+    }
+
+
 def load_config(config_path: Path | None = None) -> VaultConfig:
-    """Load configuration from YAML file with env var overrides.
-
-    Args:
-        config_path: Path to config.yaml. Defaults to scripts/config.yaml.
-
-    Returns:
-        Frozen VaultConfig instance.
-    """
-    # 1. Load env from scripts folder first
+    """Load configuration from YAML file with env var overrides."""
     scripts_dir = Path(__file__).parent.parent
     _load_env_file(scripts_dir / ".env")
 
@@ -143,80 +206,17 @@ def load_config(config_path: Path | None = None) -> VaultConfig:
 
     vault = raw.get("vault", {})
     root = Path(os.environ.get("VVC_VAULT_ROOT", vault.get("root", "D:\\VvC_Notes")))  # ccba:allow-machine-path
-
-    # 2. Load env from vault root if it exists
     _load_env_file(root / ".env")
 
-    gw = raw.get("ai_gateway", {})
-    gcli = raw.get("gemini_cli", {})
-    ccli = raw.get("copilot_cli", {})
-    reasoning = raw.get("reasoning", {})
-    models = raw.get("models", {})
-    theme = raw.get("excalidraw_theme", {})
-
-    return VaultConfig(
-        # Vault paths
-        vault_root=root,
-        fleeting_dir=_resolve(root, vault.get("fleeting_dir", "05 - Fleeting")),
-        concepts_dir=_resolve(root, vault.get("concepts_dir", "04 - Permanent/concepts")),
-        sources_dir=_resolve(root, vault.get("sources_dir", "04 - Permanent/sources")),
-        archive_dir=_resolve(root, vault.get("archive_dir", "99 - Archive")),
-        resources_books_dir=_resolve(root, vault.get("resources_books_dir", "03 - Resources/books")),
-        moc_dir=_resolve(root, vault.get("moc_dir", "00 - Maps of Content")),
-        attachments_dir=_resolve(root, vault.get("attachments_dir", "03 - Resources/attachments")),
-        command_file=_resolve(root, vault.get("command_file", "00 - Maps of Content/Command.md")),
-        dump_file=_resolve(root, vault.get("dump_file", "05 - Fleeting/Brain_Dump.md")),
-        log_file=_resolve(root, vault.get("log_file", "log.md")),
-        index_file=_resolve(root, vault.get("index_file", "00 - Maps of Content/index.md")),
-        log_dir=_resolve(root, vault.get("log_dir", "scripts/logs")),
-        state_dir=_resolve(root, vault.get("state_dir", "scripts/.state")),
-        # AI Gateway
-        gateway_url=os.environ.get("VVC_GATEWAY_URL", gw.get("url", "")),
-        gateway_api_key=os.environ.get("VVC_GATEWAY_KEY", gw.get("api_key", "")),
-        gateway_proxy_url=os.environ.get("VVC_GATEWAY_PROXY_URL", gw.get("proxy_url", "http://100.83.192.30:8045/v1")),
-        gateway_proxy_api_key=os.environ.get("VVC_GATEWAY_PROXY_KEY", gw.get("proxy_api_key", "")),
-        gateway_proxy_model=gw.get("proxy_model", ""),
-        gateway_direct_model=gw.get("direct_model", ""),
-        gateway_synthesis_model=gw.get("synthesis_model", ""),
-        gateway_correction_model=gw.get("correction_model", ""),
-        gateway_image_model=os.environ.get("VVC_GATEWAY_IMAGE_MODEL", gw.get("image_model", "gemini-3.1-flash-image")),
-        # Backend
-        backend=raw.get("backend", "gateway"),
-        fallback=raw.get("fallback", "copilot-cli"),
-        # Gemini
-        gemini_cmd=gcli.get("cmd", ""),
-        gemini_model=gcli.get("model", ""),
-        gemini_vision_model=gcli.get("vision_model", ""),
-        gemini_vision_model_batch=gcli.get("vision_model_batch", ""),
-        gemini_text_synthesis_model=gcli.get("text_synthesis_model", ""),
-        gemini_text_correction_model=gcli.get("text_correction_model", ""),
-        gemini_api_key=os.environ.get("GEMINI_API_KEY", gcli.get("api_key", "")),
-        gemini_vision_rpd_limit=gcli.get("vision_rpd_limit", 15),
-        gemini_text_rpd_limit=gcli.get("text_rpd_limit", 450),
-        gemini_timeout=gcli.get("timeout", 60),
-        gemini_vision_timeout=gcli.get("vision_timeout", 300),
-        # Copilot
-        copilot_cmd=ccli.get("cmd", ""),
-        copilot_model=ccli.get("model", ""),
-        copilot_vision_model=ccli.get("vision_model", ""),
-        copilot_correction_model=ccli.get("correction_model", ""),
-        copilot_timeout=ccli.get("timeout", 60),
-        copilot_vision_timeout=ccli.get("vision_timeout", 300),
-        # Reasoning
-        reasoning_primary_tier=reasoning.get("primary_tier", "antigravity-cli"),
-        reasoning_cli_model=reasoning.get("cli_model", "claude-opus-4-6-thinking"),
-        reasoning_gateway_model=reasoning.get("gateway_model", ""),
-        reasoning_timeout=reasoning.get("timeout", 600),
-        # Models
-        model_default=models.get("default", ""),
-        model_ocr_vision=models.get("ocr_vision", ""),
-        model_ocr_vision_fallback=models.get("ocr_vision_fallback", ""),
-        # Theme
-        excalidraw_stroke_color=theme.get("stroke_color", "#000000"),
-        excalidraw_background_color=theme.get("background_color", "transparent"),
-        excalidraw_font_family=theme.get("font_family", 3),
-        excalidraw_stroke_width=theme.get("stroke_width", 2),
-    )
+    params: dict[str, Any] = {}
+    params.update(_build_vault_paths(root, vault))
+    params.update(_build_ai_gateway_params(raw.get("ai_gateway", {})))
+    params.update(_build_cli_and_model_params(
+        raw.get("gemini_cli", {}), raw.get("copilot_cli", {}),
+        raw.get("reasoning", {}), raw.get("models", {}),
+        raw.get("excalidraw_theme", {}), raw,
+    ))
+    return VaultConfig(**params)
 
 
 # --- Singleton ---

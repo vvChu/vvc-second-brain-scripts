@@ -160,98 +160,93 @@ def check_hub_duplications(target_files: list[Path]) -> list[tuple[Path, int, st
     return violations
 
 
+def _check_budget_and_ephemeral(scripts_dir: Path, max_scripts: int) -> tuple[bool, bool, list[str]]:
+    """Check script budget and ephemeral script warnings."""
+    messages: list[str] = []
+    has_errors, has_warnings = False, False
+    counted, ignored = check_script_count(scripts_dir, max_scripts=max_scripts)
+    count = len(counted)
+
+    if count > max_scripts:
+        has_errors = True
+        messages.append(
+            f"❌ [Script Budget Vượt Ngưỡng] Thư mục 'scripts/' có {count} tệp (tối đa cho phép: {max_scripts}).\n"
+            f"   Các file đang đếm ({count}): {', '.join(sorted(f.name for f in counted))}\n"
+            f"   💡 Giải pháp: Di chuyển các script cũ vào '.md/archive/legacy_scripts/' hoặc '.md/scratch/'."
+        )
+    else:
+        messages.append(f"✅ [Script Budget] Thư mục 'scripts/' có {count}/{max_scripts} tệp hợp lệ ({len(ignored)} tệp hệ thống được bỏ qua).")
+
+    ephemeral = check_ephemeral_scripts(counted)
+    if ephemeral:
+        has_warnings = True
+        messages.append(
+            f"⚠️  [Script Tạm Thời] Phát hiện {len(ephemeral)} script có tiền tố tạm thời (fix_*, audit_*, patch_*, tmp_*):\n"
+            + "\n".join(f"   - {f.name}" for f in ephemeral)
+            + "\n   💡 Hãy chuyển các script này vào '.md/archive/legacy_scripts/' sau khi chạy xong."
+        )
+    return has_errors, has_warnings, messages
+
+
+def _collect_py_files_to_scan(spoke_root: Path, scripts_dir: Path) -> list[Path]:
+    """Collect Python files in scripts/ and src/ excluding virtualenvs and tests."""
+    py_files: list[Path] = []
+    ignored_parts = {".venv", "venv", "__pycache__", "tests", "archive", "legacy_scripts"}
+    for d in [scripts_dir, spoke_root / "src"]:
+        if d.exists():
+            py_files.extend(f for f in d.rglob("*.py") if not any(p in ignored_parts for p in f.parts))
+    return py_files
+
+
+def _check_dup_and_machine_violations(spoke_root: Path, py_files: list[Path]) -> tuple[bool, list[str]]:
+    """Check hub duplication and machine state leakage."""
+    messages: list[str] = []
+    has_errors = False
+    dup_violations = check_hub_duplications(py_files)
+    if dup_violations:
+        has_errors = True
+        messages.append(
+            f"❌ [Vi phạm Hub Duplication / sys.path] Phát hiện {len(dup_violations)} vị trí vi phạm:\n"
+            + "\n".join(f"   - {f.relative_to(spoke_root)}:{ln}: {msg}" for f, ln, msg in dup_violations)
+        )
+
+    check_files = list(py_files)
+    for ctx_name in [".md/workspace_context.yaml", "workspace_context.yaml"]:
+        cand = spoke_root / ctx_name
+        if cand.is_file():
+            check_files.append(cand)
+
+    machine_violations = check_machine_state_leakage(check_files)
+    if machine_violations:
+        has_errors = True
+        messages.append(
+            f"❌ [Vi phạm Machine-State Leakage] Phát hiện {len(machine_violations)} vị trí chứa đường dẫn máy tuyệt đối:\n"
+            + "\n".join(f"   - {f.relative_to(spoke_root)}:{ln}: {msg}" for f, ln, msg in machine_violations)
+            + "\n   💡 Hãy dùng biến môi trường (CCBA_HUB_PATH) hoặc đường dẫn tương đối để tránh xung đột đa máy."
+        )
+    else:
+        messages.append("✅ [Machine-State] Không phát hiện rò rỉ đường dẫn máy tuyệt đối.")
+    return has_errors, messages
+
+
 def scan_spoke_cleanliness(
     spoke_root: Path, max_scripts: int = 15, strict: bool = False
 ) -> tuple[int, list[str]]:
-    """Runs all cleanliness checks against a target Spoke workspace.
-
-    Returns:
-        (exit_code, messages)
-    """
+    """Runs all cleanliness checks against a target Spoke workspace."""
     messages: list[str] = []
-    has_errors = False
-    has_warnings = False
-
+    has_errors, has_warnings = False, False
     scripts_dir = spoke_root / "scripts"
+
     if scripts_dir.exists():
-        counted_scripts, ignored_scripts = check_script_count(scripts_dir, max_scripts=max_scripts)
-        count = len(counted_scripts)
+        err_b, warn_b, msg_b = _check_budget_and_ephemeral(scripts_dir, max_scripts)
+        has_errors |= err_b
+        has_warnings |= warn_b
+        messages.extend(msg_b)
 
-        if count > max_scripts:
-            has_errors = True
-            messages.append(
-                f"❌ [Script Budget Vượt Ngưỡng] Thư mục 'scripts/' có {count} tệp (tối đa cho phép: {max_scripts}).\n"
-                f"   Các file đang đếm ({count}): {', '.join(sorted(f.name for f in counted_scripts))}\n"
-                f"   💡 Giải pháp: Di chuyển các script one-off/fix/audit cũ vào '.md/archive/legacy_scripts/' hoặc '.md/scratch/'."
-            )
-        else:
-            messages.append(
-                f"✅ [Script Budget] Thư mục 'scripts/' có {count}/{max_scripts} tệp hợp lệ ({len(ignored_scripts)} tệp hệ thống được bỏ qua)."
-            )
-
-        # Ephemeral scripts
-        ephemeral = check_ephemeral_scripts(counted_scripts)
-        if ephemeral:
-            has_warnings = True
-            messages.append(
-                f"⚠️  [Script Tạm Thời] Phát hiện {len(ephemeral)} script có tiền tố tạm thời (fix_*, audit_*, patch_*, tmp_*):\n"
-                + "\n".join(f"   - {f.name}" for f in ephemeral)
-                + "\n   💡 Hãy chuyển các script này vào '.md/archive/legacy_scripts/' sau khi chạy xong."
-            )
-
-        # Scan for sys.path hacks across scripts/ and src/ (excluding tests)
-        py_files_to_scan: list[Path] = []
-        for d in [scripts_dir, spoke_root / "src"]:
-            if d.exists():
-                py_files_to_scan.extend(
-                    [
-                        f
-                        for f in d.rglob("*.py")
-                        if not any(
-                            p
-                            in (
-                                ".venv",
-                                "venv",
-                                "__pycache__",
-                                "tests",
-                                "archive",
-                                "legacy_scripts",
-                            )
-                            for p in f.parts
-                        )
-                    ]
-                )
-
-        dup_violations = check_hub_duplications(py_files_to_scan)
-        if dup_violations:
-            has_errors = True
-            messages.append(
-                f"❌ [Vi phạm Hub Duplication / sys.path] Phát hiện {len(dup_violations)} vị trí vi phạm:\n"
-                + "\n".join(
-                    f"   - {f.relative_to(spoke_root)}:{ln}: {msg}" for f, ln, msg in dup_violations
-                )
-            )
-
-        # Scan for machine-state leakage (scripts/, src/, workspace_context.yaml)
-        files_to_check_machine: list[Path] = list(py_files_to_scan)
-        for ctx_name in [".md/workspace_context.yaml", "workspace_context.yaml"]:
-            ctx_cand = spoke_root / ctx_name
-            if ctx_cand.is_file():
-                files_to_check_machine.append(ctx_cand)
-
-        machine_violations = check_machine_state_leakage(files_to_check_machine)
-        if machine_violations:
-            has_errors = True
-            messages.append(
-                f"❌ [Vi phạm Machine-State Leakage] Phát hiện {len(machine_violations)} vị trí chứa đường dẫn máy tuyệt đối:\n"
-                + "\n".join(
-                    f"   - {f.relative_to(spoke_root)}:{ln}: {msg}"
-                    for f, ln, msg in machine_violations
-                )
-                + "\n   💡 Hãy dùng biến môi trường (CCBA_HUB_PATH) hoặc đường dẫn tương đối để tránh xung đột đa máy."
-            )
-        else:
-            messages.append("✅ [Machine-State] Không phát hiện rò rỉ đường dẫn máy tuyệt đối.")
+        py_files = _collect_py_files_to_scan(spoke_root, scripts_dir)
+        err_v, msg_v = _check_dup_and_machine_violations(spoke_root, py_files)
+        has_errors |= err_v
+        messages.extend(msg_v)
 
     exit_code = 1 if has_errors or (strict and has_warnings) else 0
     return exit_code, messages

@@ -70,6 +70,35 @@ def find_ffprobe_bin() -> str | None:
     return _find_win_binary("ffprobe")
 
 
+def _build_ffmpeg_cmd(
+    ffmpeg_bin: str,
+    source: str | Path,
+    target_path: Path,
+    sample_rate: int,
+    channels: int,
+    bitrate: str,
+) -> list[str]:
+    """Build FFmpeg command arguments for audio transcoding."""
+    return [
+        ffmpeg_bin, "-y",
+        "-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "-i", str(source),
+        "-vn", "-ar", str(sample_rate),
+        "-ac", str(channels),
+        "-b:a", bitrate,
+        str(target_path),
+    ]
+
+
+def _cleanup_failed_target(target_path: Path) -> None:
+    """Safely unlink target file on transcoding failure."""
+    if target_path.exists():
+        try:
+            target_path.unlink()
+        except OSError:
+            pass
+
+
 def transcode_audio_to_mp3(
     source: str | Path,
     output_path: Path | None = None,
@@ -78,70 +107,26 @@ def transcode_audio_to_mp3(
     bitrate: str = "32k",
     timeout: float = 300.0,
 ) -> Path | None:
-    """Transcode an audio stream URL or file to normalized MP3 via FFmpeg.
-
-    Standard output format defaults to 16kHz mono 32kbps MP3, optimized for
-    speech recognition (Faster-Whisper and Gateway Audio).
-
-    Args:
-        source: Audio stream URL or path to local audio/video file.
-        output_path: Optional destination Path. If None, creates a temporary file.
-        sample_rate: Audio sampling rate in Hz (default 16000).
-        channels: Number of audio channels (default 1 for mono).
-        bitrate: Audio bitrate (default '32k').
-        timeout: Execution timeout in seconds (default 300.0).
-
-    Returns:
-        Path to the generated MP3 file, or None if transcoding failed.
-    """
+    """Transcode an audio stream URL or file to normalized MP3 via FFmpeg."""
     if not source:
         return None
 
     ffmpeg_bin = find_ffmpeg_bin() or "ffmpeg"
-
     target_path = (
         Path(output_path)
         if output_path is not None
         else Path(tempfile.gettempdir()) / f"media_{uuid.uuid4().hex[:8]}.mp3"
     )
-
-    cmd = [
-        ffmpeg_bin,
-        "-y",
-        "-user_agent",
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "-i",
-        str(source),
-        "-vn",
-        "-ar",
-        str(sample_rate),
-        "-ac",
-        str(channels),
-        "-b:a",
-        bitrate,
-        str(target_path),
-    ]
+    cmd = _build_ffmpeg_cmd(ffmpeg_bin, source, target_path, sample_rate, channels, bitrate)
 
     try:
-        res = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
+        res = subprocess.run(cmd, capture_output=True, timeout=timeout, check=False)
         if res.returncode == 0 and target_path.exists() and target_path.stat().st_size > 0:
             return target_path
-
         err_msg = res.stderr.decode("utf-8", errors="replace")[:200]
         _logger.warning(f"ffmpeg failed (exit {res.returncode}): {err_msg}")
     except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
         _logger.warning(f"ffmpeg transcoding exception: {e}")
 
-    # Cleanup temp file on failure
-    if target_path.exists():
-        try:
-            target_path.unlink()
-        except OSError:
-            pass
-
+    _cleanup_failed_target(target_path)
     return None

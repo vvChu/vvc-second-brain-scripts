@@ -51,15 +51,32 @@ def _save_cache(cache_path: Path, entries: dict[str, Any]) -> None:
         _logger.warning(f"Failed to save cache to {cache_path.name}: {e}")
 
 
+def _parse_concept_disk_entry(entry_path: str, stem: str, stat: os.stat_result) -> tuple[dict, dict] | None:
+    """Read full concept file from disk and return (concept_data, cache_entry)."""
+    try:
+        content = Path(entry_path).read_text(encoding="utf-8", errors="ignore")
+    except OSError as e:
+        _logger.warning(f"Failed to read concept file {entry_path}: {e}")
+        return None
+
+    fm = parse_frontmatter(content)
+    if not fm:
+        return None
+
+    raw_links = re.findall(r"\[\[([^\]|#\n]+)", content)
+    fm["_stem"] = stem
+    fm["_links"] = [l.strip() for l in raw_links if l.strip()]
+
+    cache_data = {k: v for k, v in fm.items() if k != "_path"}
+    cache_entry = {"mtime": stat.st_mtime, "size": stat.st_size, "data": cache_data}
+
+    fm["_path"] = Path(entry_path)
+    fm["_mtime"] = stat.st_mtime
+    return fm, cache_entry
+
+
 def scan_all_concepts() -> list[dict]:
-    """Scan all academic concept notes in Permanent/concepts with mtime caching.
-
-    Skips non-markdown, empty, and Excalidraw plugin files (*.excalidraw.md).
-    Extracts and caches YAML frontmatter, '_links', '_stem', and '_path'.
-
-    Returns:
-        A list of parsed frontmatter dictionaries, each containing '_path', '_stem', and '_links'.
-    """
+    """Scan all academic concept notes in Permanent/concepts with mtime caching."""
     concepts: list[dict] = []
     if not cfg.concepts_dir.exists():
         _logger.warning(f"Concepts directory does not exist: {cfg.concepts_dir}")
@@ -81,66 +98,47 @@ def scan_all_concepts() -> list[dict]:
                     continue
 
                 cached = cache.get(stem)
-                if (
-                    cached
-                    and cached.get("mtime") == stat.st_mtime
-                    and cached.get("size") == stat.st_size
-                ):
+                if cached and cached.get("mtime") == stat.st_mtime and cached.get("size") == stat.st_size:
                     data = dict(cached["data"])
-                    data["_path"] = Path(entry.path)
-                    data["_stem"] = stem
-                    data["_mtime"] = stat.st_mtime
+                    data["_path"], data["_stem"], data["_mtime"] = Path(entry.path), stem, stat.st_mtime
                     concepts.append(data)
                     new_cache[stem] = cached
                     continue
 
-                # Cache miss: read full file to parse frontmatter and body links in single pass
-                try:
-                    content = Path(entry.path).read_text(encoding="utf-8", errors="ignore")
-                except OSError as e:
-                    _logger.warning(f"Failed to read concept file {entry.name}: {e}")
-                    continue
-
-                fm = parse_frontmatter(content)
-                if not fm:
-                    continue
-
-                raw_links = re.findall(r"\[\[([^\]|#\n]+)", content)
-                clean_links = [l.strip() for l in raw_links if l.strip()]
-
-                fm["_stem"] = stem
-                fm["_links"] = clean_links
-
-                # Make copy for cache (exclude non-serializable Path)
-                cache_data = {k: v for k, v in fm.items() if k != "_path"}
-                new_cache[stem] = {
-                    "mtime": stat.st_mtime,
-                    "size": stat.st_size,
-                    "data": cache_data,
-                }
-                dirty = True
-
-                fm["_path"] = Path(entry.path)
-                fm["_mtime"] = stat.st_mtime
-                concepts.append(fm)
+                res = _parse_concept_disk_entry(entry.path, stem, stat)
+                if res:
+                    fm, cache_entry = res
+                    new_cache[stem] = cache_entry
+                    concepts.append(fm)
+                    dirty = True
     except OSError as e:
         _logger.warning(f"Failed to scan concepts directory: {e}")
 
-    # If any files were modified, added, or deleted, save cache atomically
     if dirty or len(new_cache) != len(cache):
         _save_cache(_CONCEPTS_CACHE_FILE, new_cache)
-
     return concepts
 
 
+def _parse_source_disk_entry(f: Path, stat: os.stat_result) -> tuple[dict, dict] | None:
+    """Read full source file from disk and return (source_data, cache_entry)."""
+    try:
+        content = f.read_text(encoding="utf-8", errors="ignore")
+    except OSError as e:
+        _logger.warning(f"Failed to read source file {f.name}: {e}")
+        return None
+
+    fm = parse_frontmatter(content)
+    if not isinstance(fm, dict):
+        fm = {}
+    fm["_stem"] = f.stem
+    cache_data = {k: v for k, v in fm.items() if k != "_path"}
+    cache_entry = {"mtime": stat.st_mtime, "size": stat.st_size, "data": cache_data}
+    fm["_path"] = f
+    return fm, cache_entry
+
+
 def scan_all_sources() -> list[dict]:
-    """Scan all source notes in Permanent/sources recursively with mtime caching.
-
-    Scans both the top-level sources folder and subfolders like 'transcripts/'.
-
-    Returns:
-        A list of parsed frontmatter dictionaries, each containing '_path' and '_stem'.
-    """
+    """Scan all source notes in Permanent/sources recursively with mtime caching."""
     sources: list[dict] = []
     if not cfg.sources_dir.exists():
         _logger.warning(f"Sources directory does not exist: {cfg.sources_dir}")
@@ -158,43 +156,22 @@ def scan_all_sources() -> list[dict]:
             continue
 
         cached = cache.get(rel_key)
-        if (
-            cached
-            and cached.get("mtime") == stat.st_mtime
-            and cached.get("size") == stat.st_size
-        ):
+        if cached and cached.get("mtime") == stat.st_mtime and cached.get("size") == stat.st_size:
             data = dict(cached["data"])
-            data["_path"] = f
-            data["_stem"] = f.stem
+            data["_path"], data["_stem"] = f, f.stem
             sources.append(data)
             new_cache[rel_key] = cached
             continue
 
-        try:
-            content = f.read_text(encoding="utf-8", errors="ignore")
-        except OSError as e:
-            _logger.warning(f"Failed to read source file {f.name}: {e}")
-            continue
-
-        fm = parse_frontmatter(content)
-        if not isinstance(fm, dict):
-            fm = {}
-
-        fm["_stem"] = f.stem
-        cache_data = {k: v for k, v in fm.items() if k != "_path"}
-        new_cache[rel_key] = {
-            "mtime": stat.st_mtime,
-            "size": stat.st_size,
-            "data": cache_data,
-        }
-        dirty = True
-
-        fm["_path"] = f
-        sources.append(fm)
+        res = _parse_source_disk_entry(f, stat)
+        if res:
+            fm, cache_entry = res
+            new_cache[rel_key] = cache_entry
+            sources.append(fm)
+            dirty = True
 
     if dirty or len(new_cache) != len(cache):
         _save_cache(_SOURCES_CACHE_FILE, new_cache)
-
     return sources
 
 
@@ -203,16 +180,7 @@ def update_concept_cache(
     frontmatter: dict | None = None,
     links: list[str] | None = None,
 ) -> dict | None:
-    """Update or insert a single concept in the persistent cache.
-
-    Args:
-        file_path: Path to the concept markdown file.
-        frontmatter: Optional pre-parsed frontmatter. If None, read from file.
-        links: Optional pre-extracted links. If None, extract from file.
-
-    Returns:
-        The concept dictionary with '_path', '_stem', and '_links', or None on error.
-    """
+    """Update or insert a single concept in the persistent cache."""
     if not file_path.exists():
         return None
 
@@ -222,8 +190,7 @@ def update_concept_cache(
 
         if frontmatter is None or links is None:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
-            if frontmatter is None:
-                frontmatter = parse_frontmatter(content)
+            frontmatter = frontmatter or parse_frontmatter(content)
             if links is None:
                 raw_links = re.findall(r"\[\[([^\]|#\n]+)", content)
                 links = [l.strip() for l in raw_links if l.strip()]
@@ -232,15 +199,13 @@ def update_concept_cache(
             return None
 
         concept = dict(frontmatter)
-        concept["_stem"] = stem
-        concept["_links"] = links or []
+        concept["_stem"], concept["_links"] = stem, links or []
 
         cache = _load_cache(_CONCEPTS_CACHE_FILE)
-        cache_data = {k: v for k, v in concept.items() if k != "_path"}
         cache[stem] = {
             "mtime": stat.st_mtime,
             "size": stat.st_size,
-            "data": cache_data,
+            "data": {k: v for k, v in concept.items() if k != "_path"},
         }
         _save_cache(_CONCEPTS_CACHE_FILE, cache)
 

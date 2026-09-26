@@ -76,6 +76,76 @@ logging.basicConfig(
 _logger = logging.getLogger("vvc.sleep")
 
 
+def _run_early_maintenance() -> None:
+    """Run log rotation and legal synchronization tasks."""
+    _logger.info("[1/7] Log rotation...")
+    try:
+        rotate_log(max_age_days=30)
+    except Exception as e:
+        _logger.error(f"Log rotation failed: {e}")
+
+    _logger.info("[2/7] Legal sync...")
+    if _HAS_LEGAL_SYNC:
+        try:
+            _generate_legal_sync()
+        except Exception as e:
+            _logger.error(f"Legal sync failed: {e}")
+
+
+def _run_health_and_healing(concepts: list[dict]) -> tuple[dict | None, list[dict]]:
+    """Run wiki linting, link healing, orthography, and tag enrichment."""
+    _logger.info("[3/7] Wiki health check...")
+    report = None
+    if _HAS_HEALTH:
+        try:
+            report = lint_vault()
+            _logger.info(
+                f"Lint: {report['total_concepts']} concepts, "
+                f"{len(report['broken_links'])} broken links"
+            )
+        except Exception as e:
+            _logger.error(f"Lint failed: {e}")
+    else:
+        _logger.info("Wiki health module not available")
+
+    _logger.info("[4/7] Auto-healing (links, orthography, titles & domains)...")
+    if _HAS_HEALTH:
+        try:
+            heal_broken_links(report=report, max_heal_limit=15)
+            heal_orthography(concepts=concepts)
+            standardize_titles(batch_size=15, concepts=concepts)
+            enrich_domains(batch_size=30, concepts=concepts)
+        except Exception as e:
+            _logger.error(f"Healing failed: {e}")
+
+    return report, scan_all_concepts()
+
+
+def _run_synthesis_and_sync(
+    concepts: list[dict], sources: list[dict], report: dict | None
+) -> None:
+    """Run MOC rebuilds, synthesis report generation, and vector index sync."""
+    _logger.info("[5/7] MOC rebuild...")
+    if _rebuild_all is not None:
+        try:
+            _rebuild_all(concepts=concepts, sources=sources)
+        except Exception as e:
+            _logger.error(f"MOC rebuild failed: {e}")
+
+    _logger.info("[6/7] Weekly synthesis...")
+    try:
+        _write_weekly_synthesis(concepts=concepts, sources=sources, report=report)
+    except Exception as e:
+        _logger.error(f"Weekly synthesis failed: {e}")
+
+    _logger.info("[7/7] Embedding Index Sync...")
+    if _HAS_EMBED_SYNC:
+        try:
+            sync_embeddings(concepts=concepts)
+        except Exception as e:
+            _logger.error(f"Embedding sync failed: {e}")
+
+
 def run_sleep_consolidation() -> None:
     """Execute weekly consolidation tasks using Scan-Once architecture."""
     lock_file = cfg.state_dir / "sleep_consolidation.lock"
@@ -85,74 +155,14 @@ def run_sleep_consolidation() -> None:
             _logger.info("Sleep Consolidation v8.5 started")
             log("lifecycle", "Sleep Consolidation started")
 
-            # ── Scan-Once: Read vault once, share everywhere ──
             _logger.info("[0/7] Scanning vault (Scan-Once)...")
             concepts = scan_all_concepts()
             sources = scan_all_sources()
             _logger.info(f"Scanned {len(concepts)} concepts, {len(sources)} sources")
 
-            # 1. Log rotation
-            _logger.info("[1/7] Log rotation...")
-            try:
-                rotate_log(max_age_days=30)
-            except Exception as e:
-                _logger.error(f"Log rotation failed: {e}")
-
-            # 2. Legal Sync
-            _logger.info("[2/7] Legal sync...")
-            if _HAS_LEGAL_SYNC:
-                try:
-                    _generate_legal_sync()
-                except Exception as e:
-                    _logger.error(f"Legal sync failed: {e}")
-
-            # 3. Wiki health check (uses shared concepts via VaultLinter)
-            _logger.info("[3/7] Wiki health check...")
-            report = None
-            if _HAS_HEALTH:
-                try:
-                    report = lint_vault()
-                    _logger.info(f"Lint: {report['total_concepts']} concepts, {len(report['broken_links'])} broken links")
-                except Exception as e:
-                    _logger.error(f"Lint failed: {e}")
-            else:
-                _logger.info("Wiki health module not available")
-
-            # 4. Auto-heal broken links, orthography, titles & domain tags
-            _logger.info("[4/7] Auto-healing (links, orthography, titles & domains)...")
-            if _HAS_HEALTH:
-                try:
-                    heal_broken_links(report=report, max_heal_limit=15)
-                    heal_orthography(concepts=concepts)
-                    standardize_titles(batch_size=15, concepts=concepts)
-                    enrich_domains(batch_size=30, concepts=concepts)
-                except Exception as e:
-                    _logger.error(f"Healing failed: {e}")
-
-            # 5. Rebuild MOCs + Index (uses shared concepts + sources)
-            _logger.info("[5/7] MOC rebuild...")
-            if _rebuild_all is not None:
-                try:
-                    # Re-scan after healing may have created/renamed files
-                    concepts = scan_all_concepts()
-                    _rebuild_all(concepts=concepts, sources=sources)
-                except Exception as e:
-                    _logger.error(f"MOC rebuild failed: {e}")
-
-            # 6. Write weekly synthesis (uses shared concepts + report)
-            _logger.info("[6/7] Weekly synthesis...")
-            try:
-                _write_weekly_synthesis(concepts=concepts, sources=sources, report=report)
-            except Exception as e:
-                _logger.error(f"Weekly synthesis failed: {e}")
-
-            # 7. Embedding Index Sync (uses shared concepts)
-            _logger.info("[7/7] Embedding Index Sync...")
-            if _HAS_EMBED_SYNC:
-                try:
-                    sync_embeddings(concepts=concepts)
-                except Exception as e:
-                    _logger.error(f"Embedding sync failed: {e}")
+            _run_early_maintenance()
+            report, concepts = _run_health_and_healing(concepts)
+            _run_synthesis_and_sync(concepts, sources, report)
 
             log("sleep", "Sleep Consolidation completed")
             _logger.info("Sleep Consolidation complete")

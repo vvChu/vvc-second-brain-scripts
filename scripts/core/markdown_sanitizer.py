@@ -22,6 +22,30 @@ __all__ = [
 ]
 
 
+def _normalize_mermaid_label(label: str) -> str:
+    """Strip label and replace comparison operators."""
+    label = label.strip()
+    return re.sub(r"<=", "≤", re.sub(r">=", "≥", label))
+
+
+def _repl_bidirectional(m: re.Match) -> str:
+    label = _normalize_mermaid_label(m.group(1))
+    _logger.warning(f"[Mermaid Sanitizer] Auto-corrected bidirectional edge label: {m.group(0)!r} -> <===>|\"{label}\"|")
+    return f'<===>|"{label}"|'
+
+
+def _repl_dotted(m: re.Match) -> str:
+    label = _normalize_mermaid_label(m.group(1))
+    _logger.warning(f"[Mermaid Sanitizer] Auto-corrected dotted edge label: {m.group(0)!r} -> -.->|\"{label}\"|")
+    return f'-.->|"{label}"|'
+
+
+def _repl_thick(m: re.Match) -> str:
+    label = _normalize_mermaid_label(m.group(1))
+    _logger.warning(f"[Mermaid Sanitizer] Auto-corrected thick edge label: {m.group(0)!r} -> ===>|\"{label}\"|")
+    return f'===>|"{label}"|'
+
+
 def heal_mermaid_edge_syntax(text: str) -> str:
     """Normalize chimeric edge labels in Mermaid diagrams.
 
@@ -29,53 +53,18 @@ def heal_mermaid_edge_syntax(text: str) -> str:
         HUB ===="label"====> SPOKES -> HUB ===>|"label"| SPOKES
         SPOKES -."label".-> HUB     -> SPOKES -.->|"label"| HUB
         HUB <===="label"====> SPOKES -> HUB <===>|"label"| SPOKES
-    Also normalizes comparison operators inside labels:
-        >= -> ≥, <= -> ≤
-
-    Args:
-        text: Input markdown or mermaid text.
-
-    Returns:
-        Sanitized text with standard Mermaid edge label syntax.
     """
-    def _normalize_label(label: str) -> str:
-        label = label.strip()
-        label = re.sub(r">=", "≥", label)
-        label = re.sub(r"<=", "≤", label)
-        return label
-
-    def _repl_bidirectional(m: re.Match) -> str:
-        label = _normalize_label(m.group(1))
-        _logger.warning(f"[Mermaid Sanitizer] Auto-corrected bidirectional edge label: {m.group(0)!r} -> <===>|\"{label}\"|")
-        return f'<===>|"{label}"|'
-
-    def _repl_dotted(m: re.Match) -> str:
-        label = _normalize_label(m.group(1))
-        _logger.warning(f"[Mermaid Sanitizer] Auto-corrected dotted edge label: {m.group(0)!r} -> -.->|\"{label}\"|")
-        return f'-.->|"{label}"|'
-
-    def _repl_thick(m: re.Match) -> str:
-        label = _normalize_label(m.group(1))
-        _logger.warning(f"[Mermaid Sanitizer] Auto-corrected thick edge label: {m.group(0)!r} -> ===>|\"{label}\"|")
-        return f'===>|"{label}"|'
-
-    # 1. Bidirectional thick edge: <====="..."====> or <==="..."==>
     text = re.sub(r"<=+\s*\"([^\"]+)\"\s*=+>", _repl_bidirectional, text)
-    # 2. Dotted edge: -."..."-.->, -."...".->, -."..."->
     text = re.sub(r"-\.\s*\"([^\"]+)\"\s*[-.]*->", _repl_dotted, text)
-    # 3. Forward thick edge: ===="..."====> or =="...""==>
     text = re.sub(r"(?<!<)=+\s*\"([^\"]+)\"\s*=+>", _repl_thick, text)
 
-    # 4. Proactive normalization for existing pipe labels containing comparison operators
     def _repl_pipe(m: re.Match) -> str:
         content = m.group(1)
         if ">=" in content or "<=" in content:
-            content = _normalize_label(content)
+            content = _normalize_mermaid_label(content)
         return f"|{content}|"
 
-    text = re.sub(r"\|([^|\n]+)\|", _repl_pipe, text)
-
-    return text
+    return re.sub(r"\|([^|\n]+)\|", _repl_pipe, text)
 
 
 def heal_html_entity_leakage(text: str) -> str:

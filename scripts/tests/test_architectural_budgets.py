@@ -25,14 +25,9 @@ PROMPT_FILE_ALLOWLIST = {
 # 100% of production files comply with the 350-line standard.
 LEGACY_LINE_RATCHET: dict[str, int] = {}
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (55 files).
+# Monotonic function count ratchets for legacy files with functions > 50 lines (45 files).
 # Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
 LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
-    "check_spoke_cleanliness.py": 1,
-    "close_session.py": 1,
-    "core/config.py": 1,
-    "core/file_lock.py": 1,
-    "core/frontmatter.py": 1,
     "core/layout_router.py": 1,
     "core/layouts/concentric_layout.py": 1,
     "core/layouts/cycle_layout.py": 1,
@@ -48,10 +43,6 @@ LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "core/llm/gateway_client.py": 1,
     "core/llm/gemini_client.py": 2,
     "core/llm/model_resolver.py": 2,
-    "core/markdown_sanitizer.py": 1,
-    "core/media.py": 1,
-    "core/text_chunker.py": 2,
-    "core/vault.py": 3,
     "heal_existing_tocs.py": 1,
     "pdf_convert.py": 1,
     "pipeline/process_markdown.py": 1,
@@ -77,7 +68,6 @@ LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "services/wiki_health/linter.py": 2,
     "services/wiki_health/stub_lifecycle.py": 1,
     "services/wiki_health/title_standardizer.py": 2,
-    "sleep.py": 1,
     "tools/audit_playbook.py": 1,
     "tools/deduplicate_sources.py": 1,
     "tools/enrich_figure_inventory.py": 2,

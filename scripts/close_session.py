@@ -50,6 +50,42 @@ logging.basicConfig(
 _logger = logging.getLogger("vvc.close_session")
 
 
+def _run_healing_phase(pre_report: dict) -> tuple[int, int]:
+    """Auto-heal broken links and orthographic typos."""
+    healed_links, healed_typos = 0, 0
+    try:
+        healed_links = heal_broken_links(pre_report, max_heal_limit=15)
+        _logger.info(f"Auto-healer: {healed_links} broken link stubs created/processed.")
+    except Exception as e:
+        _logger.error(f"Error during link healing: {e}")
+    try:
+        healed_typos = heal_orthography(batch_size=20)
+        _logger.info(f"Orthographic healer: {healed_typos} typos fixed.")
+    except Exception as e:
+        _logger.error(f"Error during orthography healing: {e}")
+    return healed_links, healed_typos
+
+
+def _extract_preserved_academic_advice(report_path: Path) -> str:
+    """Extract and preserve academic advice from existing Weekly_Synthesis.md."""
+    if report_path.exists():
+        try:
+            old_content = report_path.read_text(encoding="utf-8")
+            marker = "## 💡 Knowledge Gaps"
+            if marker in old_content:
+                parts = old_content.split(marker, 1)
+                return "\n## 💡 Knowledge Gaps" + parts[1]
+        except Exception as e:
+            _logger.error(f"Failed to read old Weekly_Synthesis.md for preservation: {e}")
+    return (
+        "\n## 💡 Knowledge Gaps & Đề xuất mở rộng\n\n"
+        "### Đề xuất hành động tiếp theo:\n"
+        "1. **Viết Synthesis Notes**: Chọn 3-5 khái niệm liên quan trong cùng Domain để viết bài tổng luận.\n"
+        "2. **Giải quyết Broken Links**: Xem lại các Concept References cần tạo ghi chú.\n"
+        "3. **Tận dụng Graph View**: Thường xuyên kiểm tra trực quan hóa mối quan hệ trong Obsidian.\n"
+    )
+
+
 def run_closeout_workflow() -> None:
     """Executes the comprehensive session closeout workflow."""
     _logger.info("=" * 60)
@@ -57,28 +93,13 @@ def run_closeout_workflow() -> None:
     _logger.info("=" * 60)
     log("lifecycle", "Session closeout workflow initiated")
 
-    # Step 1: Pre-heal health check
     _logger.info("[1/6] Running initial Vault health check...")
     pre_report = lint_vault()
     _logger.info(f"Initial status: {pre_report['total_concepts']} concepts, {len(pre_report['broken_links'])} broken links detected.")
 
-    # Step 2: Auto-healing broken links and orthography
     _logger.info("[2/6] Auto-healing broken links & regional orthographic typos...")
-    healed_links = 0
-    healed_typos = 0
-    try:
-        healed_links = heal_broken_links(pre_report, max_heal_limit=15)
-        _logger.info(f"Auto-healer: {healed_links} broken link stubs created/processed.")
-    except Exception as e:
-        _logger.error(f"Error during link healing: {e}")
+    healed_links, healed_typos = _run_healing_phase(pre_report)
 
-    try:
-        healed_typos = heal_orthography(batch_size=20)
-        _logger.info(f"Orthographic healer: {healed_typos} typos fixed.")
-    except Exception as e:
-        _logger.error(f"Error during orthography healing: {e}")
-
-    # Step 3: Rebuild MOCs, Domain MOCs, and Master Index
     _logger.info("[3/6] Rebuilding all Maps of Content (MOCs) & Master Index...")
     try:
         rebuild_all()
@@ -86,42 +107,14 @@ def run_closeout_workflow() -> None:
     except Exception as e:
         _logger.error(f"Error during MOC rebuild: {e}")
 
-    # Step 4: Post-heal health check to compile clean actual statistics
     _logger.info("[4/6] Running final Vault health check for clean statistics...")
     post_report = lint_vault()
     _logger.info(f"Final status: {post_report['total_concepts']} concepts, {len(post_report['broken_links'])} broken links.")
 
-    # Step 5: Read and preserve 'Knowledge Gaps & Suggestions' from the old Weekly_Synthesis.md
     _logger.info("[5/6] Extracting and preserving academic suggestions from the old synthesis...")
     report_path = cfg.moc_dir / "Weekly_Synthesis.md"
-    academic_advice = ""
-    
-    if report_path.exists():
-        try:
-            old_content = report_path.read_text(encoding="utf-8")
-            marker = "## 💡 Knowledge Gaps"
-            if marker in old_content:
-                parts = old_content.split(marker, 1)
-                academic_advice = "\n## 💡 Knowledge Gaps" + parts[1]
-                _logger.info("Successfully preserved existing 'Knowledge Gaps & Suggestions' section.")
-            else:
-                _logger.info("No 'Knowledge Gaps & Suggestions' marker found. Creating default recommendations.")
-        except Exception as e:
-            _logger.error(f"Failed to read old Weekly_Synthesis.md for preservation: {e}")
+    academic_advice = _extract_preserved_academic_advice(report_path)
 
-    if not academic_advice.strip():
-        # Fallback default high-quality advice if none existed
-        academic_advice = (
-            "\n## 💡 Knowledge Gaps & Đề xuất mở rộng\n\n"
-            "Chào bạn, với tư cách là giáo sư tư vấn nghiên cứu, tôi nhận thấy hệ thống Zettelkasten của bạn đang tích lũy "
-            "nhiều khái niệm quan trọng nhưng cần thêm các ghi chú tổng hợp để liên kết sâu sắc các luồng ý tưởng lại với nhau.\n\n"
-            "### Đề xuất hành động tiếp theo:\n"
-            "1. **Viết Synthesis Notes**: Hãy chọn 3-5 khái niệm liên quan chặt chẽ trong cùng một Domain (ví dụ: `domain/strategy` hoặc `domain/ai`) và viết một bài tổng luận ngắn 500 từ để kết nối chúng.\n"
-            "2. **Giải quyết Broken Links**: Xem lại các Concept References cần tạo ghi chú ở phần bên dưới để tiếp tục bổ sung cốt lõi tri thức còn khuyết.\n"
-            "3. **Tận dụng Graph View**: Thường xuyên kiểm tra trực quan hóa mối quan hệ trong Obsidian để phát hiện các cụm tri thức mồ côi tiềm năng.\n"
-        )
-
-    # Step 6: Write updated comprehensive Weekly_Synthesis.md
     _logger.info("[6/6] Generating comprehensive Weekly_Synthesis.md report...")
     try:
         _write_updated_synthesis(post_report, healed_links, healed_typos, academic_advice)
@@ -129,7 +122,6 @@ def run_closeout_workflow() -> None:
     except Exception as e:
         _logger.error(f"Failed to write updated Weekly_Synthesis.md: {e}")
 
-    # Step 7: Print beautiful summary to the terminal
     _print_beautiful_terminal_summary(post_report, healed_links, healed_typos)
     log("lifecycle", "Session closeout workflow completed successfully")
 
