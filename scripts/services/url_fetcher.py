@@ -71,6 +71,16 @@ def fetch_url_title(url: str) -> str:
         return ""
     try:
         url = url.rstrip('.,;:"\'')
+        if "x.com" in url or "twitter.com" in url:
+            try:
+                from services.twitter import is_twitter_url, fetch_twitter_title
+                if is_twitter_url(url):
+                    title = fetch_twitter_title(url)
+                    if title:
+                        return title
+            except Exception:
+                pass
+
         resp = requests.get(url, timeout=10, headers={"User-Agent": "Mozilla/5.0"})
         resp.encoding = resp.apparent_encoding or "utf-8"
         resp.raise_for_status()
@@ -142,41 +152,15 @@ def fetch_url(url: str, visual: bool = False, transcribe: bool = True) -> str:
     except Exception as e:
         _logger.warning(f"Podcast fetch error for {url}: {e}")
 
-    # Convert Twitter/X URLs to Nitter mirror JIT with fallbacks
-    if "x.com" in url or "twitter.com" in url:
-        nitter_instances = [
-            "nitter.poast.org",
-            "nitter.privacydev.net",
-            "nitter.no-logs.com"
-        ]
-        text = ""
-        for instance in nitter_instances:
-            mirror_url = url.replace("x.com", instance).replace("twitter.com", instance)
-            _logger.info(f"Trying Twitter/X JIT mirror: {mirror_url}")
-            try:
-                resp = requests.get(mirror_url, timeout=10, headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-                resp.raise_for_status()
-                raw_html = resp.text
-                if trafilatura is not None:
-                    text = trafilatura.extract(raw_html) or ""
-                if not text or _is_garbage_fetch(text):
-                    if BeautifulSoup is not None:
-                        soup = BeautifulSoup(raw_html, "html.parser")
-                        text = soup.get_text(separator="\n", strip=True)
-                if text and not _is_garbage_fetch(text):
-                    _logger.info(f"Successfully fetched Twitter/X via mirror: {mirror_url}")
-                    try:
-                        images = extract_article_images(raw_html, mirror_url)
-                        if images:
-                            image_metadata = format_image_metadata(images)
-                            text = f"{text}{image_metadata}"
-                    except Exception:
-                        pass
-                    return text
-            except Exception as e:
-                _logger.warning(f"Failed to fetch Twitter/X via mirror {instance}: {e}")
-        _logger.warning(f"All Nitter mirrors failed for URL: {url}")
-        return ""
+    # Route Twitter/X URLs
+    try:
+        from services.twitter import is_twitter_url, fetch_twitter
+        if is_twitter_url(url):
+            tweet_text = fetch_twitter(url, transcribe=transcribe)
+            if tweet_text:
+                return tweet_text
+    except Exception as e:
+        _logger.warning(f"Twitter fetch error for {url}: {e}")
 
     try:
         resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
