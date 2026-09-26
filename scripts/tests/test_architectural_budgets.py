@@ -21,13 +21,12 @@ PROMPT_FILE_ALLOWLIST = {
     "core/prompts/services.py",
 }
 
-# Monotonic line budget ratchets for legacy production files > 350 lines (10 files).
+# Monotonic line budget ratchets for legacy production files > 350 lines (9 files).
 # Files may ONLY decrease in size. Any increase will fail the test, forcing decomposition.
 LEGACY_LINE_RATCHET: dict[str, int] = {
     "core/vector_store.py": 547,
     "daemon.py": 639,
     "pipeline/image_processor.py": 517,
-    "services/article_images.py": 506,
     "services/brain_dump/concept_synthesis.py": 548,
     "services/command/coordinator.py": 486,
     "services/diagram_base.py": 785,
@@ -36,7 +35,7 @@ LEGACY_LINE_RATCHET: dict[str, int] = {
     "wiki_maintain.py": 621,
 }
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (64 files).
+# Monotonic function count ratchets for legacy files with functions > 50 lines (63 files).
 # Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
 LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "check_spoke_cleanliness.py": 1,
@@ -70,7 +69,6 @@ LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "pipeline/image_processor.py": 2,
     "pipeline/process_markdown.py": 1,
     "pipeline/synthesize.py": 2,
-    "services/article_images.py": 3,
     "services/brain_dump/concept_synthesis.py": 4,
     "services/brain_dump/inbox_io.py": 1,
     "services/brain_dump/orchestrator.py": 1,

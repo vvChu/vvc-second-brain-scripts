@@ -89,6 +89,7 @@ scripts/
 │   ├── weekly_synthesis.py    ← Weekly Synthesis & System Status Report compiler
 │   ├── podcast.py             ← Podcast Ingestion Engine (Apple/Spotify/Web audio + Whisper)
 │   ├── article_images.py      ← Web article diagram extractor & WebP compressor
+│   ├── article_image_parser.py ← Smart Filter noise heuristics & React ThemeImage parser
 │   ├── worker_dispatcher.py   ← ArtifactEngine: Strategy & Adapter Registry for all artifacts
 │   ├── orthography.py         ← ASR phonetic correction & Smart Bypass seam
 │   ├── url_fetcher.py         ← Web scraping & garbage detection engine
