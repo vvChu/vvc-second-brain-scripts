@@ -3,8 +3,12 @@
 Applies strict v8.15.10 standards via save_concept().
 """
 
-import sys
+from __future__ import annotations
+
+import json
 from pathlib import Path
+import sys
+from typing import Any
 
 if sys.platform == "win32":
     try:
@@ -17,569 +21,29 @@ if sys.platform == "win32":
 _ROOT = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_ROOT / "scripts"))
 
-from pipeline.post_process import save_concept
 from core.frontmatter import build_concept_frontmatter
-from core.log import log
+from pipeline.post_process import save_concept
 
-BIGBIM_CONCEPTS = [
-    {
-        "title": "Nguyên Lý ĐÚNG – ĐỦ – SẠCH – SỐNG Trong Quản Trị Thông Tin Công Trình",
-        "aliases": ["Bốn Tiêu Chuẩn Thông Tin BIGBIM", "ĐÚNG ĐỦ SẠCH SỐNG"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/governance", "iso_19650"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "1",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "1",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Khung tiêu chuẩn bốn chiều đảm bảo dữ liệu công trình chuẩn hóa theo ISO 19650, loại bỏ dư thừa, ngăn chặn suy hao khi chuyển đổi và duy trì khả năng khai thác liên tục trong suốt vòng đời 50–100 năm.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "Mục tiêu cốt lõi: đảm bảo mọi thông tin về tài sản xây dựng đạt tiêu chuẩn ĐÚNG – ĐỦ – SẠCH – SỐNG trong suốt vòng đời 50–100 năm.",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Trong quản trị thông tin tài sản xây dựng theo vòng đời, các dữ liệu mô hình và hồ sơ hoàn công thường nhanh chóng trở thành 'dữ liệu rác' nếu không tuân thủ một bộ tiêu chuẩn kiểm soát nghiêm ngặt. Hệ thống BIGBIM thiết lập bốn tiêu chuẩn cốt lõi đóng vai trò là chốt chặn kỹ thuật:
+_DATA_DIR = Path(__file__).resolve().parent / "data"
 
-1. **ĐÚNG (ISO 19650-4: 7.1–7.2)**: Thông tin phải tuân thủ đúng lược đồ cấu trúc (schema), đúng hệ thống phân loại chuẩn hóa (classification) và triệt tiêu mọi mâu thuẫn hình học lẫn phi hình học.
-2. **ĐỦ (ISO 19650-4: 7.6–7.7)**: Đáp ứng chuẩn xác mức độ thông tin cần thiết (Level of Information Need - LOIN) tại từng giai đoạn cụ thể — không thiếu để gây rủi ro kỹ thuật, không thừa để gây lãng phí nguồn lực tính toán.
-3. **SẠCH (ISO 19650-4: 7.3–7.5)**: Ngăn ngừa hiện tượng suy hao, méo mó hoặc mất mát thuộc tính khi chuyển giao dữ liệu qua các nền tảng phần mềm khác nhau, bảo đảm tính nhất quán xuyên suốt các giai đoạn.
-4. **SỐNG (ISO 19650-4: 7.7 + 19650-5)**: Dữ liệu phải có khả năng sử dụng và cập nhật bền bỉ trong suốt 50 đến 100 năm vận hành công trình, đồng thời được bảo vệ trước các thay đổi trái phép hoặc rủi ro công nghệ lỗi thời.
 
-Bốn tiêu chuẩn này tạo nên bộ lọc kỹ thuật ngăn chặn tình trạng suy thoái thông tin giữa các giai đoạn thiết kế, thi công và bàn giao quản lý tài sản.""",
-        "ground_truth": "Information standard criteria: RIGHT (ISO 19650-4: 7.1–7.2: Correct schema and classification without contradiction), SUFFICIENT (ISO 19650-4: 7.6–7.7: Satisfying LOIN per stage without deficit or surplus), CLEAN (ISO 19650-4: 7.3–7.5: Zero data loss during transition, consistent across stages), and ALIVE (ISO 19650-4: 7.7 + 19650-5: Usable for 50–100 years, protected against obsolescence and unauthorized tampering)."
-    },
-    {
-        "title": "Hội Chứng Mất Trí Nhớ Số Trong Vòng Đời Công Trình",
-        "aliases": ["Mất Trí Nhớ Số", "Digital Amnesia in Construction"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/lifecycle_management"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "2",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "2",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Hiện tượng đứt gãy thông tin lịch sử và quyết định thiết kế sau khi bàn giao dự án xây dựng, biến mô hình BIM thành dữ liệu chết và buộc các đội ngũ vận hành phải tái khảo sát từ đầu.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "Sau 10 năm vận hành, không ai còn nhớ tại sao một quyết định thiết kế được đưa ra. Khi cần cải tạo, đội kỹ sư phải khảo sát lại từ đầu. BIGBIM gọi tình trạng này là 'mất Trí Nhớ Số' — và đặt mục tiêu ngăn chặn nó từ giai đoạn đầu tiên của dự án (BBP-A0).",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Trong ngành xây dựng truyền thống, một nghịch lý lớn thường xuyên lặp lại: các công trình tiêu tốn hàng triệu đô la và nhiều năm thi công, nhưng sau khi bàn giao, toàn bộ dữ liệu trí tuệ vận hành bị tiêu tán. Tình trạng này được định danh là 'Hội chứng mất Trí Nhớ Số' (Digital Amnesia).
+def _load_concepts(filename: str) -> list[dict[str, Any]]:
+    """Load concept fixtures from JSON data file."""
+    path = _DATA_DIR / filename
+    if not path.exists():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))
 
-Các triệu chứng lâm sàng phổ biến bao gồm:
-- **Độ lệch thông tin thực tế**: Số phòng, mã ký hiệu tài sản trong hồ sơ thiết kế, phần mềm quản lý vận hành (FM) và biển hiệu ngoài thực tế không trùng khớp nhau.
-- **Mất nguồn gốc thẩm quyền**: Khi phát sinh tranh chấp hoặc hỏng hóc, không một bên nào có thể xác minh đâu là phiên bản thông tin chính thức đã được phê duyệt.
-- **Mất khả năng bảo trì kỹ thuật**: Hồ sơ hoàn công (as-built) bị thiếu hụt hoặc sai lệch khiến các kỹ sư vận hành không dám bảo dưỡng can thiệp vì sợ rủi ro sập đổ hệ thống.
-- **Tù túng trong phần mềm đóng**: Dữ liệu BIM bị 'khóa chặt' trong các định dạng phần mềm độc quyền, sau 10 năm phần mềm nâng cấp hoặc đổi nhà cung cấp thì toàn bộ tệp cũ không thể đọc được.
 
-Để giải quyết căn bệnh này, quản trị thông tin không thể chỉ bắt đầu khi công trình hoàn thành, mà phải thiết lập cơ chế truy nguyên và bảo toàn trí nhớ số ngay từ ngày đầu tiên thông qua khuôn khổ quản trị có cấu trúc.""",
-        "ground_truth": "A completed building after 3–5 years of construction... As-built documents exist as static PDFs or paper drawings. Facility managers receive a BIM model without knowing which data is verified or draft. After a decade, historical rationale is erased, leaving technical systems unmaintainable and data trapped inside proprietary software silos. BIGBIM defines this condition as 'Digital Amnesia' and aims to prevent it starting from BBP-A0."
-    },
-    {
-        "title": "Sợi Chỉ Vàng Trong Quản Trị Thông Tin Xây Dựng",
-        "aliases": ["Golden Thread Governance", "Sợi Chỉ Vàng BBP-A0"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/governance"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "3",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "3",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Khung quản trị xuyên suốt được thiết lập ngay từ giai đoạn lập kế hoạch ban đầu, đóng vai trò là trục định vị bất biến để bảo toàn mục tiêu thông tin và kiểm soát mọi thay đổi kiến trúc.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "BBP-A0: Ý tưởng & Lập kế hoạch — Thiết lập Sợi chỉ Vàng — governance framework... đặt mục tiêu ngăn chặn mất Trí Nhớ Số từ giai đoạn đầu tiên của dự án.",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Khái niệm 'Sợi Chỉ Vàng' (Golden Thread) trong quản trị thông tin xây dựng bắt nguồn từ các tiêu chuẩn an toàn công trình hiện đại (như Đạo luật An toàn Tòa nhà tại Anh và ISO 19650), được BIGBIM tích hợp thành xương sống điều phối toàn bộ vòng đời dự án.
+BIGBIM_CONCEPTS: list[dict[str, Any]] = _load_concepts("bigbim_concepts.json")
+STEVE_JOBS_CONCEPTS: list[dict[str, Any]] = _load_concepts("steve_jobs_concepts.json")
 
-Sợi Chỉ Vàng không phải là một tập tài liệu đơn lẻ, mà là một cơ chế kết nối kỹ thuật số bất biến giữa:
-1. **Mục tiêu chiến lược của Chủ đầu tư (OIR/AIR)** được xác lập tại mốc khởi tạo BBP-A0.
-2. **Dòng dữ liệu thiết kế và thi công liên tục**, bảo đảm mọi biến động, thay đổi vật liệu hay điều chỉnh kết cấu đều phải được đối chiếu lại với mục tiêu gốc.
-3. **Mô hình Thông tin Tài sản (AIM)** khi bàn giao để đưa vào khai thác thương mại.
 
-Khi Sợi Chỉ Vàng bị đứt gãy ở bất kỳ mắt xích nào — ví dụ một quyết định thay đổi chủng loại vật tư thi công không được cập nhật ngược lại vào mô hình trung tâm — toàn bộ hệ thống thông tin sẽ mất tính toàn vẹn. Nhờ có Sợi Chỉ Vàng, mọi can thiệp cải tạo sau hàng chục năm vẫn có thể truy vết chính xác nguồn gốc, lý do và người chịu trách nhiệm kỹ thuật ban đầu.""",
-        "ground_truth": "Golden Thread in building safety and information governance: An unbroken digital record established during early planning (BBP-A0) that tracks all design rationale, asset requirements, and compliance milestones throughout the entire building lifecycle."
-    },
-    {
-        "title": "Vòng Đời Tám Giai Đoạn Quản Trị Thông Tin",
-        "aliases": ["BBP 8 Giai Đoạn", "BIGBIMPROCESS Lifecycle"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/process_management"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "3",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "3",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Quy trình phân tầng quản trị thông tin công trình từ ý tưởng ban đầu đến bàn giao mô hình tài sản số, gắn liền mục tiêu dữ liệu với từng nấc chuyển giao phân loại Uniclass.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "BIGBIM được tổ chức thành 7 tầng tài liệu... Vòng đời 8 giai đoạn (BIGBIMPROCESS — BBP) từ BBP-A0 (Ý tưởng & Lập kế hoạch) đến BBP-C2 (Hoàn công & Bàn giao).",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Để hiện thực hóa việc quản lý thông tin nhất quán, BIGBIM phân rã vòng đời dự án thành 8 giai đoạn chuẩn tắc (BIGBIMPROCESS - BBP), mỗi giai đoạn gắn chặt với một mục tiêu dữ liệu và đối tượng phân loại Uniclass rõ ràng:
-
-- **BBP-A0 (Ý tưởng & Lập kế hoạch)**: Thiết lập Sợi Chỉ Vàng và khuôn khổ quản trị tổng thể.
-- **BBP-A1 (Thiết kế sơ bộ)**: Xác lập thông tin diễn giải về Không gian và Vị trí (Spaces/Locations - SL).
-- **BBP-A2 (Thiết kế cơ sở)**: Quy định cụ thể các Thành phần Chức năng (Elements/Functions - EF).
-- **BBP-B1 (Thiết kế kỹ thuật)**: Chuẩn hóa thông tin về các Hệ thống vận hành (Systems - Ss).
-- **BBP-B2 (Hồ sơ xây dựng)**: Xác định chi tiết Vật tư (Products - Pr) và Vật liệu (Materials - Ma).
-- **BBP-B3 (Thi công)**: Hiện thực hóa vật lý công trình dựa trên dữ liệu chuẩn xác từ BBP-B2.
-- **BBP-C1 (Vận hành thử)**: Đo lường và xác nhận hiệu năng thực tế của các hệ thống Ss.
-- **BBP-C2 (Hoàn công & Bàn giao)**: Nghiệm thu Digital Twin hoàn chỉnh và chính thức bàn giao Mô hình Thông tin Tài sản (AIM).
-
-Sự phân cấp này biến việc quản lý BIM từ việc dựng hình thụ động thành một chu trình kiểm soát dữ liệu có chủ đích theo từng nấc trưởng thành của công trình.""",
-        "ground_truth": "The 8-stage lifecycle (BBP-A0 to BBP-C2): A0 Inception (Golden Thread), A1 Outline Design (Spatial-Location / SL), A2 Concept Design (Elements-Functions / EF), B1 Technical Design (Systems / Ss), B2 Production (Products / Pr & Materials / Ma), B3 Construction (Physicalization), C1 Handover Testing, C2 As-built Completion (Digital Twin & AIM handoff)."
-    },
-    {
-        "title": "Vòng Kiểm Soát Chất Lượng Bảy Bước",
-        "aliases": ["Quy Trình Kiểm Soát V1-V7", "Cơ Chế Xác Nhận Dữ Liệu BIGBIM"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/quality_control"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "3",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "3",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Chuỗi kiểm soát chất lượng thông tin bảy bước phân định rành mạch trách nhiệm từ lập kế hoạch sản xuất, phối hợp, phê duyệt đến công nhận chính thức tài sản số.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "Bảy bước kiểm soát chất lượng thông tin tạo ra cơ chế truy nguyên rõ ràng: ai tạo, ai kiểm tra, ai phê duyệt, ai tiếp nhận, cho đến khi Trí Nhớ Số được công nhận chính thức tại V7.",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Để thông tin đạt chuẩn tin cậy cao nhất trước khi lưu trữ vào hồ sơ tài sản dài hạn, BIGBIM thiết kế chu trình kiểm soát chất lượng 7 bước (V1–V7) với các ranh giới phê duyệt rõ ràng:
-
-1. **V1 (Planning)**: Đội ngũ tạo lập thông tin sản xuất các Information Container (IC) tuân thủ chặt chẽ yêu cầu LOIN được phân giao.
-2. **V2 (Coordination)**: Triệt tiêu hoàn toàn các xung đột, va chạm và mâu thuẫn thông tin giữa các bộ môn (Kiến trúc, Kết cấu, MEP).
-3. **V3 (Review)**: Kiểm tra sự phù hợp đối với yêu cầu Sợi Chỉ Đỏ kỹ thuật.
-4. **V4 (Approve)**: Đơn vị tư vấn AEC chính thức chấp thuận để bảo đảm tính thống nhất với Sợi Chỉ Vàng.
-5. **V5 (Authorization)**: Các cơ quan chuyên môn và quản lý dự án cấp phép chính thức cho việc thi công vật lý ngoài hiện trường.
-6. **V6 (Acceptance)**: Bên Khai thác/Chủ đầu tư nghiệm thu tài sản số song hành cùng tài sản vật lý hoàn thành.
-7. **V7 (Recognition)**: Dữ liệu được công nhận chính thức và khóa trạng thái, trở thành Trí Nhớ Số trường tồn của công trình.
-
-Quy trình này loại bỏ hoàn toàn tình trạng 'đẩy việc' và bảo đảm mỗi tệp thông tin đều mang chữ ký trách nhiệm không thể chối bỏ.""",
-        "ground_truth": "The V1–V7 Information Verification Workflow: V1 Planning (Production per LOIN), V2 Coordination (Conflict Resolution), V3 Review (Red Thread verification), V4 Approve (Golden Thread compliance), V5 Authorization (Physicalization permit), V6 Acceptance (Asset handover), V7 Recognition (Official Digital Memory recognition)."
-    },
-    {
-        "title": "Cú Pháp BBH-RASE Triệt Tiêu Điểm Mù Thông Tin",
-        "aliases": ["BBH-RASE", "Cú Pháp Yêu Cầu Thông Tin RASE"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/specifications"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "3",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "3",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Phương pháp chuẩn hóa yêu cầu thông tin công trình thành cú pháp máy đọc được nhằm triệt tiêu các diễn dịch cảm tính giữa các bên tham gia dự án xây dựng.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "BBH-RASE (Triệt Tiêu Điểm Mù Thông Tin): cú pháp viết yêu cầu thông tin mà cả máy lẫn người hiểu theo cùng một nghĩa. Đây là một trong những đóng góp thực chất nhất của BIGBIM so với ISO 19650 gốc.",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Trong các hồ sơ mời thầu và yêu cầu trao đổi thông tin (EIR) truyền thống, câu từ thường được viết bằng ngôn ngữ văn học tự nhiên, dẫn đến tình trạng mỗi bên nhà thầu, tư vấn hiểu theo một cách khác nhau. Cú pháp BBH-RASE ra đời nhằm triệt tiêu điểm mù này bằng cách cấu trúc hóa mọi yêu cầu thông tin theo 4 thành tố toán học:
-
-- **Requirement (R - Yêu cầu)**: Mệnh lệnh bắt buộc phải thỏa mãn (phải đạt chỉ số kỹ thuật nào).
-- **Applicability (A - Phạm vi áp dụng)**: Đối tượng hoặc vùng không gian cụ thể mà yêu cầu này có hiệu lực.
-- **Selection (S - Lựa chọn)**: Các điều kiện phân nhánh logic hoặc tiêu chí sàng lọc đối tượng.
-- **Exception (E - Ngoại lệ)**: Các trường hợp đặc thù được miễn trừ khỏi yêu cầu chung.
-
-Bằng cách bóc tách yêu cầu thành cấu trúc RASE, các quy định kỹ thuật không chỉ trở nên trong sáng với kỹ sư con người mà còn có thể nạp trực tiếp vào các công cụ tự động hóa và AI Agent để kiểm tra tính tuân thủ tự động (automated rule-checking) trong tích tắc.""",
-        "ground_truth": "RASE syntax (Requirement, Applicability, Selection, Exception): A structured methodology for translating complex regulatory and organizational requirements into computable, unambiguous specifications that can be validated deterministically by autonomous engines."
-    },
-    {
-        "title": "Vai Trò Guardian Agent Trong Quản Trị Thông Tin Xây Dựng",
-        "aliases": ["Guardian Agent BIGBIM", "AI Hạ Tầng Quản Trị Thông Tin"],
-        "tags": ["knowledge", "type/concept", "domain/bim", "domain/agentic_ai", "domain/governance"],
-        "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
-        "source_page": "4",
-        "source_chapter: ": "Pages 1 - 6",
-        "ground_truth_page": "4",
-        "ground_truth_chapter": "01_pages_1_6.md",
-        "source_type": "pdf",
-        "summary": "Mô hình tác tử AI đóng vai trò người bảo vệ quy trình và kiểm tra tính nhất quán thông tin liên tục, với ranh giới thép: AI thực hiện kiểm tra tự động nhưng con người nắm quyền quyết định tối hậu.",
-        "people": [],
-        "companies": ["BIGBIM Core Team"],
-        "hook": "BIGBIM thiết kế hẳn một vai trò chính thức cho AI: Guardian Agent — người bảo vệ Sợi chỉ Vàng, người kiểm soát quy trình, và người dẫn dắt từng giai đoạn BBP... AI kiểm tra — con người quyết định.",
-        "author": "BIGBIM Core Team",
-        "work": "V7R01 BIGBIM Giới Thiệu",
-        "core_idea": """Trong một dự án xây dựng phức tạp với hàng nghìn Information Container (IC) và hàng trăm bên tham gia, khả năng tập trung của con người sẽ suy giảm nhanh chóng khi phải rà soát thủ công hàng trăm bảng kê và quy tắc đặt tên. BIGBIM giải quyết bài toán này bằng cách thể chế hóa vai trò của AI như một hạ tầng bắt buộc: **Guardian Agent**.
-
-Nhiệm vụ cốt lõi của Guardian Agent bao gồm:
-1. **Kiểm tra tự động liên tục**: Chạy toàn bộ checklist phân loại Uniclass, Naming Convention và độ đầy đủ LOIN tại mọi điểm chuyển giao dữ liệu mà không bị mỏi mệt hay bỏ sót.
-2. **Duy trì kỷ luật từ điển**: Ngăn chặn tình trạng phát sinh thuật ngữ tùy tiện. Khi gặp khái niệm mới, Agent lập tức gắn nhãn `[TEMPORARY]` và đề xuất cập nhật vào từ điển trung tâm thay vì tự ý suy đoán.
-3. **Phân tích rủi ro 4 chiều Iron Triangle**: Cưỡng chế hiển thị đủ 4 chiều rủi ro (No-Risk, Time-Risk, Do-Risk, Use-Risk) trước khi cấp thẩm quyền phê duyệt.
-4. **Bảo vệ Sợi Chỉ Vàng**: Ngăn chặn các mâu thuẫn phát sinh với mục tiêu chiến lược ban đầu.
-
-**Ranh giới trách nhiệm tuyệt đối**: Guardian Agent chỉ đóng vai trò người đồng hành hỗ trợ kiểm tra khách quan, tuyệt đối không được tự ý điền phạm vi công việc, không được ký duyệt thay con người và không thay thế trách nhiệm giải trình của các chủ thể dự án.""",
-        "ground_truth": "Guardian Agent as system infrastructure: Autonomous AI tasked with continuous verification across thousands of Information Containers (naming conventions, classification, LOIN completeness, and four-dimensional risk checks). Governed by a strict boundary: AI automates verification; human stewards hold sole authority for commitments and approvals."
-    }
-]
-
-STEVE_JOBS_CONCEPTS = [
-    {
-        "title": "Lòng Trung Thành Hai Chiều Với Nhân Tài Hạng A",
-        "aliases": ["Two-Way Loyalty with A-Players", "Trung Thành Hai Chiều Steve Jobs"],
-        "tags": ["knowledge", "type/concept", "domain/management", "domain/leadership", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "91",
-        "source_chapter: ": "Chapter 8 Bozos Bastards and Keepers",
-        "ground_truth_page": "91",
-        "ground_truth_chapter": "15_Chapter_8_Bozos_Bastards_and_Keepers.md",
-        "source_type": "epub",
-        "summary": "Triết lý lãnh đạo đòi hỏi người đứng đầu phải kiên quyết sa thải những nhân sự không đáp ứng tiêu chuẩn để bảo vệ tổ chức, nhưng đồng thời phải dành trọn vẹn sự trung thành và hậu thuẫn cho những nhân tài xuất sắc.",
-        "people": ["Steve Jobs", "Susan Barnes"],
-        "companies": ["Apple", "NeXT"],
-        "hook": "Nếu bạn không làm tốt công việc, Steve nợ những người còn lại trong đội ngũ nghĩa vụ phải sa thải bạn. Nhưng nếu bạn giỏi, ông ấy nợ bạn lòng trung thành tuyệt đối.",
-        "author": "Susan Barnes",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Trong các tổ chức công nghệ cao, nhà lãnh đạo thường gặp khó khăn trong việc cân bằng giữa lòng trắc ẩn cá nhân và kỷ luật đội ngũ. Câu nói của Susan Barnes về phong cách điều hành của Steve Jobs tại NeXT và Apple làm sáng tỏ nguyên lý 'Lòng trung thành hai chiều':
-
-Vế thứ nhất: Người lãnh đạo có một khoản nợ đạo đức tối thượng đối với những người làm việc xuất sắc trong nhóm. Nếu dung túng cho một cá nhân yếu kém hoặc làm việc tắc trách, nhà lãnh đạo đang trực tiếp phản bội công sức và sự tận tụy của những thành viên giỏi còn lại, khiến văn hóa tổ chức bị kéo tụt xuống mức tầm thường (bozo explosion). Việc sa thải người không phù hợp không phải là sự tàn nhẫn, mà là nghĩa vụ bảo vệ đội ngũ.
-
-Vế thứ hai: Ngược lại, đối với những nhân tài xuất sắc (A-players) cống hiến hết mình vì sứ mệnh chung, người lãnh đạo nợ họ sự trung thành, sự bảo vệ và những cơ hội phát triển đột phá, bất kể những va chạm cá tính hay biến động thời cuộc.
-
-Sự phân minh rành mạch này tạo ra một môi trường an toàn tâm lý có chọn lọc: những người tài giỏi biết rằng họ luôn được hậu thuẫn tuyệt đối và được làm việc bên cạnh những đồng nghiệp ưu tú nhất.""",
-        "ground_truth": "If you weren’t good at your job, he owed it to the rest of the team to get rid of you. But if you were good, he owed you his loyalty."
-    },
-    {
-        "title": "Bài Học Sa Lầy Vào Công Nghệ Thuần Túy",
-        "aliases": ["Sa Lầy Vào Công Nghệ", "Getting Lost in Technology"],
-        "tags": ["knowledge", "type/concept", "domain/product_design", "domain/business_strategy", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "22",
-        "source_chapter: ": "Chapter 8 Bozos Bastards and Keepers",
-        "ground_truth_page": "22",
-        "ground_truth_chapter": "15_Chapter_8_Bozos_Bastards_and_Keepers.md",
-        "source_type": "epub",
-        "summary": "Cạm bẫy chiến lược nguy hiểm khi đội ngũ kỹ nghệ quá say mê hoàn thiện sự tinh xảo của công nghệ mà quên mất giá trị thực tiễn và khả năng tiếp cận của người tiêu dùng đại chúng.",
-        "people": ["Steve Jobs", "Brent Schlender"],
-        "companies": ["NeXT", "Apple"],
-        "hook": "Chúng tôi đã quá sa lầy vào công nghệ và quên mất mục đích cuối cùng của việc tạo ra sản phẩm thực sự hữu ích cho thị trường.",
-        "author": "Steve Jobs",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Thất bại của dòng máy tính NeXT đầu thập niên 1990 là bài học xương máu nhất định hình nên sự trưởng thành trong tư duy quản trị của Steve Jobs. Chiếc máy tính NeXT Cube bằng magiê đen tuyền là một kiệt tác thẩm mỹ và đỉnh cao kỹ nghệ, nhưng nó có giá thành quá đắt đỏ và không giải quyết được bài toán thực tế của người dùng phổ thông.
-
-Khi thừa nhận 'Chúng tôi đã sa lầy vào công nghệ', Steve Jobs đã chỉ ra căn bệnh kinh niên của giới kỹ sư:
-- **Tự tôn kỹ thuật thái quá**: Tập trung tối ưu hóa các chi tiết cơ học siêu tinh vi (như góc bo hoàn hảo 90 độ của khối lập phương hay bo mạch đắt tiền) mà bỏ qua thực tế thị trường.
-- **Mất kết nối với người dùng cuối**: Sản phẩm được thiết kế để thỏa mãn tiêu chuẩn thẩm mỹ của người sáng lập thay vì giải quyết nỗi đau có thật của khách hàng.
-
-Chính nhờ nhận thức sâu sắc về thất bại này, khi quay trở lại cứu vãn Apple năm 1997, Steve Jobs đã kiên quyết đảo ngược triết lý: 'Bạn phải bắt đầu từ trải nghiệm khách hàng rồi mới quay ngược trở lại công nghệ, chứ không phải bắt đầu từ công nghệ rồi tìm cách bán nó.'""",
-        "ground_truth": "The physical design of computers engaged him more than anything else, and he took great pride in the beauty and functionality of the machines he oversaw. But the sleek NeXT computers weren’t selling. Steve reluctantly shut down the hardware division, fired half the staff... 'We got lost in the technology,' Steve would later tell me."
-    },
-    {
-        "title": "Nghệ Thuật Chọn Cuộc Chiến Truyền Thông",
-        "aliases": ["Picking a Fight Strategy", "Chiến Lược Chọn Cuộc Chiến"],
-        "tags": ["knowledge", "type/concept", "domain/marketing", "domain/strategy", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "15",
-        "source_chapter: ": "Chapter 8 Bozos Bastards and Keepers",
-        "ground_truth_page": "15",
-        "ground_truth_chapter": "15_Chapter_8_Bozos_Bastards_and_Keepers.md",
-        "source_type": "epub",
-        "summary": "Chiến lược tiếp thị du kích tập trung dồn toàn bộ nguồn lực hạn hẹp vào việc thách thức trực diện một đối thủ thống trị để ngay lập tức định vị thương hiệu trên vũ đài truyền thông.",
-        "people": ["Steve Jobs", "Mike Slade", "Scott McNealy"],
-        "companies": ["NeXT", "Sun Microsystems"],
-        "hook": "Không. Điều duy nhất có ý nghĩa và tạo ra sức mạnh lúc này là phải dũng cảm chọn ra một đối thủ lớn để khiêu chiến trực diện.",
-        "author": "Steve Jobs",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Khi một doanh nghiệp nhỏ hoặc một công ty đang gặp khủng hoảng phải đối mặt với các gã khổng lồ trên thị trường, việc rải ngân sách tiếp thị cho các chiến dịch dàn trải là con đường dẫn tới sự biến mất trong im lặng. Mike Slade, giám đốc tiếp thị của NeXT, đã học được bài học đắt giá này từ Steve Jobs.
-
-Thay vì triển khai các kế hoạch tiếp thị phức tạp theo trường phái truyền thống, Steve Jobs ra lệnh: 'Chỉ có một điều duy nhất quan trọng: Chọn một cuộc chiến' (The only thing that counts is picking a fight). NeXT đã dồn toàn bộ ngân sách cả năm vào loạt quảng cáo thách thức trực tiếp năng lực phần mềm của Sun Microsystems trên Wall Street Journal.
-
-Chiến thuật này tạo ra ba hiệu ứng mang tính đòn bẩy:
-1. **Nâng tầm vị thế ngay lập tức**: Bằng cách thách đấu trực diện với kẻ dẫn đầu ngành, bạn tự động định vị mình là kẻ thách thức ngang hàng trong tâm trí công chúng.
-2. **Kích hoạt phản ứng đối thủ**: Khi lãnh đạo đối thủ mất bình tĩnh lên tiếng phản bác, họ vô tình trở thành kênh quảng bá miễn phí và khuếch đại tầm vóc cho sản phẩm của bạn.
-3. **Tối ưu hóa chi phí chú ý**: Biến thông điệp quảng cáo thương mại khô khan thành một câu chuyện kịch tính thu hút báo chí tự nguyện phân tích đưa tin.""",
-        "ground_truth": "I came up with this elaborate marketing strategy, and he said, 'Nope. The only thing that counts is picking a fight.' And he was right."
-    },
-    {
-        "title": "Ma Trận Bốn Góc Phần Tư Sản Phẩm",
-        "aliases": ["The Product Quadrant Matrix", "Ma Trận 2x2 Apple Steve Jobs"],
-        "tags": ["knowledge", "type/concept", "domain/product_strategy", "domain/business_management", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "71",
-        "source_chapter: ": "Chapter 9 Maybe They Had to Be Crazy",
-        "ground_truth_page": "71",
-        "ground_truth_chapter": "16_Chapter_9_Maybe_They_Had_to_Be_Crazy.md",
-        "source_type": "epub",
-        "summary": "Chiến lược cắt tỉa danh mục sản phẩm triệt để bằng cách gói gọn toàn bộ định hướng phát triển vào một ma trận 2x2 đơn giản, giúp tập trung tối đa nguồn lực kỹ nghệ và xóa bỏ sự phân tán.",
-        "people": ["Steve Jobs", "Brent Schlender"],
-        "companies": ["Apple"],
-        "hook": "Steve đã chứng minh Apple có thể chuyển mình thành cỗ máy sinh lời khi chỉ duy trì tối đa bốn dòng sản phẩm cốt lõi: hai mẫu máy tính bàn cho cá nhân và chuyên gia; hai mẫu máy tính xách tay cho hai đối tượng đó. Chỉ thế thôi. Bốn góc phần tư, bốn dòng sản phẩm.",
-        "author": "Brent Schlender",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Vào năm 1997, khi Steve Jobs quay trở lại tiếp quản Apple, công ty đang đứng trên bờ vực phá sản một phần lớn do danh mục sản phẩm bị phình to vô tội vạ. Dưới thời các CEO tiền nhiệm, Apple có hàng chục phiên bản máy tính Macintosh khác nhau với những cái tên gây bối rối, làm phân mảnh chuỗi cung ứng và khiến người tiêu dùng hoàn toàn mất phương hướng.
-
-Steve Jobs đã thực hiện một trong những cú đảo chiều danh mục kinh điển nhất lịch sử kinh doanh bằng cách vẽ một ma trận 2x2 đơn giản lên bảng trắng:
-- **Hàng ngang**: Người tiêu dùng đại chúng (Consumer) vs Chuyên gia chuyên nghiệp (Pro).
-- **Hàng dọc**: Máy tính để bàn (Desktop) vs Máy tính xách tay (Portable).
-
-Bốn góc phần tư tương ứng với 4 sản phẩm duy nhất: iMac (Consumer Desktop), iBook (Consumer Portable), Power Mac (Pro Desktop), và PowerBook (Pro Portable).
-
-Hệ quả của quyết định dũng cảm này:
-1. **Giải phóng năng lực kỹ nghệ**: Thay vì phân tán kỹ sư cho 40 dự án tầm thường, Apple dồn toàn bộ những bộ óc xuất sắc nhất để tạo nên 4 sản phẩm đỉnh cao.
-2. **Tinh gọn chuỗi cung ứng**: Giảm số lượng linh kiện tồn kho từ hàng trăm triệu USD xuống mức tối thiểu, dọn đường cho Tim Cook thiết lập hệ thống vận hành siêu hiệu quả sau này.
-3. **Định vị sắc nét trong tâm trí khách hàng**: Khách hàng chỉ mất vài giây để biết chính xác chiếc máy tính nào dành cho nhu cầu của họ.""",
-        "ground_truth": "Steve set out to show how Apple could transform itself into a profitable company while offering no more than four basic products: two separate models of desktop PCs, one for consumers and one for professionals; and two separate laptop versions aimed at those same constituencies. That’s it. Four quadrants, four product lines."
-    },
-    {
-        "title": "Chiến Lược Think Different: Định Vị Khách Hàng Thay Vì Tính Năng",
-        "aliases": ["Think Different Strategy", "Định Vị Khách Hàng Apple"],
-        "tags": ["knowledge", "type/concept", "domain/branding", "domain/marketing", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "45",
-        "source_chapter: ": "Chapter 9 Maybe They Had to Be Crazy",
-        "ground_truth_page": "45",
-        "ground_truth_chapter": "16_Chapter_9_Maybe_They_Had_to_Be_Crazy.md",
-        "source_type": "epub",
-        "summary": "Nghệ thuật xây dựng thương hiệu đỉnh cao bằng cách tôn vinh phẩm chất và thế giới quan của khách hàng thay vì liệt kê tính năng phần cứng hay thông số kỹ thuật.",
-        "people": ["Steve Jobs", "Lee Clow", "Richard Dreyfuss"],
-        "companies": ["Apple", "TBWA\\Chiat\\Day"],
-        "hook": "Thông điệp của chiến dịch hướng thẳng ra ngoài, định nghĩa phẩm chất của người mua sản phẩm Apple hơn là nói về chiếc máy tính cụ thể. Không hề có chiếc máy tính nào được nhắc tới. Chỉ có 'những công cụ' dành cho những kẻ sáng tạo.",
-        "author": "Brent Schlender",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Chiến dịch 'Think Different' năm 1997 được coi là bước ngoặt hồi sinh cảm xúc cho thương hiệu Apple trong giai đoạn đen tối nhất. Điều làm nên sự vĩ đại của chiến dịch này không nằm ở quy mô ngân sách, mà ở sự thấu hiểu sâu sắc về bản chất của tiếp thị giá trị.
-
-Trong khi toàn bộ ngành công nghiệp máy tính cá nhân đang chìm đắm trong cuộc đua thông số kỹ thuật (tốc độ xung nhịp chip megahertz, dung lượng RAM, dung lượng ổ cứng), Apple và Lee Clow đã đưa ra một tuyên ngôn hoàn toàn khác biệt:
-- **Không nhắc tới sản phẩm**: Toàn bộ quảng cáo truyền hình và áp phích đường phố không hề xuất hiện hình ảnh chiếc máy tính hay logo tính năng kỹ thuật nào.
-- **Tôn vinh bản sắc của người dùng**: Chiến dịch sử dụng hình ảnh của những bộ óc vĩ đại dám thách thức chuẩn mực (Einstein, Picasso, Gandhi, Chaplin) để truyền đi thông điệp: Những người đủ điên rồ để nghĩ rằng họ có thể thay đổi thế giới chính là những người sẽ làm được điều đó.
-- **Định vị sản phẩm như công cụ phụng sự**: Apple không bán máy tính; Apple chế tác những 'công cụ' giúp những con người sáng tạo hiện thực hóa ước mơ và thay đổi nhân loại.
-
-Chiến dịch này trước hết đã vực dậy niềm tự hào kiêu hãnh của hàng nghìn kỹ sư Apple đang hoang mang sau các đợt sa thải, đồng thời tái kết nối hàng triệu khách hàng trung thành vào một cộng đồng có chung hệ giá trị.""",
-        "ground_truth": "The language, which Steve worked on along with Clow and others at TBWA\\Chiat\\Day, focused outward, defining the quality of an Apple buyer, rather than of a particular machine itself. There’s no computer mentioned, in fact. Just 'tools,' created for the creative."
-    },
-    {
-        "title": "Phân Phối Nhân Sự Ba Tầng Trong Khủng Hoảng",
-        "aliases": ["Three-Tier Talent Rule", "Quy Tắc Ba Tầng Nhân Sự Khủng Hoảng"],
-        "tags": ["knowledge", "type/concept", "domain/management", "domain/human_resources", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "61",
-        "source_chapter: ": "Chapter 9 Maybe They Had to Be Crazy",
-        "ground_truth_page": "61",
-        "ground_truth_chapter": "16_Chapter_9_Maybe_They_Had_to_Be_Crazy.md",
-        "source_type": "epub",
-        "summary": "Mô hình phân loại thực chứng lực lượng lao động trong một doanh nghiệp đang khủng hoảng thành ba nhóm để xác định chính xác lực lượng hạt nhân cần giữ lại và tầng trung gian cần cắt giảm.",
-        "people": ["Steve Jobs", "Brent Schlender"],
-        "companies": ["Apple"],
-        "hook": "Khi quay lại Apple, tôi ngỡ ngàng nhận ra rằng một phần ba nhân sự thực sự là những người hạng A và A-cộng... Một phần ba khác là những nhân viên rất tốt... Và một phần ba còn lại là nhóm tai hại, đã đến lúc họ phải ra đi.",
-        "author": "Steve Jobs",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Khi một doanh nghiệp rơi vào khủng hoảng suy thoái, sai lầm phổ biến nhất của các nhà quản trị là thực hiện các đợt cắt giảm nhân sự cào bằng (ví dụ giảm 10% đồng loạt mọi phòng ban). Steve Jobs khi tái thiết Apple năm 1997 đã áp dụng một lăng kính giải phẫu nhân sự sắc bén dựa trên 'Mô hình ba tầng':
-
-1. **Một phần ba hạt nhân (A & A-plus)**: Đây là những cá nhân kiệt xuất, sở hữu năng lực chuyên môn vượt trội và lòng trung thành cao độ. Bất chấp khó khăn tài chính và nguy cơ phá sản, họ vẫn bám trụ vì tình yêu với sản phẩm. Họ chính là 'nghiệp lành' (good karma) và là vốn liếng quý giá nhất để công ty hồi sinh.
-2. **Một phần ba trụ cột vận hành (Solid performers)**: Những người làm việc chăm chỉ, hoàn thành tốt nhiệm vụ được giao. Đây là lực lượng xương sống giúp bộ máy duy trì nhịp hoạt động ổn định hàng ngày.
-3. **Một phần ba cản trở (Unfortunate tier)**: Nhóm nhân sự kém hiệu quả, trì trệ, đặc biệt là những nhà quản lý quan liêu ở tầng trung gian. Nguy hiểm hơn, nhóm này không chỉ làm sai mà còn chỉ đạo những người khác làm sai theo, bóp nghẹt động lực sáng tạo của hai nhóm trên.
-
-Chiến lược tái cấu trúc của Steve Jobs là dũng cảm loại bỏ triệt để một phần ba cản trở, trao lại toàn bộ không gian sáng tạo và quyền lực cho nhóm hạt nhân dẫn dắt nhóm trụ cột.""",
-        "ground_truth": "When I returned to Apple, I was blown away by the fact that a third of the people there really were A to A-plus people—the kind you’d do anything to hire... Another third were very good... And then there was another third who were unfortunate... it was time for them to leave. Unfortunately, a lot of those people were in management."
-    },
-    {
-        "title": "Phản Hồi Tức Thì Thay Thế Đánh Giá Định Kỳ",
-        "aliases": ["Continuous Real-Time Feedback", "Phản Hồi Thời Gian Thực Steve Jobs"],
-        "tags": ["knowledge", "type/concept", "domain/management", "domain/human_resources", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "87",
-        "source_chapter: ": "Chapter 9 Maybe They Had to Be Crazy",
-        "ground_truth_page": "87",
-        "ground_truth_chapter": "16_Chapter_9_Maybe_They_Had_to_Be_Crazy.md",
-        "source_type": "epub",
-        "summary": "Triết lý loại bỏ các quy trình đánh giá hiệu suất thường niên cồng kềnh để thay thế bằng cơ chế phản hồi thẳng thắn, liên tục theo thời gian thực giữa lãnh đạo và đội ngũ cốt lõi.",
-        "people": ["Steve Jobs", "Jon Rubinstein", "Avie Tevanian"],
-        "companies": ["Apple"],
-        "hook": "Steve không tin vào các đợt đánh giá định kỳ. Quan điểm của ông là: 'Tôi đưa ra phản hồi cho anh mọi lúc mọi nơi, vậy anh còn cần một đợt đánh giá để làm gì?'",
-        "author": "Jon Rubinstein",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Trong hầu hết các tập đoàn lớn, quy trình đánh giá hiệu suất nhân sự hàng năm (Annual Performance Review) hay khảo sát 360 độ thường bị biến tướng thành các thủ tục hành chính hình thức, gây căng thẳng và tốn kém thời gian mà không đem lại cải thiện thực chất.
-
-Steve Jobs kiên quyết từ chối mọi thủ tục này trong đội ngũ điều hành cấp cao của Apple. Khi Jon Rubinstein muốn thuê chuyên gia để làm đánh giá 360 độ, Jobs đã gạt đi và gọi đó là sự lãng phí thời gian. Thậm chí khi Bộ Tư pháp Mỹ điều tra và yêu cầu hồ sơ nhân sự của Avie Tevanian (người đứng đầu toàn bộ mảng phần mềm của Apple), hồ sơ nhân sự chỉ có đúng một mẩu giấy trống vì Tevanian chưa từng trải qua một kỳ đánh giá thường niên nào trong suốt 8 năm.
-
-Triết lý đằng sau sự cực đoan này là:
-- **Độ trễ bằng 0**: Khi có điều gì không đạt chuẩn hoặc tuyệt vời, người lãnh đạo phải phản hồi ngay lập tức tại chỗ. Chờ đợi 6 tháng hay 1 năm để nói cho nhân viên biết họ làm sai ở đâu là biểu hiện của sự trốn tránh trách nhiệm lãnh đạo.
-- **Giao tiếp minh bạch tuyệt đối**: Mọi thành viên trong nhóm luôn biết chính xác vị trí của mình và chất lượng công việc mình đang tạo ra, loại bỏ hoàn toàn tâm lý phỏng đoán hay chính trị nội bộ.""",
-        "ground_truth": "Steve didn’t believe in reviews... He disliked all that formality. His feeling was, 'I give you feedback all the time, so what do you need a review for?' At one point I hired an executive coach so I could do three-sixty reviews with my own team... and I tried to get Steve to talk to him, but he wouldn’t. In fact, he asked me, 'What do you need that for? That’s a waste of time!'"
-    },
-    {
-        "title": "Triết Lý Tích Hợp Toàn Vẹn Sản Phẩm",
-        "aliases": ["The Whole Widget", "Kiểm Soát Trải Nghiệm Đầu Cuối"],
-        "tags": ["knowledge", "type/concept", "domain/product_design", "domain/strategy", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "13",
-        "source_chapter: ": "Chapter 15 The Whole Widget",
-        "ground_truth_page": "13",
-        "ground_truth_chapter": "23_Chapter_15_The_Whole_Widget.md",
-        "source_type": "epub",
-        "summary": "Chiến lược làm chủ và kiểm soát toàn bộ chuỗi giá trị từ phần cứng, hệ điều hành, phần mềm ứng dụng, dịch vụ đám mây đến hệ thống cửa hàng bán lẻ nhằm bảo đảm trải nghiệm người dùng hoàn hảo nhất.",
-        "people": ["Steve Jobs", "Brent Schlender"],
-        "companies": ["Apple"],
-        "hook": "Trải nghiệm Apple là sự hợp nhất chưa từng có giữa sự xuất sắc về tiếp thị và công nghệ, mang đến một trải nghiệm liền mạch và kỳ diệu ở mọi điểm chạm thay vì sự hỗn độn chắp vá từ nhiều công ty khác nhau.",
-        "author": "Brent Schlender",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Trong lịch sử điện toán, có hai trường phái đối nghịch: mô hình phân mảnh mở (như liên minh Wintel gồm Microsoft làm phần mềm, Intel làm vi xử lý, và các nhà sản xuất OEM như Dell, HP lắp ráp phần cứng) và mô hình tích hợp khép kín của Apple mà Steve Jobs gọi là 'The Whole Widget'.
-
-Triết lý 'The Whole Widget' khẳng định rằng để tạo ra một trải nghiệm người dùng thực sự đơn giản và kỳ diệu, doanh nghiệp buộc phải chịu trách nhiệm đối với toàn bộ chuỗi mắt xích công nghệ:
-1. **Kiểm soát phần cứng và vi kiến trúc**: Thiết kế từ con ốc, khung nhôm nguyên khối đến vi xử lý chuyên biệt tối ưu hóa năng lượng.
-2. **Hệ điều hành và phần mềm lõi**: Đồng bộ sâu sắc với phần cứng để tối ưu hóa từng mili-giây phản hồi của giao diện cảm ứng.
-3. **Dịch vụ nội dung và đám mây**: iTunes, App Store, iCloud kết nối liền mạch các thiết bị thành một hệ sinh thái không ma sát.
-4. **Không gian bán lẻ và dịch vụ khách hàng**: Chuỗi Apple Store với Genius Bar biến việc mua sắm và bảo hành thành một trải nghiệm văn hóa cao cấp.
-
-Bằng cách kiểm soát toàn vẹn mọi điểm chạm, Apple giải phóng người dùng khỏi mớ bòng bong hướng dẫn kỹ thuật phức tạp vốn là đặc trưng của thế giới cơ học truyền thống.""",
-        "ground_truth": "Apple promised to provide a simple and yet magical... encounter with technology at every stage, as opposed to the disjointed and geeky mess that served mainly to confuse consumers when they tried to coordinate products from different companies... The 'Apple experience' was an unprecedented merger of marketing and technology excellence that made customers want to come back for more."
-    },
-    {
-        "title": "Tài Sản Tri Thức Từ Chu Trình Phát Triển Sản Phẩm",
-        "aliases": ["Knowledge Yield", "Tài Sản Sau Dự Án Jony Ive"],
-        "tags": ["knowledge", "type/concept", "domain/learning_organization", "domain/product_design", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "49",
-        "source_chapter: ": "Chapter 15 The Whole Widget",
-        "ground_truth_page": "49",
-        "ground_truth_chapter": "23_Chapter_15_The_Whole_Widget.md",
-        "source_type": "epub",
-        "summary": "Nhận thức sâu sắc rằng sau mỗi chu trình phát triển sản phẩm, năng lực và tri thức mà đội ngũ đúc kết được là tài sản vô hình quý giá hơn chính bản thân sản phẩm vật lý được tạo ra.",
-        "people": ["Jony Ive", "Steve Jobs"],
-        "companies": ["Apple"],
-        "hook": "Khi kết thúc một dự án, có hai thành quả đạt được: vật thể sản phẩm thực tế, và toàn bộ những gì bạn đã học được. Những gì học được có giá trị hơn rất nhiều vì đó chính là tương lai của bạn.",
-        "author": "Jony Ive",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Trong quá trình cộng tác sáng tạo khăng khít giữa Jony Ive và Steve Jobs tại Design Lab của Apple, họ đã nhìn nhận chu trình phát triển sản phẩm dưới một góc độ hoàn toàn mới vượt lên trên các chỉ số thương mại thông thường.
-
-Theo Jony Ive, khi một dự án hoàn thành và bàn giao ra thị trường, đội ngũ luôn gặt hái được hai loại kết quả:
-- **Thành quả vật lý (The Object)**: Sản phẩm hữu hình trên kệ hàng (chiếc iMac, chiếc iPod hay chiếc iPhone). Đây là thứ mang lại doanh thu tức thời nhưng sẽ dần bị hao mòn và lỗi thời theo thời gian.
-- **Tài sản nhận thức (The Learning)**: Toàn bộ những bài học, trực giác thẩm mỹ, hiểu biết sâu sắc về vật liệu và năng lực giải quyết vấn đề mà đội ngũ tích lũy được trong quá trình vượt qua các thử thách kỹ thuật tưởng chừng bất khả thi.
-
-Chính 'kho tàng tri thức' này mới là động cơ thúc đẩy tương lai của doanh nghiệp. Nó cho phép tổ chức đặt ra những tiêu chuẩn khắt khe hơn, đòi hỏi sự hoàn hảo cao hơn ở chu trình kế tiếp, biến sự phát triển lặp lại thành một hành trình tiến hóa nhận thức không có điểm dừng.""",
-        "ground_truth": "I’ve always thought there are a number of things that you have achieved at the end of a project... There’s the object, the actual product itself, and then there’s all that you learned. What you learned is as tangible as the product itself, but much more valuable because that’s your future."
-    },
-    {
-        "title": "Tài Khoản Trải Nghiệm Thương Hiệu",
-        "aliases": ["Brand Experience Account", "Tài Khoản Niềm Tin Thương Hiệu"],
-        "tags": ["knowledge", "type/concept", "domain/branding", "domain/customer_experience", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "13",
-        "source_chapter: ": "Chapter 15 The Whole Widget",
-        "ground_truth_page": "13",
-        "ground_truth_chapter": "23_Chapter_15_The_Whole_Widget.md",
-        "source_type": "epub",
-        "summary": "Mô hình ví von rằng mỗi khoảnh khắc tương tác giữa khách hàng và thương hiệu đều như một khoản tiền gửi vào (credit) hoặc rút ra (debit) từ tài khoản uy tín trong tâm trí họ.",
-        "people": ["Steve Jobs", "Brent Schlender"],
-        "companies": ["Apple"],
-        "hook": "Mỗi khoảnh khắc người tiêu dùng tiếp xúc với thương hiệu là một trải nghiệm có thể cộng thêm hoặc trừ bớt vào tài khoản niềm tin của thương hiệu đó trong tâm trí họ.",
-        "author": "Brent Schlender",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Thương hiệu không phải là một logo hay một câu slogan tiếp thị, mà là tổng hòa của mọi cảm xúc và ký ức được tích lũy trong tâm trí khách hàng. Steve Jobs luôn thấm nhuần nguyên lý: mỗi điểm chạm (touchpoint) dù là nhỏ nhất đều đóng vai trò như một giao dịch tài chính đối với 'Tài khoản Trải nghiệm Thương hiệu':
-
-- **Gửi tiền (Credits)**: Xảy ra khi sản phẩm hoạt động mượt mà vượt mong đợi, khi chiếc hộp đựng mở ra với độ khít hoàn hảo, khi một nhân viên cửa hàng giải quyết sự cố tận tình mà không đòi hỏi chi phí, hoặc khi một video quảng cáo truyền cảm hứng sống tích cực.
-- **Rút tiền (Debits)**: Xuất hiện khi phần mềm bị treo máy, khi cáp sạc nhanh hỏng, khi nhân viên chăm sóc khách hàng thiếu kiên nhẫn, hoặc khi quảng cáo nói quá sự thật kỹ thuật.
-
-Nếu một thương hiệu liên tục thực hiện các giao dịch 'rút tiền' thông qua sản phẩm lỗi và dịch vụ cẩu thả, tài khoản niềm tin sẽ rơi vào tình trạng bội chi (khủng hoảng thương hiệu). Việc duy trì kỷ luật kiểm soát chất lượng khắt khe của Apple chính là nỗ lực bảo đảm mọi giao dịch tại mọi điểm chạm đều là một khoản tiền gửi gia tăng giá trị cho thương hiệu.""",
-        "ground_truth": "Steve embraced the marketing adage that every single moment a consumer encounters a brand—whether as a buyer, a user, a store visitor, a passerby seeing a billboard, or someone simply watching an ad on TV—is an experience that adds either credits or debits to the brand’s 'account' in his imagination."
-    },
-    {
-        "title": "Khả Năng Xoay Trục Nhanh Chóng Trước Phản Hồi Thực Tế",
-        "aliases": ["Fast Pivot Capability", "Khả Năng Xoay Trục Nhanh Steve Jobs"],
-        "tags": ["knowledge", "type/concept", "domain/agile_management", "domain/strategy", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "93",
-        "source_chapter: ": "Chapter 15 The Whole Widget",
-        "ground_truth_page": "93",
-        "ground_truth_chapter": "23_Chapter_15_The_Whole_Widget.md",
-        "source_type": "epub",
-        "summary": "Năng lực từ bỏ định kiến cá nhân và xoay trục chiến lược tức thì khi dữ liệu thực tế chứng minh mô hình ban đầu không tối ưu, biến điểm yếu thành động lực tăng trưởng đột phá.",
-        "people": ["Steve Jobs", "John Doerr", "Jean-Louis Gassée", "Eddy Cue"],
-        "companies": ["Apple", "Kleiner Perkins"],
-        "hook": "Chỉ hơn bốn tháng sau khi bán ra chiếc iPhone đầu tiên, Apple đã công bố bộ công cụ phát triển phần mềm SDK... Đó là lúc chúng tôi biết Steve đã thực sự nhìn ra chân lý và thay đổi.",
-        "author": "Jean-Louis Gassée",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Một trong những phẩm chất khác biệt lớn nhất giữa một nhà lãnh đạo độc đoán bảo thủ và một thiên tài kinh doanh thực chứng là tốc độ xoay trục khi nhận ra sai lầm. Khi chiếc iPhone đầu tiên ra mắt vào năm 2007, Steve Jobs kiên quyết khóa kín hệ điều hành, không cho phép các nhà phát triển bên ngoài viết ứng dụng vì lo ngại virus và làm hỏng trải nghiệm người dùng.
-
-Tuy nhiên, chỉ trong vòng 4 tháng sau khi chiếc máy lên kệ, trước nhu cầu bùng nổ của thị trường và sự thuyết phục của đội ngũ điều hành cùng các nhà đầu tư mạo hiểm như John Doerr, Steve Jobs đã thực hiện một cú xoay trục thần tốc:
-1. Từ bỏ hoàn toàn lệnh cấm ban đầu, mời John Doerr đến thảo luận thành lập quỹ iFund trị giá 100 triệu USD hỗ trợ các nhà phát triển.
-2. Công bố bộ công cụ lập trình SDK và phát triển nền tảng App Store.
-
-Quyết định mở cửa App Store đã biến chiếc iPhone từ một thiết bị phần cứng đơn thuần thành một nền tảng điện toán toàn cầu, kích hoạt mạng lưới kinh tế ứng dụng hàng trăm tỷ đô la. Khả năng gạt bỏ cái tôi cá nhân để xoay chuyển chiến lược trong chớp mắt chính là biểu hiện đỉnh cao của sự trưởng thành ở Steve Jobs giai đoạn hai.""",
-        "ground_truth": "In November, just over four months after shipping its first iPhone, Apple revealed that it would make available a software development kit for anyone who wanted to develop apps. 'That’s when we knew Steve had finally come to see the light,' Gassée says... Then they announced the App Store."
-    },
-    {
-        "title": "Kiến Trúc Không Gian Thúc Đẩy Va Chạm Ngẫu Nhiên",
-        "aliases": ["Architecture of Serendipitous Encounters", "Không Gian Thúc Đẩy Sáng Tạo"],
-        "tags": ["knowledge", "type/concept", "domain/organizational_design", "domain/architecture", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "21",
-        "source_chapter: ": "Chapter 14 A Safe Haven for Pixar",
-        "ground_truth_page": "21",
-        "ground_truth_chapter": "22_Chapter_14_A_Safe_Haven_for_Pixar.md",
-        "source_type": "epub",
-        "summary": "Nguyên lý thiết kế trụ sở làm việc với một tâm chấn sinh hoạt chung bắt buộc nhằm cưỡng chế sự giao tiếp tình cờ giữa các bộ môn độc lập, nuôi dưỡng sáng tạo liên ngành.",
-        "people": ["Steve Jobs", "John Lasseter", "Ed Catmull"],
-        "companies": ["Pixar"],
-        "hook": "Lý thuyết của Steve rất đơn giản: ông tin vào các cuộc gặp gỡ không định trước, nơi con người tình cờ va chạm vào nhau trong một không gian trung tâm bắt buộc phải đi qua nhiều lần mỗi ngày.",
-        "author": "John Lasseter",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Khi chỉ đạo thiết kế trụ sở mới của Pixar tại Emeryville vào cuối thập niên 1990, Steve Jobs không chỉ xây dựng một tòa nhà văn phòng đẹp mắt, mà ông đang kiến tạo một 'công cụ định hình hành vi tổ chức'.
-
-Ý tưởng cốt lõi của ông xuất phát từ việc thấu hiểu bản chất công việc của các nhà làm phim hoạt hình: mỗi người thường ngồi một mình cô lập trước màn hình máy tính hàng giờ liền. Để phá vỡ các ốc đảo thông tin biệt lập (silos), Jobs thiết kế một khoảng thông tầng trung tâm khổng lồ (Central Atrium) với cấu trúc cưỡng chế sự va chạm:
-- Toàn bộ các tiện ích chung thiết yếu nhất: căng-tin phục vụ bữa ăn, quán cà phê, hộp thư nhận thông báo và phòng họp lớn đều được quy hoạch tại tâm chấn này.
-- Mọi nhân viên dù ở bất kỳ bộ phận nào (từ biên kịch, vẽ phác thảo, kỹ sư mô phỏng máy tính đến đội ngũ tài chính) đều phải đi qua hoặc băng qua trục trung tâm này nhiều lần mỗi ngày.
-
-Những cuộc gặp gỡ tình cờ tại quầy cà phê hay hành lang Atrium đã kích hoạt các cuộc trò chuyện tự phát ngoài kế hoạch, nơi các ý tưởng sáng tạo đột phá thường được nhen nhóm một cách bất ngờ nhất.""",
-        "ground_truth": "His theory was very simple... He believed in the unplanned meeting, in people running into people. He knew how everybody works at Pixar, where you’re one-on-one with your computer. He had the theory of this big atrium that would be able to house the whole company for a company meeting, and that would have everything that gets you out of your office and into that center spine. It would draw you to the center, or have you crossing it, many times a day."
-    },
-    {
-        "title": "Vai Trò Chiếc Búa Ngoại Cảnh Trong Phê Bình Sáng Tạo",
-        "aliases": ["The External Hammer", "Chiếc Búa Ngoại Cảnh Steve Jobs"],
-        "tags": ["knowledge", "type/concept", "domain/creative_direction", "domain/leadership", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "31",
-        "source_chapter: ": "Chapter 14 A Safe Haven for Pixar",
-        "ground_truth_page": "31",
-        "ground_truth_chapter": "22_Chapter_14_A_Safe_Haven_for_Pixar.md",
-        "source_type": "epub",
-        "summary": "Vai trò của một nhà lãnh đạo có tư duy sắc bén bên ngoài ngành, đóng vai trò như một lực tác động ngoại cảnh giúp các chuyên gia sáng tạo đập tan điểm mù mà không can thiệp vào quyền tự chủ chuyên môn.",
-        "people": ["Steve Jobs", "Ed Catmull"],
-        "companies": ["Pixar"],
-        "hook": "Một trong những điều chúng tôi mất đi khi Steve qua đời là một chiếc búa ngoại cảnh... Khi đạo diễn bị lạc lối trong rừng rậm sáng tạo, Steve bước vào với lời mở đầu: 'Tôi không phải nhà làm phim, các bạn có thể bỏ qua mọi điều tôi nói', nhưng những gì ông chỉ ra lại có sức công phá chuẩn xác.",
-        "author": "Ed Catmull",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Trong quá trình sản xuất phim tại Pixar, hội đồng 'Brain Trust' gồm các đạo diễn và biên kịch xuất sắc đóng vai trò thẩm định nghệ thuật nội bộ. Tuy nhiên, theo Ed Catmull, có những thời điểm toàn bộ đội ngũ sáng tạo bị 'lạc lối trong rừng rậm' vì họ đã quá chìm đắm trong các chi tiết vi mô của tác phẩm.
-
-Khi đó, Steve Jobs được mời đến với tư cách là 'Chiếc búa ngoại cảnh' (The External Hammer):
-- **Khởi đầu bằng sự khiêm nhường có chủ đích**: Steve luôn mở đầu buổi phê bình bằng câu nói bất biến: 'Tôi không phải là một nhà làm phim, các bạn có thể bỏ qua tất cả những gì tôi nói'. Câu nói này giải phóng áp lực tâm lý cho đạo diễn, khẳng định quyền tự chủ tối cao thuộc về người sáng tạo.
-- **Phát biểu bằng sự sắc sảo thấu thị**: Nhờ không bị ràng buộc bởi các tiểu tiết kỹ xảo hay kỹ thuật đồ họa, Steve nhìn thẳng vào cấu trúc cảm xúc và cốt truyện tổng thể, chỉ ra chính xác nút thắt nghẽn của bộ phim với sức mạnh diễn đạt đanh thép.
-- **Không bao giờ áp đặt giải pháp**: Ông chỉ nêu rõ vấn đề đang tồn tại là gì, để mặc cho đạo diễn và các nghệ sĩ tự do tìm cách giải quyết nó.
-
-Một 'chiếc búa ngoại cảnh' lý tưởng là người đủ thông tuệ để nhìn thấu bức tranh toàn cảnh nhưng đủ kỷ luật để không thò tay vào cầm cọ vẽ thay cho người nghệ sĩ.""",
-        "ground_truth": "One of the things we lost when Steve died was an external hammer... At some point in every film, the director gets lost in the forest. So once or twice a film, I might call Steve up and say, 'Steve, I think we’ve got a problem.'... Steve never said anything that hadn’t already been said... but there is something about his presence, and he was so articulate, that he could take the same thing said by somebody else and just cut right through it. Steve would preface it by saying, 'I’m not a filmmaker, you can ignore everything I say.' He literally said that every time. He would then just say what he thought the problem was."
-    },
-    {
-        "title": "Nghệ Thuật Khai Vấn Một-Một Sau Lỗi Lầm",
-        "aliases": ["Private Mentoring Walk", "Đi Dạo Khai Vấn Steve Jobs"],
-        "tags": ["knowledge", "type/concept", "domain/coaching", "domain/leadership", "steve_jobs"],
-        "source": "2026-05-21_becoming_steve_jobs_the_evolut_brent_schlender.md",
-        "source_page": "33",
-        "source_chapter: ": "Chapter 14 A Safe Haven for Pixar",
-        "ground_truth_page": "33",
-        "ground_truth_chapter": "22_Chapter_14_A_Safe_Haven_for_Pixar.md",
-        "source_type": "epub",
-        "summary": "Phương pháp chuyển hóa sai lầm của cấp dưới thành cơ hội gắn kết và học hỏi thông qua các cuộc đi dạo riêng tư, tập trung hoàn toàn vào giải pháp tương lai thay vì trừng phạt quá khứ.",
-        "people": ["Steve Jobs", "Ed Catmull"],
-        "companies": ["Pixar", "Apple"],
-        "hook": "Steve đưa người mắc lỗi đi dạo riêng tư, biến một tình huống lẽ ra rất xấu hổ thành một cuộc trò chuyện sâu sắc tạo dựng sự gắn kết. Quá khứ là bài học, nhưng quá khứ đã qua rồi.",
-        "author": "Ed Catmull",
-        "work": "Becoming Steve Jobs",
-        "core_idea": """Trong những năm tháng tuổi trẻ tại Apple thời kỳ đầu, Steve Jobs khét tiếng với tính khí nóng nảy và thói quen làm nhục cấp dưới công khai khi họ mắc lỗi. Nhưng theo quan sát của Ed Catmull, trong mười năm cuối đời, Steve đã có một bước chuyển hóa ngoạn mục trong cách ứng xử trước các sai lầm của đồng nghiệp.
-
-Khi một đạo diễn hoặc cộng sự phạm phải sai lầm nghiêm trọng gây tổn hại dự án, Steve không còn la hét trước đám đông. Thay vào đó, ông mời họ đi dạo riêng tư (one-on-one walk):
-- **Bảo toàn lòng tự trọng**: Việc tách cá nhân ra khỏi không gian văn phòng giúp loại bỏ ánh mắt soi mói của đồng nghiệp, hạ thấp phản ứng phòng thủ sinh học và giữ trọn vẹn sự tự tôn cho người mắc lỗi.
-- **Nhịp điệu tư duy chậm rãi**: Đi bộ nhịp nhàng giúp giải phóng hormone căng thẳng, đưa cuộc đối thoại từ trạng thái đối đầu sang trạng thái đồng hành cùng nhìn về một hướng.
-- **Tập trung vào tương lai kiến tạo**: Steve không bao giờ đay nghiến 'Tại sao anh lại làm hỏng việc?'. Câu hỏi cốt lõi của ông luôn là: 'Bây giờ chúng ta sẽ làm gì để tiến về phía trước?'. Quá khứ có thể là bài học, nhưng quá khứ đã trôi qua; điều duy nhất còn lại là cách chúng ta sửa đổi để đạt được kết quả phi thường.""",
-        "ground_truth": "Early on, if somebody didn’t measure up Steve wouldn’t hide it... That kind of behavior wasn’t something I ever saw during his last ten years. Instead, he would take you off in private, and turn what could have been an embarrassing thing into something that actually became very productive and bonding. He learned; he had taken the mistakes that he made, internalized and processed them, and made some changes... His goal was just to help them make a better movie... It wasn’t ever like 'Oh, you screwed up.' It was 'What are we gonna do to move forward? The past can be a lesson, but the past is gone.' He believed that."
-    }
-]
-
-def build_note_content(c: dict) -> str:
+def build_note_content(c: dict[str, Any]) -> str:
+    """Construct full concept note markdown with frontmatter and body."""
     clean_tags = [t for t in c.get("tags", []) if t not in ("knowledge", "type/concept")]
     source_chapter = c.get("source_chapter") or c.get("source_chapter: ") or ""
-    
+
     fm_str = build_concept_frontmatter(
         title=c["title"],
         aliases=c.get("aliases", []),
@@ -597,9 +61,9 @@ def build_note_content(c: dict) -> str:
         related=[],
         confidence="high",
     )
-    
+
     source_stem = Path(c["source"]).stem
-    
+
     body = f"""> "{c['hook']}"
 > — **{c['author']}**, trích dẫn trong *{c['work']}* ([[{source_stem}|{c['work']}]])
 
@@ -619,30 +83,30 @@ def build_note_content(c: dict) -> str:
 """
     return fm_str.strip() + "\n\n" + body.strip() + "\n"
 
+
+def _ingest_concept_group(title: str, concepts: list[dict[str, Any]]) -> list[Path]:
+    """Ingest a list of concepts and return successfully saved paths."""
+    print(f"\n=== INGESTING {title} ===")
+    saved_paths: list[Path] = []
+    for c in concepts:
+        note_content = build_note_content(c)
+        saved = save_concept(note_content)
+        if saved:
+            print(f"  [SAVED] {saved.name}")
+            saved_paths.append(saved)
+        else:
+            print(f"  [FAILED] {c['title']}")
+    return saved_paths
+
+
 def main():
-    saved_paths = []
-    print("=== INGESTING BIGBIM CONCEPTS ===")
-    for c in BIGBIM_CONCEPTS:
-        note_content = build_note_content(c)
-        saved = save_concept(note_content)
-        if saved:
-            print(f"  [SAVED] {saved.name}")
-            saved_paths.append(saved)
-        else:
-            print(f"  [FAILED] {c['title']}")
+    """Run batch ingestion for all configured book concepts."""
+    bigbim_saved = _ingest_concept_group("BIGBIM CONCEPTS", BIGBIM_CONCEPTS)
+    steve_saved = _ingest_concept_group("STEVE JOBS CONCEPTS", STEVE_JOBS_CONCEPTS)
+    total_saved = len(bigbim_saved) + len(steve_saved)
+    total_target = len(BIGBIM_CONCEPTS) + len(STEVE_JOBS_CONCEPTS)
+    print(f"\nTotal concepts successfully saved: {total_saved} / {total_target}")
 
-    print("\n=== INGESTING STEVE JOBS CONCEPTS ===")
-    for c in STEVE_JOBS_CONCEPTS:
-        note_content = build_note_content(c)
-        saved = save_concept(note_content)
-        if saved:
-            print(f"  [SAVED] {saved.name}")
-            saved_paths.append(saved)
-        else:
-            print(f"  [FAILED] {c['title']}")
-
-    print(f"\nTotal concepts successfully saved: {len(saved_paths)} / {len(BIGBIM_CONCEPTS) + len(STEVE_JOBS_CONCEPTS)}")
 
 if __name__ == "__main__":
     main()
-

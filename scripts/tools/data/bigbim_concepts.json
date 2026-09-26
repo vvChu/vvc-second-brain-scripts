@@ -1,0 +1,207 @@
+[
+  {
+    "title": "Nguyên Lý ĐÚNG – ĐỦ – SẠCH – SỐNG Trong Quản Trị Thông Tin Công Trình",
+    "aliases": [
+      "Bốn Tiêu Chuẩn Thông Tin BIGBIM",
+      "ĐÚNG ĐỦ SẠCH SỐNG"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/governance",
+      "iso_19650"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "1",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "1",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Khung tiêu chuẩn bốn chiều đảm bảo dữ liệu công trình chuẩn hóa theo ISO 19650, loại bỏ dư thừa, ngăn chặn suy hao khi chuyển đổi và duy trì khả năng khai thác liên tục trong suốt vòng đời 50–100 năm.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "Mục tiêu cốt lõi: đảm bảo mọi thông tin về tài sản xây dựng đạt tiêu chuẩn ĐÚNG – ĐỦ – SẠCH – SỐNG trong suốt vòng đời 50–100 năm.",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Trong quản trị thông tin tài sản xây dựng theo vòng đời, các dữ liệu mô hình và hồ sơ hoàn công thường nhanh chóng trở thành 'dữ liệu rác' nếu không tuân thủ một bộ tiêu chuẩn kiểm soát nghiêm ngặt. Hệ thống BIGBIM thiết lập bốn tiêu chuẩn cốt lõi đóng vai trò là chốt chặn kỹ thuật:\n\n1. **ĐÚNG (ISO 19650-4: 7.1–7.2)**: Thông tin phải tuân thủ đúng lược đồ cấu trúc (schema), đúng hệ thống phân loại chuẩn hóa (classification) và triệt tiêu mọi mâu thuẫn hình học lẫn phi hình học.\n2. **ĐỦ (ISO 19650-4: 7.6–7.7)**: Đáp ứng chuẩn xác mức độ thông tin cần thiết (Level of Information Need - LOIN) tại từng giai đoạn cụ thể — không thiếu để gây rủi ro kỹ thuật, không thừa để gây lãng phí nguồn lực tính toán.\n3. **SẠCH (ISO 19650-4: 7.3–7.5)**: Ngăn ngừa hiện tượng suy hao, méo mó hoặc mất mát thuộc tính khi chuyển giao dữ liệu qua các nền tảng phần mềm khác nhau, bảo đảm tính nhất quán xuyên suốt các giai đoạn.\n4. **SỐNG (ISO 19650-4: 7.7 + 19650-5)**: Dữ liệu phải có khả năng sử dụng và cập nhật bền bỉ trong suốt 50 đến 100 năm vận hành công trình, đồng thời được bảo vệ trước các thay đổi trái phép hoặc rủi ro công nghệ lỗi thời.\n\nBốn tiêu chuẩn này tạo nên bộ lọc kỹ thuật ngăn chặn tình trạng suy thoái thông tin giữa các giai đoạn thiết kế, thi công và bàn giao quản lý tài sản.",
+    "ground_truth": "Information standard criteria: RIGHT (ISO 19650-4: 7.1–7.2: Correct schema and classification without contradiction), SUFFICIENT (ISO 19650-4: 7.6–7.7: Satisfying LOIN per stage without deficit or surplus), CLEAN (ISO 19650-4: 7.3–7.5: Zero data loss during transition, consistent across stages), and ALIVE (ISO 19650-4: 7.7 + 19650-5: Usable for 50–100 years, protected against obsolescence and unauthorized tampering)."
+  },
+  {
+    "title": "Hội Chứng Mất Trí Nhớ Số Trong Vòng Đời Công Trình",
+    "aliases": [
+      "Mất Trí Nhớ Số",
+      "Digital Amnesia in Construction"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/lifecycle_management"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "2",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "2",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Hiện tượng đứt gãy thông tin lịch sử và quyết định thiết kế sau khi bàn giao dự án xây dựng, biến mô hình BIM thành dữ liệu chết và buộc các đội ngũ vận hành phải tái khảo sát từ đầu.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "Sau 10 năm vận hành, không ai còn nhớ tại sao một quyết định thiết kế được đưa ra. Khi cần cải tạo, đội kỹ sư phải khảo sát lại từ đầu. BIGBIM gọi tình trạng này là 'mất Trí Nhớ Số' — và đặt mục tiêu ngăn chặn nó từ giai đoạn đầu tiên của dự án (BBP-A0).",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Trong ngành xây dựng truyền thống, một nghịch lý lớn thường xuyên lặp lại: các công trình tiêu tốn hàng triệu đô la và nhiều năm thi công, nhưng sau khi bàn giao, toàn bộ dữ liệu trí tuệ vận hành bị tiêu tán. Tình trạng này được định danh là 'Hội chứng mất Trí Nhớ Số' (Digital Amnesia).\n\nCác triệu chứng lâm sàng phổ biến bao gồm:\n- **Độ lệch thông tin thực tế**: Số phòng, mã ký hiệu tài sản trong hồ sơ thiết kế, phần mềm quản lý vận hành (FM) và biển hiệu ngoài thực tế không trùng khớp nhau.\n- **Mất nguồn gốc thẩm quyền**: Khi phát sinh tranh chấp hoặc hỏng hóc, không một bên nào có thể xác minh đâu là phiên bản thông tin chính thức đã được phê duyệt.\n- **Mất khả năng bảo trì kỹ thuật**: Hồ sơ hoàn công (as-built) bị thiếu hụt hoặc sai lệch khiến các kỹ sư vận hành không dám bảo dưỡng can thiệp vì sợ rủi ro sập đổ hệ thống.\n- **Tù túng trong phần mềm đóng**: Dữ liệu BIM bị 'khóa chặt' trong các định dạng phần mềm độc quyền, sau 10 năm phần mềm nâng cấp hoặc đổi nhà cung cấp thì toàn bộ tệp cũ không thể đọc được.\n\nĐể giải quyết căn bệnh này, quản trị thông tin không thể chỉ bắt đầu khi công trình hoàn thành, mà phải thiết lập cơ chế truy nguyên và bảo toàn trí nhớ số ngay từ ngày đầu tiên thông qua khuôn khổ quản trị có cấu trúc.",
+    "ground_truth": "A completed building after 3–5 years of construction... As-built documents exist as static PDFs or paper drawings. Facility managers receive a BIM model without knowing which data is verified or draft. After a decade, historical rationale is erased, leaving technical systems unmaintainable and data trapped inside proprietary software silos. BIGBIM defines this condition as 'Digital Amnesia' and aims to prevent it starting from BBP-A0."
+  },
+  {
+    "title": "Sợi Chỉ Vàng Trong Quản Trị Thông Tin Xây Dựng",
+    "aliases": [
+      "Golden Thread Governance",
+      "Sợi Chỉ Vàng BBP-A0"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/governance"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "3",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "3",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Khung quản trị xuyên suốt được thiết lập ngay từ giai đoạn lập kế hoạch ban đầu, đóng vai trò là trục định vị bất biến để bảo toàn mục tiêu thông tin và kiểm soát mọi thay đổi kiến trúc.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "BBP-A0: Ý tưởng & Lập kế hoạch — Thiết lập Sợi chỉ Vàng — governance framework... đặt mục tiêu ngăn chặn mất Trí Nhớ Số từ giai đoạn đầu tiên của dự án.",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Khái niệm 'Sợi Chỉ Vàng' (Golden Thread) trong quản trị thông tin xây dựng bắt nguồn từ các tiêu chuẩn an toàn công trình hiện đại (như Đạo luật An toàn Tòa nhà tại Anh và ISO 19650), được BIGBIM tích hợp thành xương sống điều phối toàn bộ vòng đời dự án.\n\nSợi Chỉ Vàng không phải là một tập tài liệu đơn lẻ, mà là một cơ chế kết nối kỹ thuật số bất biến giữa:\n1. **Mục tiêu chiến lược của Chủ đầu tư (OIR/AIR)** được xác lập tại mốc khởi tạo BBP-A0.\n2. **Dòng dữ liệu thiết kế và thi công liên tục**, bảo đảm mọi biến động, thay đổi vật liệu hay điều chỉnh kết cấu đều phải được đối chiếu lại với mục tiêu gốc.\n3. **Mô hình Thông tin Tài sản (AIM)** khi bàn giao để đưa vào khai thác thương mại.\n\nKhi Sợi Chỉ Vàng bị đứt gãy ở bất kỳ mắt xích nào — ví dụ một quyết định thay đổi chủng loại vật tư thi công không được cập nhật ngược lại vào mô hình trung tâm — toàn bộ hệ thống thông tin sẽ mất tính toàn vẹn. Nhờ có Sợi Chỉ Vàng, mọi can thiệp cải tạo sau hàng chục năm vẫn có thể truy vết chính xác nguồn gốc, lý do và người chịu trách nhiệm kỹ thuật ban đầu.",
+    "ground_truth": "Golden Thread in building safety and information governance: An unbroken digital record established during early planning (BBP-A0) that tracks all design rationale, asset requirements, and compliance milestones throughout the entire building lifecycle."
+  },
+  {
+    "title": "Vòng Đời Tám Giai Đoạn Quản Trị Thông Tin",
+    "aliases": [
+      "BBP 8 Giai Đoạn",
+      "BIGBIMPROCESS Lifecycle"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/process_management"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "3",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "3",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Quy trình phân tầng quản trị thông tin công trình từ ý tưởng ban đầu đến bàn giao mô hình tài sản số, gắn liền mục tiêu dữ liệu với từng nấc chuyển giao phân loại Uniclass.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "BIGBIM được tổ chức thành 7 tầng tài liệu... Vòng đời 8 giai đoạn (BIGBIMPROCESS — BBP) từ BBP-A0 (Ý tưởng & Lập kế hoạch) đến BBP-C2 (Hoàn công & Bàn giao).",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Để hiện thực hóa việc quản lý thông tin nhất quán, BIGBIM phân rã vòng đời dự án thành 8 giai đoạn chuẩn tắc (BIGBIMPROCESS - BBP), mỗi giai đoạn gắn chặt với một mục tiêu dữ liệu và đối tượng phân loại Uniclass rõ ràng:\n\n- **BBP-A0 (Ý tưởng & Lập kế hoạch)**: Thiết lập Sợi Chỉ Vàng và khuôn khổ quản trị tổng thể.\n- **BBP-A1 (Thiết kế sơ bộ)**: Xác lập thông tin diễn giải về Không gian và Vị trí (Spaces/Locations - SL).\n- **BBP-A2 (Thiết kế cơ sở)**: Quy định cụ thể các Thành phần Chức năng (Elements/Functions - EF).\n- **BBP-B1 (Thiết kế kỹ thuật)**: Chuẩn hóa thông tin về các Hệ thống vận hành (Systems - Ss).\n- **BBP-B2 (Hồ sơ xây dựng)**: Xác định chi tiết Vật tư (Products - Pr) và Vật liệu (Materials - Ma).\n- **BBP-B3 (Thi công)**: Hiện thực hóa vật lý công trình dựa trên dữ liệu chuẩn xác từ BBP-B2.\n- **BBP-C1 (Vận hành thử)**: Đo lường và xác nhận hiệu năng thực tế của các hệ thống Ss.\n- **BBP-C2 (Hoàn công & Bàn giao)**: Nghiệm thu Digital Twin hoàn chỉnh và chính thức bàn giao Mô hình Thông tin Tài sản (AIM).\n\nSự phân cấp này biến việc quản lý BIM từ việc dựng hình thụ động thành một chu trình kiểm soát dữ liệu có chủ đích theo từng nấc trưởng thành của công trình.",
+    "ground_truth": "The 8-stage lifecycle (BBP-A0 to BBP-C2): A0 Inception (Golden Thread), A1 Outline Design (Spatial-Location / SL), A2 Concept Design (Elements-Functions / EF), B1 Technical Design (Systems / Ss), B2 Production (Products / Pr & Materials / Ma), B3 Construction (Physicalization), C1 Handover Testing, C2 As-built Completion (Digital Twin & AIM handoff)."
+  },
+  {
+    "title": "Vòng Kiểm Soát Chất Lượng Bảy Bước",
+    "aliases": [
+      "Quy Trình Kiểm Soát V1-V7",
+      "Cơ Chế Xác Nhận Dữ Liệu BIGBIM"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/quality_control"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "3",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "3",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Chuỗi kiểm soát chất lượng thông tin bảy bước phân định rành mạch trách nhiệm từ lập kế hoạch sản xuất, phối hợp, phê duyệt đến công nhận chính thức tài sản số.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "Bảy bước kiểm soát chất lượng thông tin tạo ra cơ chế truy nguyên rõ ràng: ai tạo, ai kiểm tra, ai phê duyệt, ai tiếp nhận, cho đến khi Trí Nhớ Số được công nhận chính thức tại V7.",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Để thông tin đạt chuẩn tin cậy cao nhất trước khi lưu trữ vào hồ sơ tài sản dài hạn, BIGBIM thiết kế chu trình kiểm soát chất lượng 7 bước (V1–V7) với các ranh giới phê duyệt rõ ràng:\n\n1. **V1 (Planning)**: Đội ngũ tạo lập thông tin sản xuất các Information Container (IC) tuân thủ chặt chẽ yêu cầu LOIN được phân giao.\n2. **V2 (Coordination)**: Triệt tiêu hoàn toàn các xung đột, va chạm và mâu thuẫn thông tin giữa các bộ môn (Kiến trúc, Kết cấu, MEP).\n3. **V3 (Review)**: Kiểm tra sự phù hợp đối với yêu cầu Sợi Chỉ Đỏ kỹ thuật.\n4. **V4 (Approve)**: Đơn vị tư vấn AEC chính thức chấp thuận để bảo đảm tính thống nhất với Sợi Chỉ Vàng.\n5. **V5 (Authorization)**: Các cơ quan chuyên môn và quản lý dự án cấp phép chính thức cho việc thi công vật lý ngoài hiện trường.\n6. **V6 (Acceptance)**: Bên Khai thác/Chủ đầu tư nghiệm thu tài sản số song hành cùng tài sản vật lý hoàn thành.\n7. **V7 (Recognition)**: Dữ liệu được công nhận chính thức và khóa trạng thái, trở thành Trí Nhớ Số trường tồn của công trình.\n\nQuy trình này loại bỏ hoàn toàn tình trạng 'đẩy việc' và bảo đảm mỗi tệp thông tin đều mang chữ ký trách nhiệm không thể chối bỏ.",
+    "ground_truth": "The V1–V7 Information Verification Workflow: V1 Planning (Production per LOIN), V2 Coordination (Conflict Resolution), V3 Review (Red Thread verification), V4 Approve (Golden Thread compliance), V5 Authorization (Physicalization permit), V6 Acceptance (Asset handover), V7 Recognition (Official Digital Memory recognition)."
+  },
+  {
+    "title": "Cú Pháp BBH-RASE Triệt Tiêu Điểm Mù Thông Tin",
+    "aliases": [
+      "BBH-RASE",
+      "Cú Pháp Yêu Cầu Thông Tin RASE"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/specifications"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "3",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "3",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Phương pháp chuẩn hóa yêu cầu thông tin công trình thành cú pháp máy đọc được nhằm triệt tiêu các diễn dịch cảm tính giữa các bên tham gia dự án xây dựng.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "BBH-RASE (Triệt Tiêu Điểm Mù Thông Tin): cú pháp viết yêu cầu thông tin mà cả máy lẫn người hiểu theo cùng một nghĩa. Đây là một trong những đóng góp thực chất nhất của BIGBIM so với ISO 19650 gốc.",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Trong các hồ sơ mời thầu và yêu cầu trao đổi thông tin (EIR) truyền thống, câu từ thường được viết bằng ngôn ngữ văn học tự nhiên, dẫn đến tình trạng mỗi bên nhà thầu, tư vấn hiểu theo một cách khác nhau. Cú pháp BBH-RASE ra đời nhằm triệt tiêu điểm mù này bằng cách cấu trúc hóa mọi yêu cầu thông tin theo 4 thành tố toán học:\n\n- **Requirement (R - Yêu cầu)**: Mệnh lệnh bắt buộc phải thỏa mãn (phải đạt chỉ số kỹ thuật nào).\n- **Applicability (A - Phạm vi áp dụng)**: Đối tượng hoặc vùng không gian cụ thể mà yêu cầu này có hiệu lực.\n- **Selection (S - Lựa chọn)**: Các điều kiện phân nhánh logic hoặc tiêu chí sàng lọc đối tượng.\n- **Exception (E - Ngoại lệ)**: Các trường hợp đặc thù được miễn trừ khỏi yêu cầu chung.\n\nBằng cách bóc tách yêu cầu thành cấu trúc RASE, các quy định kỹ thuật không chỉ trở nên trong sáng với kỹ sư con người mà còn có thể nạp trực tiếp vào các công cụ tự động hóa và AI Agent để kiểm tra tính tuân thủ tự động (automated rule-checking) trong tích tắc.",
+    "ground_truth": "RASE syntax (Requirement, Applicability, Selection, Exception): A structured methodology for translating complex regulatory and organizational requirements into computable, unambiguous specifications that can be validated deterministically by autonomous engines."
+  },
+  {
+    "title": "Vai Trò Guardian Agent Trong Quản Trị Thông Tin Xây Dựng",
+    "aliases": [
+      "Guardian Agent BIGBIM",
+      "AI Hạ Tầng Quản Trị Thông Tin"
+    ],
+    "tags": [
+      "knowledge",
+      "type/concept",
+      "domain/bim",
+      "domain/agentic_ai",
+      "domain/governance"
+    ],
+    "source": "2026-06-08_v7r01_bigbim_gioi_thieu.md",
+    "source_page": "4",
+    "source_chapter: ": "Pages 1 - 6",
+    "ground_truth_page": "4",
+    "ground_truth_chapter": "01_pages_1_6.md",
+    "source_type": "pdf",
+    "summary": "Mô hình tác tử AI đóng vai trò người bảo vệ quy trình và kiểm tra tính nhất quán thông tin liên tục, với ranh giới thép: AI thực hiện kiểm tra tự động nhưng con người nắm quyền quyết định tối hậu.",
+    "people": [],
+    "companies": [
+      "BIGBIM Core Team"
+    ],
+    "hook": "BIGBIM thiết kế hẳn một vai trò chính thức cho AI: Guardian Agent — người bảo vệ Sợi chỉ Vàng, người kiểm soát quy trình, và người dẫn dắt từng giai đoạn BBP... AI kiểm tra — con người quyết định.",
+    "author": "BIGBIM Core Team",
+    "work": "V7R01 BIGBIM Giới Thiệu",
+    "core_idea": "Trong một dự án xây dựng phức tạp với hàng nghìn Information Container (IC) và hàng trăm bên tham gia, khả năng tập trung của con người sẽ suy giảm nhanh chóng khi phải rà soát thủ công hàng trăm bảng kê và quy tắc đặt tên. BIGBIM giải quyết bài toán này bằng cách thể chế hóa vai trò của AI như một hạ tầng bắt buộc: **Guardian Agent**.\n\nNhiệm vụ cốt lõi của Guardian Agent bao gồm:\n1. **Kiểm tra tự động liên tục**: Chạy toàn bộ checklist phân loại Uniclass, Naming Convention và độ đầy đủ LOIN tại mọi điểm chuyển giao dữ liệu mà không bị mỏi mệt hay bỏ sót.\n2. **Duy trì kỷ luật từ điển**: Ngăn chặn tình trạng phát sinh thuật ngữ tùy tiện. Khi gặp khái niệm mới, Agent lập tức gắn nhãn `[TEMPORARY]` và đề xuất cập nhật vào từ điển trung tâm thay vì tự ý suy đoán.\n3. **Phân tích rủi ro 4 chiều Iron Triangle**: Cưỡng chế hiển thị đủ 4 chiều rủi ro (No-Risk, Time-Risk, Do-Risk, Use-Risk) trước khi cấp thẩm quyền phê duyệt.\n4. **Bảo vệ Sợi Chỉ Vàng**: Ngăn chặn các mâu thuẫn phát sinh với mục tiêu chiến lược ban đầu.\n\n**Ranh giới trách nhiệm tuyệt đối**: Guardian Agent chỉ đóng vai trò người đồng hành hỗ trợ kiểm tra khách quan, tuyệt đối không được tự ý điền phạm vi công việc, không được ký duyệt thay con người và không thay thế trách nhiệm giải trình của các chủ thể dự án.",
+    "ground_truth": "Guardian Agent as system infrastructure: Autonomous AI tasked with continuous verification across thousands of Information Containers (naming conventions, classification, LOIN completeness, and four-dimensional risk checks). Governed by a strict boundary: AI automates verification; human stewards hold sole authority for commitments and approvals."
+  }
+]

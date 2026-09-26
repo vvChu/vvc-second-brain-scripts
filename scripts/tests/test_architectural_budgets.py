@@ -21,7 +21,7 @@ PROMPT_FILE_ALLOWLIST = {
     "core/prompts/services.py",
 }
 
-# Monotonic line budget ratchets for legacy production files > 350 lines (8 files).
+# Monotonic line budget ratchets for legacy production files > 350 lines (7 files).
 # Files may ONLY decrease in size. Any increase will fail the test, forcing decomposition.
 LEGACY_LINE_RATCHET: dict[str, int] = {
     "core/vector_store.py": 547,
@@ -30,7 +30,6 @@ LEGACY_LINE_RATCHET: dict[str, int] = {
     "services/brain_dump/concept_synthesis.py": 548,
     "services/diagram_base.py": 785,
     "services/youtube/visual_extractor.py": 1114,
-    "tools/batch_ingest_books.py": 648,
     "wiki_maintain.py": 621,
 }
 
