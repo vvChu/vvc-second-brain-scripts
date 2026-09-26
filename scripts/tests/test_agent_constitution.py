@@ -369,3 +369,28 @@ def test_readme_directory_tree_parity(repo_root: Path):
     )
 
 
+def test_no_stale_legacy_ratchet_mentions_in_context_files(repo_root: Path):
+    """Ensure context and constitution files do not contain stale legacy ratchet numbers."""
+    stale_patterns = [
+        "29 tệp logic legacy",
+        "83 tệp legacy",
+        "83 tệp hàm legacy",
+        "55 legacy function files",
+    ]
+    context_files = [
+        "AGENTS.md",
+        "CLAUDE.md",
+        ".cursor/rules/vault-architecture.mdc",
+        ".github/copilot-instructions.md",
+        "scripts/GEMINI.md",
+        "GEMINI.md",
+    ]
+    for rel_path in context_files:
+        target = repo_root / rel_path
+        if not target.exists():
+            continue
+        content = target.read_text(encoding="utf-8")
+        for pat in stale_patterns:
+            assert pat not in content, f"{rel_path} contains stale ratchet phrase: '{pat}'"
+
+
