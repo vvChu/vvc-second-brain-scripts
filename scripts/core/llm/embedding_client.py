@@ -22,6 +22,55 @@ from core.llm.utils import http_session
 _logger = logging.getLogger("vvc.llm.embedding")
 
 
+def _handle_http_error(
+    he: requests.exceptions.HTTPError,
+    attempt: int,
+    max_retries: int,
+    backoff_factor: float,
+) -> bool:
+    """Handle HTTP errors, determining if retry is appropriate."""
+    status_code = he.response.status_code if he.response is not None else 500
+    if status_code in (400, 401, 403, 404):
+        _logger.error(
+            f"[Embedding] Fatal API error {status_code} fetching embedding. Aborting. Error: {he}"
+        )
+        return False
+    if attempt < max_retries - 1:
+        sleep_time = backoff_factor ** (attempt + 1)
+        _logger.warning(
+            f"[Embedding] Transient HTTP {status_code} (attempt {attempt+1}/{max_retries}). "
+            f"Retrying in {sleep_time:.1f}s... Error: {he}"
+        )
+        time.sleep(sleep_time)
+        return True
+    _logger.error(
+        f"[Embedding] Failed to fetch embedding after {max_retries} attempts "
+        f"due to HTTP {status_code}: {he}"
+    )
+    return False
+
+
+def _handle_network_error(
+    te: Exception,
+    attempt: int,
+    max_retries: int,
+    backoff_factor: float,
+) -> None:
+    """Handle connection drops and timeout retries."""
+    if attempt < max_retries - 1:
+        sleep_time = backoff_factor ** (attempt + 1)
+        _logger.warning(
+            f"[Embedding] Network/Timeout error (attempt {attempt+1}/{max_retries}). "
+            f"Retrying in {sleep_time:.1f}s... Error: {te}"
+        )
+        time.sleep(sleep_time)
+    else:
+        _logger.error(
+            f"[Embedding] Failed to fetch embedding after {max_retries} attempts "
+            f"due to Network/Timeout: {te}"
+        )
+
+
 def get_embedding(
     text: str,
     *,
@@ -31,27 +80,8 @@ def get_embedding(
     backoff_factor: float = 2.0,
     max_chars: int = 2000,
 ) -> np.ndarray | None:
-    """Fetch L2-normalized embedding vector from AI Gateway.
-
-    Implements a resilient retry mechanism with exponential backoff for transient errors 
-    (timeouts, network drops, HTTP 429/5xx), while aborting immediately on fatal errors (HTTP 400/401/403/404).
-
-    Args:
-        text: Input text to embed.
-        model: Embedding model name (default: "gemini-embed").
-        timeout: Request timeout in seconds.
-        max_retries: Maximum number of retry attempts for transient errors.
-        backoff_factor: Multiplier for exponential backoff (e.g. 2s, 4s, 8s).
-        max_chars: Maximum characters to send to the embedding endpoint.
-
-    Returns:
-        1D float32 numpy array normalized to unit length (L2 norm = 1.0), or None on failure.
-    """
-    if not cfg.gateway_url or not cfg.gateway_api_key:
-        return None
-
-    if requests is None:
-        _logger.error("[Embedding] 'requests' library is not available.")
+    """Fetch L2-normalized embedding vector from AI Gateway."""
+    if not cfg.gateway_url or not cfg.gateway_api_key or requests is None:
         return None
 
     url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
@@ -59,50 +89,22 @@ def get_embedding(
         "Authorization": f"Bearer {cfg.gateway_api_key}",
         "Content-Type": "application/json",
     }
-    payload = {
-        "model": model,
-        "input": [text[:max_chars]],
-    }
-
+    payload = {"model": model, "input": [text[:max_chars]]}
     session = http_session if http_session is not None else requests
 
     for attempt in range(max_retries):
         try:
             resp = session.post(url, json=payload, headers=headers, timeout=timeout)
             resp.raise_for_status()
-            data = resp.json()
-            values = data["data"][0]["embedding"]
+            values = resp.json()["data"][0]["embedding"]
             emb = np.array(values, dtype=np.float32)
             norm = np.linalg.norm(emb)
             return emb / norm if norm > 0 else emb
         except requests.exceptions.HTTPError as he:
-            status_code = he.response.status_code if he.response is not None else 500
-            # Fatal authentication/authorization or bad request: do not retry
-            if status_code in (400, 401, 403, 404):
-                _logger.error(f"[Embedding] Fatal API error {status_code} fetching embedding. Aborting. Error: {he}")
+            if not _handle_http_error(he, attempt, max_retries, backoff_factor):
                 break
-
-            # Transient server error or rate limiting: retry with backoff
-            if attempt < max_retries - 1:
-                sleep_time = backoff_factor ** (attempt + 1)
-                _logger.warning(
-                    f"[Embedding] Transient HTTP {status_code} (attempt {attempt+1}/{max_retries}). "
-                    f"Retrying in {sleep_time:.1f}s... Error: {he}"
-                )
-                time.sleep(sleep_time)
-            else:
-                _logger.error(f"[Embedding] Failed to fetch embedding after {max_retries} attempts due to HTTP {status_code}: {he}")
         except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as te:
-            # Network drop or connection timeout: retry with backoff
-            if attempt < max_retries - 1:
-                sleep_time = backoff_factor ** (attempt + 1)
-                _logger.warning(
-                    f"[Embedding] Network/Timeout error (attempt {attempt+1}/{max_retries}). "
-                    f"Retrying in {sleep_time:.1f}s... Error: {te}"
-                )
-                time.sleep(sleep_time)
-            else:
-                _logger.error(f"[Embedding] Failed to fetch embedding after {max_retries} attempts due to Network/Timeout: {te}")
+            _handle_network_error(te, attempt, max_retries, backoff_factor)
         except Exception as e:
             _logger.error(f"[Embedding] Unexpected error fetching embedding: {e}")
             break

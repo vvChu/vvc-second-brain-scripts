@@ -5,6 +5,9 @@ Tier 1 logic for AI Gateway via LiteLLM.
 
 import logging
 import time
+from typing import Any
+import requests
+
 from core.config import cfg
 from core.llm.utils import http_session, strip_think_tags
 from core.llm.model_resolver import resolve_model
@@ -68,7 +71,57 @@ def call_gateway_with_meta(prompt: str, *, model: str = "", timeout: int = 60) -
     use_proxy = is_claude and bool(getattr(cfg, "gateway_proxy_url", ""))
     was_downgraded = False
 
-    # Check circuit breaker cooldown for Port 8045
+def _post_fallback_8090(prompt: str, timeout: int) -> requests.Response:
+    """Send fallback request to primary gateway on port 8090."""
+    return _post_chat_completion(
+        cfg.gateway_url,
+        cfg.gateway_api_key,
+        FALLBACK_GATEWAY_MODEL,
+        prompt,
+        min(timeout, 120),
+    )
+
+
+def _extract_response_content(resp: requests.Response) -> str:
+    """Extract message content or reasoning content from chat completion response."""
+    actual_model = resp.headers.get("x-litellm-model", "")
+    api_base = resp.headers.get("x-litellm-model-api-base", "")
+    if actual_model:
+        _logger.info(f"[Gateway] Routed to: {actual_model} (Base: {api_base})")
+    msg = resp.json()["choices"][0]["message"]
+    content = msg.get("content") or msg.get("reasoning_content") or ""
+    return strip_think_tags(content)
+
+
+def _handle_proxy_exception_fallback(
+    prompt: str, timeout: int, error: Exception
+) -> tuple[str, bool]:
+    """Execute downgrade to port 8090 on proxy connection or network failure."""
+    global _proxy_cooldown_until, _last_downgraded
+    _proxy_cooldown_until = time.time() + 30.0
+    _last_downgraded = True
+    _logger.warning(
+        f"[Gateway] Port 8045 error ({error}). "
+        f"Auto-downgrading to {FALLBACK_GATEWAY_MODEL} on Port 8090..."
+    )
+    try:
+        resp = _post_fallback_8090(prompt, timeout)
+        resp.raise_for_status()
+        return _extract_response_content(resp), True
+    except Exception as e2:
+        _logger.warning(f"[Gateway] Fallback on Port 8090 also failed: {e2}")
+        return "", False
+
+
+def _resolve_target_endpoint(
+    model: str,
+) -> tuple[str, bool, bool, bool, str, str]:
+    """Resolve target model, proxy status, cooldown, and credentials."""
+    target_model = resolve_model(model or cfg.gateway_proxy_model, task="general")
+    is_claude = _is_proxy_model(target_model)
+    use_proxy = is_claude and bool(getattr(cfg, "gateway_proxy_url", ""))
+    was_downgraded = False
+
     if use_proxy and time.time() < _proxy_cooldown_until:
         _logger.warning(
             f"[Gateway] Port 8045 in cooldown until {_proxy_cooldown_until:.0f}. "
@@ -79,62 +132,54 @@ def call_gateway_with_meta(prompt: str, *, model: str = "", timeout: int = 60) -
         was_downgraded = True
 
     base_url = cfg.gateway_proxy_url if use_proxy else cfg.gateway_url
-    api_key = (getattr(cfg, "gateway_proxy_api_key", "") or cfg.gateway_api_key) if use_proxy else cfg.gateway_api_key
+    api_key = (
+        (getattr(cfg, "gateway_proxy_api_key", "") or cfg.gateway_api_key)
+        if use_proxy
+        else cfg.gateway_api_key
+    )
+    return target_model, is_claude, use_proxy, was_downgraded, base_url, api_key
+
+
+def call_gateway_with_meta(
+    prompt: str,
+    *,
+    model: str = "",
+    timeout: int = 60,
+) -> tuple[str, bool]:
+    """Call LLM via AI Gateway with downgrade detection."""
+    global _proxy_cooldown_until, _last_downgraded
+    if not cfg.gateway_url and not getattr(cfg, "gateway_proxy_url", ""):
+        return "", False
+
+    (
+        target_model,
+        is_claude,
+        use_proxy,
+        was_downgraded,
+        base_url,
+        api_key,
+    ) = _resolve_target_endpoint(model)
 
     try:
         resp = _post_chat_completion(base_url, api_key, target_model, prompt, timeout)
-
-        # Handle 503 (Account limited) or 429 on Port 8045 -> Auto fallback to 8090
         if use_proxy and resp.status_code in (503, 429):
-            _proxy_cooldown_until = time.time() + 30.0  # Cooldown 30s
+            _proxy_cooldown_until = time.time() + 30.0
             _logger.warning(
                 f"[Gateway] Port 8045 returned {resp.status_code}. "
                 f"Auto-downgrading {target_model} -> {FALLBACK_GATEWAY_MODEL} on Port 8090..."
             )
-            resp = _post_chat_completion(
-                cfg.gateway_url,
-                cfg.gateway_api_key,
-                FALLBACK_GATEWAY_MODEL,
-                prompt,
-                min(timeout, 120),
-            )
+            resp = _post_fallback_8090(prompt, timeout)
             was_downgraded = True
 
         resp.raise_for_status()
-
-        actual_model = resp.headers.get("x-litellm-model", "")
-        api_base = resp.headers.get("x-litellm-model-api-base", "")
-        if actual_model:
-            _logger.info(f"[Gateway] Routed to: {actual_model} (Base: {api_base})")
-
-        msg = resp.json()["choices"][0]["message"]
-        content = msg.get("content") or msg.get("reasoning_content") or ""
         if was_downgraded:
             _last_downgraded = True
-        return strip_think_tags(content), was_downgraded
+        return _extract_response_content(resp), was_downgraded
     except Exception as e:
-        # Network or timeout error on 8045 -> Fallback attempt on 8090
         if is_claude and cfg.gateway_url and not was_downgraded:
-            _proxy_cooldown_until = time.time() + 30.0
-            _last_downgraded = True
-            _logger.warning(
-                f"[Gateway] Port 8045 error ({e}). Auto-downgrading to {FALLBACK_GATEWAY_MODEL} on Port 8090..."
-            )
-            try:
-                resp = _post_chat_completion(
-                    cfg.gateway_url,
-                    cfg.gateway_api_key,
-                    FALLBACK_GATEWAY_MODEL,
-                    prompt,
-                    min(timeout, 120),
-                )
-                resp.raise_for_status()
-                msg = resp.json()["choices"][0]["message"]
-                content = msg.get("content") or msg.get("reasoning_content") or ""
-                return strip_think_tags(content), True
-            except Exception as e2:
-                _logger.warning(f"[Gateway] Fallback on Port 8090 also failed: {e2}")
-
+            content, ok = _handle_proxy_exception_fallback(prompt, timeout, e)
+            if ok:
+                return content, True
         _logger.warning(f"Gateway HTTP error: {e}")
         return "", was_downgraded
 

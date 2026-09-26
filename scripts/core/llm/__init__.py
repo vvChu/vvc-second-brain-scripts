@@ -41,51 +41,14 @@ def _invoke_cli(prompt: str, model: str, timeout: int) -> str:
 
 from typing import Callable
 
-def call_llm(
-    prompt: str,
-    *,
-    model: str = "",
-    task: str = "general",
-    strategy: str = "fallback",
-    validator: Callable[[str], bool] | None = None,
-    allowed_shorts: tuple[str, ...] = (),
-    min_length: int = 10,
-) -> str:
-    """Call LLM with automatic 4-tier fallback routing.
-
-    Routing order: Gateway → Antigravity CLI (agy) → Copilot CLI → Gemini API.
-
-    Args:
-        prompt: Text prompt.
-        model: Explicit model name (bypasses routing).
-        task: Task type for model selection:
-            - "synthesis": Use text_synthesis_model
-            - "correction": Use text_correction_model
-            - "reasoning": Use reasoning model
-            - "general": Use default model
-        strategy: Routing strategy:
-            - "fallback": Always try Gateway -> Gemini CLI -> Copilot -> API (default).
-            - "round_robin": Rotate the primary tier for each call to balance load.
-        validator: Optional function to validate the output. If it returns False, fallback to next tier.
-        allowed_shorts: Optional list of short strings permitted in is_garbage check.
-        min_length: Minimum character threshold for is_garbage check. Default 10.
-            Lower this when expecting legitimately short responses (e.g. titles).
-
-    Returns:
-        LLM response text, or empty string if all tiers fail.
-    """
-    gw_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.gemini_timeout
-    cp_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.copilot_timeout
-
-    resolved_model = resolve_model(model, task=task) if model else ""
-
-    # Determine Models based on Task
+def _resolve_tier_models(task: str, resolved_model: str) -> tuple[str, str, str, str]:
+    """Resolve specific model names across all tiers for given task."""
     if task == "reasoning":
         gw_model = resolved_model or resolve_model(cfg.reasoning_gateway_model, task=task)
         agy_model = resolved_model or getattr(cfg, "reasoning_cli_model", "") or "claude-opus-4-6-thinking"
     elif task == "synthesis":
         gw_model = resolved_model or resolve_model(cfg.gateway_synthesis_model or "gemini-3.8-flash-high", task=task)
-        agy_model = resolved_model or (cfg.gemini_text_synthesis_model if task == "synthesis" else cfg.gemini_model)
+        agy_model = resolved_model or cfg.gemini_text_synthesis_model
     elif task == "correction":
         gw_model = resolved_model or resolve_model(cfg.gateway_correction_model, task=task)
         agy_model = resolved_model or cfg.gemini_text_correction_model
@@ -94,32 +57,33 @@ def call_llm(
         agy_model = resolved_model or cfg.gemini_model
 
     cp_model = resolved_model or (cfg.copilot_correction_model if task == "correction" else cfg.copilot_model)
-    gemini_raw = resolved_model or (cfg.gemini_text_synthesis_model if task == "synthesis" else (cfg.gemini_text_correction_model if task == "correction" else cfg.gemini_model))
+    gemini_raw = resolved_model or (
+        cfg.gemini_text_synthesis_model if task == "synthesis"
+        else (cfg.gemini_text_correction_model if task == "correction" else cfg.gemini_model)
+    )
     gemini_model = resolve_model(gemini_raw, task=task)
+    return gw_model, agy_model, cp_model, gemini_model
 
-    # Check if target model is supported by local Antigravity CLI (agy.exe)
-    use_antigravity_cli_primary = is_antigravity_cli_supported(agy_model)
 
-    # Try each tier:
-    if use_antigravity_cli_primary:
-        # Priority 1: Local Antigravity CLI (Zero VPN, Zero 429, native Claude Opus / Gemini Flash / Gemini Pro)
-        # Fallback: Gateway Port 8045/8090 -> Copilot CLI -> Gemini API
-        tiers = [
-            ("antigravity-cli", lambda: _invoke_cli(prompt, model=agy_model, timeout=gw_timeout)),
-            ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
-            ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
-            ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
-        ]
-    else:
-        # For non-CLI models (e.g. qwen-local-primary on GPU, specialized ocr-primary), Gateway remains Tier 1
-        tiers = [
-            ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout)),
-            ("antigravity-cli", lambda: _invoke_cli(prompt, model=agy_model, timeout=gw_timeout)),
-            ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout)),
-            ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout)),
-        ]
+def _build_tier_pipeline(
+    prompt: str,
+    gw_model: str,
+    agy_model: str,
+    cp_model: str,
+    gemini_model: str,
+    gw_timeout: int,
+    cp_timeout: int,
+    strategy: str,
+) -> list[tuple[str, Callable[[], str]]]:
+    """Assemble prioritized list of tier callable invokers."""
+    use_cli_primary = is_antigravity_cli_supported(agy_model)
+    cli_tier = ("antigravity-cli", lambda: _invoke_cli(prompt, model=agy_model, timeout=gw_timeout))
+    gw_tier = ("gateway", lambda: call_gateway(prompt, model=gw_model, timeout=gw_timeout))
+    cp_tier = ("copilot", lambda: call_copilot(prompt, model=cp_model, timeout=cp_timeout))
+    api_tier = ("gemini-api", lambda: call_gemini_api(prompt, model=gemini_model, timeout=gw_timeout))
 
-    # Apply Round-Robin Strategy
+    tiers = [cli_tier, gw_tier, cp_tier, api_tier] if use_cli_primary else [gw_tier, cli_tier, cp_tier, api_tier]
+
     if strategy == "round_robin":
         global _rr_index
         with _rr_lock:
@@ -128,6 +92,16 @@ def call_llm(
             _rr_index += 1
         _logger.debug(f"[llm] Round-Robin selected primary tier: {tiers[0][0]}")
 
+    return tiers
+
+
+def _execute_tier_pipeline(
+    tiers: list[tuple[str, Callable[[], str]]],
+    validator: Callable[[str], bool] | None,
+    allowed_shorts: tuple[str, ...],
+    min_length: int,
+) -> str:
+    """Iterate through tiers with validation and garbage checking."""
     for tier_name, tier_fn in tiers:
         try:
             result = tier_fn()
@@ -144,6 +118,28 @@ def call_llm(
 
     _logger.error("[llm] ALL tiers failed")
     return ""
+
+
+def call_llm(
+    prompt: str,
+    *,
+    model: str = "",
+    task: str = "general",
+    strategy: str = "fallback",
+    validator: Callable[[str], bool] | None = None,
+    allowed_shorts: tuple[str, ...] = (),
+    min_length: int = 10,
+) -> str:
+    """Call LLM with automatic 4-tier fallback routing."""
+    gw_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.gemini_timeout
+    cp_timeout = cfg.reasoning_timeout if task == "reasoning" else cfg.copilot_timeout
+    resolved_model = resolve_model(model, task=task) if model else ""
+
+    gw_model, agy_model, cp_model, gemini_model = _resolve_tier_models(task, resolved_model)
+    tiers = _build_tier_pipeline(
+        prompt, gw_model, agy_model, cp_model, gemini_model, gw_timeout, cp_timeout, strategy
+    )
+    return _execute_tier_pipeline(tiers, validator, allowed_shorts, min_length)
 
 __all__ = [
     "call_llm",
