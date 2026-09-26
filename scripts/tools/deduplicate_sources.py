@@ -32,24 +32,19 @@ try:
     from services.brain_dump import _load_url_registry, _save_url_registry
     from core.config import cfg
 except ImportError:
-    # Fallback dự phòng nếu import lỗi ngoài môi trường tiêu chuẩn
     def _load_url_registry() -> dict:
         f = scripts_dir / ".state" / ".processed_urls.json"
-        if f.exists():
-            return json.loads(f.read_text(encoding="utf-8"))
-        return {}
+        return json.loads(f.read_text(encoding="utf-8")) if f.exists() else {}
 
     def _save_url_registry(r: dict) -> None:
         f = scripts_dir / ".state" / ".processed_urls.json"
         f.write_text(json.dumps(r, indent=2, ensure_ascii=False), encoding="utf-8")
 
-# Cấu hình encoding stdout để in tiếng Việt có dấu trên Windows cmd/powershell không lỗi
 try:
     sys.stdout.reconfigure(encoding='utf-8')
 except AttributeError:
     pass
 
-# Thiết lập Logger
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
@@ -57,7 +52,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger("vvc.dedup")
 
-# Định nghĩa các nhóm trùng lặp đã khảo sát
 DUPLICATE_GROUPS = [
     {
         "name": "Elon Musk (vWJCxvTMuUY)",
@@ -86,197 +80,175 @@ DUPLICATE_GROUPS = [
 ]
 
 
+def _heal_concept_notes_for_dup(
+    dup_stem: str,
+    canonical_stem: str,
+    concepts_dir: Path,
+    dry_run: bool,
+) -> int:
+    """Redirect references in concept notes from dup_stem to canonical_stem."""
+    healed = 0
+    for c_file in concepts_dir.glob("*.md"):
+        try:
+            content = c_file.read_text(encoding="utf-8")
+            if dup_stem in content:
+                healed += 1
+                if not dry_run:
+                    c_file.write_text(content.replace(dup_stem, canonical_stem), encoding="utf-8")
+                    logger.info(f"      * Chữa lành: [{c_file.name}] ➡️ {canonical_stem}")
+                else:
+                    logger.info(f"      * [DRY RUN] Sẽ chữa lành: [{c_file.name}] ➡️ {canonical_stem}")
+        except Exception as e:
+            logger.warning(f"      [!] Lỗi khi chữa lành tệp concept {c_file.name}: {e}")
+    return healed
+
+
+def _process_duplicate_file(
+    dup_path: Path,
+    canonical_stem: str,
+    concepts_dir: Path,
+    backup_dir: Path,
+    dry_run: bool,
+) -> tuple[int, int, int]:
+    """Backup, heal concept links, and remove a duplicate transcript file."""
+    if not dup_path.exists():
+        logger.info(f"  * Tệp phụ {dup_path.name} không tồn tại hoặc đã được dọn dẹp trước đó.")
+        return 0, 0, 0
+
+    logger.info(f"  * Phát hiện tệp phụ (Duplicate): {dup_path.name}")
+    backed_up = deleted = 0
+    if not dry_run:
+        try:
+            shutil.copy(dup_path, backup_dir / dup_path.name)
+            backed_up += 1
+            logger.info(f"    [ok] Đã sao lưu phòng thủ tệp phụ sang {backup_dir.name}/{dup_path.name}")
+        except Exception as e:
+            logger.error(f"    [!] Thất bại khi sao lưu tệp phụ {dup_path.name}: {e}")
+            raise
+
+    healed = _heal_concept_notes_for_dup(dup_path.stem, canonical_stem, concepts_dir, dry_run)
+    logger.info(f"    => Đã chữa lành xong {healed} Concept Notes.")
+
+    if not dry_run:
+        try:
+            dup_path.unlink()
+            deleted += 1
+            logger.info(f"    [ok] Đã xóa an toàn tệp nguồn phụ trên đĩa: {dup_path.name}")
+        except Exception as e:
+            logger.error(f"    [!] Thất bại khi xóa tệp phụ {dup_path.name}: {e}")
+    else:
+        logger.info(f"    [DRY RUN] Sẽ xóa tệp nguồn phụ trên đĩa: {dup_path.name}")
+        deleted += 1
+
+    return healed, backed_up, deleted
+
+
+def _sync_registry_for_group(group: dict, concepts_dir: Path, registry: dict) -> bool:
+    """Sync URL registry concepts list with canonical source."""
+    url_key = group["url_key"]
+    if url_key not in registry:
+        return False
+    canonical_stem = group["canonical"]
+    logger.info(f"  * Tiến hành gộp và làm sạch Registry cho URL: {url_key}")
+    updated_concepts = []
+    for c_file in concepts_dir.glob("*.md"):
+        try:
+            content = c_file.read_text(encoding="utf-8")
+            fm_match = re.search(r"^---\s*\n(.*?)\n---", content, re.DOTALL)
+            if not fm_match:
+                continue
+            fm_text = fm_match.group(1)
+            has_source = (
+                re.search(rf'^\s*source:\s*["\']?.*{re.escape(canonical_stem)}', fm_text, re.MULTILINE) is not None
+                or re.search(rf'^\s*-\s*["\']?.*{re.escape(canonical_stem)}', fm_text, re.MULTILINE) is not None
+            )
+            if has_source:
+                title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_text, re.MULTILINE)
+                title = title_match.group(1).strip() if title_match else c_file.stem.replace("_", " ").title()
+                updated_concepts.append({"stem": c_file.stem, "title": title})
+        except Exception:
+            pass
+
+    seen = set()
+    unique = [c for c in updated_concepts if not (c["stem"] in seen or seen.add(c["stem"]))]
+    registry[url_key]["source_note"] = canonical_stem
+    registry[url_key]["concepts"] = unique
+    registry[url_key]["processed_at"] = datetime.now().isoformat()
+    logger.info(f"    [ok] Đã đồng bộ Registry: URL trỏ về {canonical_stem} chứa {len(unique)} concepts.")
+    return True
+
+
+def _print_dedup_summary(duration: float, healed: int, backed_up: int, deleted: int) -> None:
+    """Print final deduplication metrics."""
+    logger.info("\n" + "=" * 70)
+    logger.info("📊 BÁO CÁO THỐNG KÊ KẾT QUẢ DỌN DẸP TRÙNG LẶP NGUỒN (TỔNG KẾT)")
+    logger.info("=" * 70)
+    logger.info(f"⏱️ Tổng thời gian thực thi  : {duration:.2f} mili-giây")
+    logger.info(f"📁 Số lượng Concept Healed   : {healed} tệp")
+    logger.info(f"📦 Số lượng File phụ sao lưu : {backed_up} tệp (an toàn tuyệt đối)")
+    logger.info(f"🗑️ Số lượng File phụ đã xóa  : {deleted} tệp")
+    logger.info("⚙️ Trạng thái Registry       : Đồng bộ 100% (Trỏ về Canonical Sources)")
+    logger.info("=" * 70)
+
+
+def _trigger_wiki_maintain() -> None:
+    """Trigger JIT wiki maintenance rebuild."""
+    try:
+        from wiki_maintain import rebuild_all
+        rebuild_all()
+    except Exception as e:
+        logger.warning(f"Không thể import và chạy tự động rebuild_all: {e}")
+
+
 def run_deduplication(dry_run: bool = False) -> None:
     """Thực thi dọn dẹp trùng lặp nguồn và chữa lành liên kết."""
     start_time = time.time()
-    
-    vault_root = Path(cfg.vault_root)
     concepts_dir = cfg.concepts_dir
     transcripts_dir = cfg.sources_dir / "transcripts"
     backup_dir = scripts_dir / "scratch" / "backup"
-    
-    logger.info("======================================================================")
-    logger.info(f"🚀 BẮT ĐẦU DỌN DẸP TRÙNG LẶP NGUỒN & CHỮA LÀNH LIÊN KẾT (Mode: {'DRY RUN' if dry_run else 'LIVE'})")
-    logger.info("======================================================================")
-    
+
+    logger.info("=" * 70)
+    logger.info(f"🚀 BẮT ĐẦU DỌN DẸP TRÙNG LẶP (Mode: {'DRY RUN' if dry_run else 'LIVE'})")
+    logger.info("=" * 70)
     if not concepts_dir.exists() or not transcripts_dir.exists():
-        logger.error(f"Không tìm thấy các thư mục cốt lõi của Obsidian Vault tại {vault_root}")
+        logger.error(f"Không tìm thấy các thư mục cốt lõi của Vault tại {cfg.vault_root}")
         return
 
-    # Khởi tạo thư mục backup phòng thủ
     if not dry_run:
         backup_dir.mkdir(parents=True, exist_ok=True)
-        logger.info(f"Đã kích hoạt thư mục sao lưu phòng thủ tại: {backup_dir}")
-
-    # Load registry để cập nhật
     registry = _load_url_registry()
-    registry_updated = False
-
-    # Thống kê tổng quan
-    total_concepts_healed = 0
-    total_files_backed_up = 0
-    total_files_deleted = 0
+    reg_updated = False
+    total_healed = total_backed_up = total_deleted = 0
 
     for group in DUPLICATE_GROUPS:
-        logger.info("")
-        logger.info(f"📂 Đang xử lý nhóm: {group['name']}")
-        
-        canonical_stem = group["canonical"]
-        canonical_path = transcripts_dir / f"{canonical_stem}.md"
-        
+        canonical_path = transcripts_dir / f"{group['canonical']}.md"
         if not canonical_path.exists():
-            logger.warning(f"  [!] Không tìm thấy tệp Nguồn chính: {canonical_path.name}. Bỏ qua nhóm này.")
+            logger.warning(f"  [!] Không tìm thấy tệp Nguồn chính: {canonical_path.name}. Bỏ qua.")
             continue
-            
-        logger.info(f"  * Tệp Nguồn chính (Canonical): {canonical_path.name}")
-        
-        # -------------------------------------------------------------
-        # BƯỚC A: Sao lưu phòng thủ và chuyển hướng liên kết Concept Notes
-        # -------------------------------------------------------------
         for dup_stem in group["duplicates"]:
-            dup_path = transcripts_dir / f"{dup_stem}.md"
-            if not dup_path.exists():
-                logger.info(f"  * Tệp phụ {dup_path.name} không tồn tại hoặc đã được dọn dẹp trước đó.")
-                continue
-                
-            logger.info(f"  * Phát hiện tệp phụ (Duplicate): {dup_path.name}")
-            
-            # 1. Thực hiện Sao lưu phòng thủ (Safety Backup)
-            if not dry_run:
-                try:
-                    shutil.copy(dup_path, backup_dir / dup_path.name)
-                    logger.info(f"    [ok] Đã sao lưu phòng thủ tệp phụ sang {backup_dir.name}/{dup_path.name}")
-                    total_files_backed_up += 1
-                except Exception as e:
-                    logger.error(f"    [!] Thất bại khi sao lưu tệp phụ {dup_path.name}: {e}. Dừng để đảm bảo an toàn.")
-                    return
+            try:
+                h, b, d = _process_duplicate_file(
+                    transcripts_dir / f"{dup_stem}.md", group["canonical"], concepts_dir, backup_dir, dry_run
+                )
+                total_healed += h
+                total_backed_up += b
+                total_deleted += d
+            except Exception:
+                return
 
-            # 2. Quét Concept Notes để chữa lành liên kết (Link Healing)
-            logger.info(f"    -> Đang quét và chuyển hướng các Concept Notes trỏ tới {dup_stem}...")
-            group_concepts_healed = 0
-            
-            concept_files = list(concepts_dir.glob("*.md"))
-            for c_file in concept_files:
-                try:
-                    content = c_file.read_text(encoding="utf-8")
-                    if dup_stem in content:
-                        group_concepts_healed += 1
-                        total_concepts_healed += 1
-                        
-                        # Thay thế triệt để trên toàn bộ file (frontmatter, citation line, references)
-                        new_content = content.replace(dup_stem, canonical_stem)
-                        
-                        if not dry_run:
-                            c_file.write_text(new_content, encoding="utf-8")
-                            logger.info(f"      * Chữa lành: [{c_file.name}] ➡️ trỏ về {canonical_stem}")
-                        else:
-                            logger.info(f"      * [DRY RUN] Sẽ chữa lành: [{c_file.name}] ➡️ trỏ về {canonical_stem}")
-                except Exception as e:
-                    logger.warning(f"      [!] Lỗi khi chữa lành tệp concept {c_file.name}: {e}")
-                    
-            logger.info(f"    => Đã chữa lành xong {group_concepts_healed} Concept Notes.")
+        if _sync_registry_for_group(group, concepts_dir, registry):
+            reg_updated = True
 
-            # 3. Tiến hành xóa tệp phụ trên đĩa an toàn
-            if not dry_run:
-                try:
-                    dup_path.unlink()
-                    logger.info(f"    [ok] Đã xóa an toàn tệp nguồn phụ trên đĩa: {dup_path.name}")
-                    total_files_deleted += 1
-                except Exception as e:
-                    logger.error(f"    [!] Thất bại khi xóa tệp phụ {dup_path.name}: {e}")
-            else:
-                logger.info(f"    [DRY RUN] Sẽ xóa tệp nguồn phụ trên đĩa: {dup_path.name}")
-                total_files_deleted += 1
-
-        # -------------------------------------------------------------
-        # BƯỚC B: Hợp nhất và dọn dẹp Registry .processed_urls.json
-        # -------------------------------------------------------------
-        url_key = group["url_key"]
-        if url_key in registry:
-            logger.info(f"  * Tiến hành gộp và làm sạch Registry cho URL: {url_key}")
-            
-            # Quét lại toàn bộ Concept Notes để lấy danh sách concept chính xác nhất của file Canonical sau khi chữa lành
-            logger.info(f"    -> Đang đồng bộ và gộp danh sách concepts trên Registry...")
-            updated_concepts = []
-            concept_files = list(concepts_dir.glob("*.md"))
-            for c_file in concept_files:
-                try:
-                    content = c_file.read_text(encoding="utf-8")
-                    # Tìm trường source: hoặc sources: chứa canonical_stem trong frontmatter
-                    fm_match = re.search(r'^---\s*\n(.*?)\n---', content, re.DOTALL)
-                    if fm_match:
-                        fm_text = fm_match.group(1)
-                        has_source = (
-                            re.search(rf'^\s*source:\s*["\']?.*{re.escape(canonical_stem)}', fm_text, re.MULTILINE) is not None
-                            or re.search(rf'^\s*-\s*["\']?.*{re.escape(canonical_stem)}', fm_text, re.MULTILINE) is not None
-                        )
-                        if has_source:
-                            title_match = re.search(r'^title:\s*["\']?(.*?)["\']?\s*$', fm_text, re.MULTILINE)
-                            title = title_match.group(1).strip() if title_match else c_file.stem.replace("_", " ").title()
-                            updated_concepts.append({
-                                "stem": c_file.stem,
-                                "title": title
-                            })
-                except Exception:
-                    pass
-            
-            # Gộp và loại bỏ trùng lặp dựa trên stem
-            unique_concepts = []
-            seen_stems = set()
-            for c in updated_concepts:
-                if c["stem"] not in seen_stems:
-                    seen_stems.add(c["stem"])
-                    unique_concepts.append(c)
-            
-            # Cập nhật Registry record
-            registry[url_key]["source_note"] = canonical_stem
-            registry[url_key]["concepts"] = unique_concepts
-            registry[url_key]["processed_at"] = datetime.now().isoformat()
-            registry_updated = True
-            logger.info(f"    [ok] Đã đồng bộ Registry: URL trỏ về {canonical_stem} chứa {len(unique_concepts)} concepts.")
-
-    # Ghi Registry đã cập nhật
-    if registry_updated and not dry_run:
-        try:
-            _save_url_registry(registry)
-            logger.info("")
-            logger.info("✅ CẬP NHẬT FILE REGISTRY JSON TRÊN ĐĨA THÀNH CÔNG!")
-        except Exception as e:
-            logger.error(f"Thất bại khi ghi file registry: {e}")
-
-    # ------------------------------------------------------------------
-    # BƯỚC C: Chạy dịch vụ bảo trì tự động wiki_maintain.py JIT
-    # ------------------------------------------------------------------
+    if reg_updated and not dry_run:
+        _save_url_registry(registry)
     if not dry_run:
-        logger.info("")
-        logger.info("Step C: Kích hoạt dịch vụ Wiki Maintenance tự động để rebuild lại đồ thị tri thức...")
-        try:
-            from wiki_maintain import rebuild_all
-            rebuild_all()
-            logger.info("✅ HOÀN THÀNH REBUILD SOURCE MOCs, DOMAIN MOCs VÀ MASTER INDEX!")
-        except Exception as e:
-            # Fallback nếu import lỗi hoặc không có hàm rebuild_all
-            logger.warning(f"Không thể import và chạy tự động rebuild_all: {e}. Vui lòng tự chạy wiki_maintain.py sau.")
+        _trigger_wiki_maintain()
 
-    # ------------------------------------------------------------------
-    # BÁO CÁO THỐNG KÊ CHI TIẾT
-    # ------------------------------------------------------------------
-    duration = (time.time() - start_time) * 1000
-    logger.info("")
-    logger.info("======================================================================")
-    logger.info("📊 BÁO CÁO THỐNG KÊ KẾT QUẢ DỌN DẸP TRÙNG LẶP NGUỒN (TỔNG KẾT)")
-    logger.info("======================================================================")
-    logger.info(f"⏱️ Tổng thời gian thực thi  : {duration:.2f} mili-giây")
-    logger.info(f"📁 Số lượng Concept Healed   : {total_concepts_healed} tệp")
-    logger.info(f"📦 Số lượng File phụ sao lưu : {total_files_backed_up} tệp (an toàn tuyệt đối)")
-    logger.info(f"🗑️ Số lượng File phụ đã xóa  : {total_files_deleted} tệp")
-    logger.info(f"⚙️ Trạng thái Registry       : Đồng bộ 100% (Trỏ về Canonical Sources)")
-    logger.info("======================================================================")
+    _print_dedup_summary((time.time() - start_time) * 1000, total_healed, total_backed_up, total_deleted)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Dọn dẹp nguồn trùng lặp trên đĩa và chữa lành liên kết.")
     parser.add_argument("--dry-run", action="store_true", help="Chạy ở chế độ mô phỏng, không thực tế xóa/ghi file.")
     args = parser.parse_args()
-    
     run_deduplication(dry_run=args.dry_run)

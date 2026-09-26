@@ -25,15 +25,9 @@ PROMPT_FILE_ALLOWLIST = {
 # 100% of production files comply with the 350-line standard.
 LEGACY_LINE_RATCHET: dict[str, int] = {}
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (5 files).
-# Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
-LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
-    "tools/audit_playbook.py": 1,
-    "tools/deduplicate_sources.py": 1,
-    "tools/enrich_figure_inventory.py": 2,
-    "tools/hydrate_url_registry.py": 1,
-    "web_clip.py": 1,
-}
+# Monotonic function count ratchets for legacy files with functions > 50 lines (0 files).
+# 100% of production files comply with Global Rule 5 (no functions > 50 lines).
+LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {}
 
 
 def _get_production_py_files() -> list[tuple[Path, str]]:
