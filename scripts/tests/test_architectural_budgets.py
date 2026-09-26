@@ -25,17 +25,9 @@ PROMPT_FILE_ALLOWLIST = {
 # 100% of production files comply with the 350-line standard.
 LEGACY_LINE_RATCHET: dict[str, int] = {}
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (34 files).
+# Monotonic function count ratchets for legacy files with functions > 50 lines (26 files).
 # Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
 LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
-    "core/layouts/sugiyama_layout.py": 1,
-    "core/layouts/tree_layout.py": 1,
-    "core/layouts/value_chain_layout.py": 1,
-    "core/layouts/wheel_layout.py": 2,
-    "heal_existing_tocs.py": 1,
-    "pdf_convert.py": 1,
-    "pipeline/process_markdown.py": 1,
-    "pipeline/synthesize.py": 2,
     "services/brain_dump/inbox_io.py": 1,
     "services/brain_dump/orchestrator.py": 1,
     "services/brain_dump/url_registry.py": 1,
