@@ -12,7 +12,6 @@ Examples:
 
 Usage:
     python check_hub_import_depth.py [--path <spoke_root>]
-    # Or as pre-commit hook in .pre-commit-config.yaml
 """
 
 from __future__ import annotations
@@ -26,18 +25,9 @@ from pathlib import Path
 
 # Canonical fallback Hub package import prefixes for Spoke environments where packages/ is absent
 FALLBACK_HUB_PACKAGES: tuple[str, ...] = (
-    "ccba_ai",
-    "ccba_core",
-    "ccba_harness",
-    "ccba_legal",
-    "ccba_maskara",
-    "ccba_notebooklm",
-    "ccba_ooxml",
-    "ccba_pdf_prep",
-    "ccba_qc_core",
-    "mdconverter",
+    "ccba_ai", "ccba_core", "ccba_harness", "ccba_legal", "ccba_maskara",
+    "ccba_notebooklm", "ccba_ooxml", "ccba_pdf_prep", "ccba_qc_core", "mdconverter",
 )
-
 
 _WIN_DRIVE_PATTERN = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -53,117 +43,75 @@ def _resolve_candidate_hub_path(raw: str, base_dir: Path) -> Path | None:
 
         if shutil.which("wslpath"):
             try:
-                res = subprocess.run(
-                    ["wslpath", "-u", raw], capture_output=True, text=True, timeout=2
-                )
-                if res.returncode == 0 and res.stdout.strip():
-                    cand = Path(res.stdout.strip())
-                    if cand.exists():
-                        return cand
+                res = subprocess.run(["wslpath", "-u", raw], capture_output=True, text=True, timeout=2)
+                if res.returncode == 0 and res.stdout.strip() and Path(res.stdout.strip()).exists():
+                    return Path(res.stdout.strip())
             except Exception:
                 pass
         return None
 
     p = Path(raw)
-    if not p.is_absolute():
-        p = (base_dir / p).resolve()
-    else:
-        p = p.resolve()
-    return p
+    return (base_dir / p).resolve() if not p.is_absolute() else p.resolve()
+
+
+def _extract_hub_raw_str(content: str) -> str:
+    """Extract raw hub path string from YAML text using PyYAML or line parsing."""
+    try:
+        import yaml
+
+        data = yaml.safe_load(content)
+        if isinstance(data, dict):
+            val = data.get("hub_path") or (data.get("project") or {}).get("hub_path")
+            if isinstance(val, dict):
+                os_key = "windows" if os.name == "nt" else "linux"
+                return str(val.get(os_key) or val.get("posix") or "")
+            if isinstance(val, str):
+                return val
+    except Exception:
+        pass
+
+    for line in content.splitlines():
+        line_s = line.strip()
+        if line_s.startswith("hub_path:"):
+            return line_s.split(":", 1)[1].split("#")[0].strip().strip("'\"")
+    return ""
 
 
 def _read_hub_path_from_dir(directory: Path) -> Path | None:
     """Extract Hub packages directory from workspace_context.yaml in directory."""
-    for rel in [
+    for rel in (
         directory / ".agents" / "workspace_context.yaml",
         directory / ".md" / "workspace_context.yaml",
         directory / "workspace_context.yaml",
-    ]:
-        if rel.is_file():
-            try:
-                spoke_dir = (
-                    rel.parent.parent if rel.parent.name in (".agents", ".md") else rel.parent
-                )
-                content = rel.read_text(encoding="utf-8")
-                # Try parsing as YAML for multi-OS or complex structures
-                try:
-                    import yaml
-
-                    data = yaml.safe_load(content)
-                    if isinstance(data, dict):
-                        hub_val = data.get("hub_path")
-                        if not hub_val and isinstance(data.get("project"), dict):
-                            hub_val = data["project"].get("hub_path")
-                        if isinstance(hub_val, dict):
-                            os_key = "windows" if os.name == "nt" else "linux"
-                            raw = str(hub_val.get(os_key) or hub_val.get("posix") or "")
-                        elif isinstance(hub_val, str):
-                            raw = hub_val
-                        else:
-                            raw = ""
-                        if raw:
-                            hp = _resolve_candidate_hub_path(raw, spoke_dir)
-                            if hp:
-                                pkg_dir = hp if hp.name == "packages" else hp / "packages"
-                                if pkg_dir.is_dir():
-                                    return pkg_dir
-                except Exception:
-                    pass
-
-                # Fallback line-by-line parsing
-                for line in content.splitlines():
-                    line_s = line.strip()
-                    if line_s.startswith("hub_path:"):
-                        raw = line_s.split(":", 1)[1].split("#")[0].strip().strip("'\"")
-                        if raw:
-                            hp = _resolve_candidate_hub_path(raw, spoke_dir)
-                            if hp:
-                                pkg_dir = hp if hp.name == "packages" else hp / "packages"
-                                if pkg_dir.is_dir():
-                                    return pkg_dir
-            except OSError:
-                pass
+    ):
+        if not rel.is_file():
+            continue
+        try:
+            spoke_dir = rel.parent.parent if rel.parent.name in (".agents", ".md") else rel.parent
+            raw = _extract_hub_raw_str(rel.read_text(encoding="utf-8"))
+            if raw:
+                hp = _resolve_candidate_hub_path(raw, spoke_dir)
+                if hp:
+                    pkg_dir = hp if hp.name == "packages" else hp / "packages"
+                    if pkg_dir.is_dir():
+                        return pkg_dir
+        except OSError:
+            pass
     return None
 
 
-def find_hub_packages_dir(start_path: Path | None = None) -> Path | None:
-    """Locate the Hub packages/ directory dynamically.
+def _check_packages_candidate(cand: Path) -> Path | None:
+    """Check if candidate directory or its packages/ subdirectory is valid."""
+    if cand.name == "packages" and cand.is_dir():
+        return cand
+    pkg_cand = cand / "packages"
+    if pkg_cand.is_dir() and any(pkg_cand.iterdir()):
+        return pkg_cand
+    return _read_hub_path_from_dir(cand)
 
-    Searches:
-    1. start_path and its parents for packages/ or workspace_context.yaml hub_path
-    2. Environment variables (CCBA_HUB_PATH, HUB_PATH)
-    3. Relative to this file's location (Hub or Spoke repo)
-    4. Current working directory and its parents
-    """
-    if start_path is not None:
-        resolved = start_path.resolve()
-        for cand in [resolved, *resolved.parents]:
-            if cand.name == "packages" and cand.is_dir():
-                return cand
-            pkg_cand = cand / "packages"
-            if pkg_cand.is_dir() and any(pkg_cand.iterdir()):
-                return pkg_cand
-            spoke_hub = _read_hub_path_from_dir(cand)
-            if spoke_hub:
-                return spoke_hub
 
-        # Fallback to env variables if start_path did not find packages directory directly
-        for env_key in ("CCBA_HUB_PATH", "HUB_PATH"):
-            env_val = os.environ.get(env_key)
-            if env_val:
-                hp = Path(env_val).resolve()
-                pkg_dir = hp if hp.name == "packages" else hp / "packages"
-                if pkg_dir.is_dir():
-                    return pkg_dir
-
-        # Sibling directory check
-        sibling = resolved.parent / "ccba-agent-platform" / "packages"
-        if sibling.is_dir():
-            return sibling
-
-        return None
-
-    # Check environment variables early
+def _find_packages_from_env() -> Path | None:
+    """Locate packages/ directory from environment variables."""
     for env_key in ("CCBA_HUB_PATH", "HUB_PATH"):
         env_val = os.environ.get(env_key)
         if env_val:
@@ -171,139 +119,141 @@ def find_hub_packages_dir(start_path: Path | None = None) -> Path | None:
             pkg_dir = hp if hp.name == "packages" else hp / "packages"
             if pkg_dir.is_dir():
                 return pkg_dir
-
-    # When start_path is None, use discovery heuristics
-    this_file = Path(__file__).resolve()
-    for parent in this_file.parents:
-        pkg_cand = parent / "packages"
-        if pkg_cand.is_dir() and any(pkg_cand.glob("ccba-*")):
-            return pkg_cand
-        spoke_hub = _read_hub_path_from_dir(parent)
-        if spoke_hub:
-            return spoke_hub
-
-    cwd = Path.cwd().resolve()
-    for candidate in [cwd, *cwd.parents]:
-        pkg_cand = candidate / "packages"
-        if pkg_cand.is_dir() and any(pkg_cand.glob("ccba-*")):
-            return pkg_cand
-        spoke_hub = _read_hub_path_from_dir(candidate)
-        if spoke_hub:
-            return spoke_hub
-
     return None
+
+
+def find_hub_packages_dir(start_path: Path | None = None) -> Path | None:
+    """Locate the Hub packages/ directory dynamically."""
+    if start_path is not None:
+        resolved = start_path.resolve()
+        for cand in (resolved, *resolved.parents):
+            hit = _check_packages_candidate(cand)
+            if hit:
+                return hit
+        env_hit = _find_packages_from_env()
+        if env_hit:
+            return env_hit
+        sibling = resolved.parent / "ccba-agent-platform" / "packages"
+        return sibling if sibling.is_dir() else None
+
+    env_hit = _find_packages_from_env()
+    if env_hit:
+        return env_hit
+
+    for base in (Path(__file__).resolve().parents, Path.cwd().resolve().parents):
+        for candidate in base:
+            hit = _check_packages_candidate(candidate)
+            if hit:
+                return hit
+    return None
+
+
+def _discover_from_pyproject(pyproject: Path, discovered: set[str]) -> None:
+    """Extract package and script names from pyproject.toml."""
+    try:
+        import tomllib
+
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        wheel_pkgs = data.get("tool", {}).get("hatch", {}).get("build", {}).get("targets", {}).get("wheel", {}).get("packages", [])
+        for wp in wheel_pkgs:
+            p_name = Path(wp).name
+            if p_name and not p_name.startswith((".", "_")):
+                discovered.add(p_name)
+
+        for inc in data.get("tool", {}).get("setuptools", {}).get("packages", {}).get("find", {}).get("include", []):
+            clean = inc.rstrip("*.").strip()
+            if clean and not clean.startswith((".", "_")):
+                discovered.add(clean)
+
+        flit_mod = data.get("tool", {}).get("flit", {}).get("module", {}).get("name")
+        if flit_mod and not flit_mod.startswith((".", "_")):
+            discovered.add(flit_mod)
+
+        for entry in data.get("project", {}).get("scripts", {}).values():
+            if ":" in entry:
+                mod = entry.split(":")[0].split(".")[0]
+                if mod and not mod.startswith((".", "_")):
+                    discovered.add(mod)
+    except Exception:
+        pass
+
+
+def _discover_from_pkg_dir(pkg_dir: Path, discovered: set[str]) -> None:
+    """Discover import package names inside a specific package directory."""
+    src_dir = pkg_dir / "src"
+    if src_dir.is_dir():
+        for child in src_dir.iterdir():
+            if child.is_dir() and not child.name.startswith((".", "_")) and not child.name.endswith(".egg-info"):
+                discovered.add(child.name)
+            elif child.is_file() and child.suffix == ".py" and not child.name.startswith((".", "_")):
+                discovered.add(child.stem)
+    else:
+        for child in pkg_dir.iterdir():
+            if child.is_dir() and not child.name.startswith((".", "_")) and (child / "__init__.py").is_file():
+                discovered.add(child.name)
+
+    pyproject = pkg_dir / "pyproject.toml"
+    if pyproject.is_file():
+        _discover_from_pyproject(pyproject, discovered)
 
 
 def discover_hub_packages(
     hub_root: Path | None = None,
     fallback: tuple[str, ...] = FALLBACK_HUB_PACKAGES,
 ) -> tuple[str, ...]:
-    """Dynamically discover official Hub package import names.
-
-    Inspects `packages/*/src/*`, flat package layouts, and package `pyproject.toml`
-    files to find canonical import package names (e.g. `ccba_legal` from `ccba-legal-intel`).
-    Falls back to `fallback` if `packages/` is not accessible (e.g. in Spoke).
-    """
+    """Dynamically discover official Hub package import names."""
     packages_dir = find_hub_packages_dir(hub_root)
     if not packages_dir or not packages_dir.is_dir():
         return fallback
 
     discovered: set[str] = set()
-    for pkg_dir in packages_dir.iterdir():
-        if not pkg_dir.is_dir() or pkg_dir.name.startswith((".", "_")):
-            continue
+    for pkg_dir in sorted(packages_dir.iterdir(), key=lambda p: p.name):
+        if pkg_dir.is_dir() and not pkg_dir.name.startswith((".", "_")):
+            _discover_from_pkg_dir(pkg_dir, discovered)
 
-        # 1. Inspect packages/*/src/* for top-level package modules
-        src_dir = pkg_dir / "src"
-        if src_dir.is_dir():
-            for child in src_dir.iterdir():
-                if (
-                    child.is_dir()
-                    and not child.name.startswith((".", "_"))
-                    and not child.name.endswith(".egg-info")
-                ):
-                    discovered.add(child.name)
-                elif (
-                    child.is_file()
-                    and child.suffix == ".py"
-                    and not child.name.startswith((".", "_"))
-                ):
-                    discovered.add(child.stem)
-
-        # 2. Inspect flat package layout (packages/*/<pkg_name>/__init__.py without src/)
-        else:
-            for child in pkg_dir.iterdir():
-                if (
-                    child.is_dir()
-                    and not child.name.startswith((".", "_"))
-                    and (child / "__init__.py").is_file()
-                ):
-                    discovered.add(child.name)
-
-        # 3. Inspect pyproject.toml as complement
-        pyproject = pkg_dir / "pyproject.toml"
-        if pyproject.is_file():
-            try:
-                import tomllib
-
-                data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
-                wheel_pkgs = (
-                    data.get("tool", {})
-                    .get("hatch", {})
-                    .get("build", {})
-                    .get("targets", {})
-                    .get("wheel", {})
-                    .get("packages", [])
-                )
-                for wp in wheel_pkgs:
-                    p_name = Path(wp).name
-                    if p_name and not p_name.startswith((".", "_")):
-                        discovered.add(p_name)
-
-                st_includes = (
-                    data.get("tool", {})
-                    .get("setuptools", {})
-                    .get("packages", {})
-                    .get("find", {})
-                    .get("include", [])
-                )
-                for inc in st_includes:
-                    clean_inc = inc.rstrip("*").rstrip(".")
-                    if clean_inc and not clean_inc.startswith((".", "_")):
-                        discovered.add(clean_inc)
-
-                flit_mod = data.get("tool", {}).get("flit", {}).get("module", {}).get("name")
-                if flit_mod and not flit_mod.startswith((".", "_")):
-                    discovered.add(flit_mod)
-
-                scripts = data.get("project", {}).get("scripts", {})
-                for entry in scripts.values():
-                    if ":" in entry:
-                        mod = entry.split(":")[0].split(".")[0]
-                        if mod and not mod.startswith((".", "_")):
-                            discovered.add(mod)
-            except Exception:
-                pass
-
-    if not discovered:
-        return fallback
-
-    return tuple(sorted(discovered))
+    return tuple(sorted(discovered)) if discovered else fallback
 
 
-# Exported constants for compatibility with static imports & tests
 HUB_PACKAGES: tuple[str, ...] = discover_hub_packages()
 HUB_PACKAGE_PREFIXES: tuple[str, ...] = HUB_PACKAGES
+
+
+def _check_import_node(
+    node: ast.AST,
+    hub_packages: tuple[str, ...],
+    lines: list[str],
+) -> tuple[int, str] | None:
+    """Check an AST import node against Hub import depth rules."""
+    if isinstance(node, ast.ImportFrom):
+        if not node.module or node.level > 0:
+            return None
+        parts = node.module.split(".")
+        if parts[0] in hub_packages:
+            is_viol = (
+                len(parts) >= 3
+                or (len(parts) >= 2 and any(p.startswith("_") for p in parts[1:]))
+                or any(
+                    a.name.startswith("_") and not (a.name.startswith("__") and a.name.endswith("__"))
+                    for a in node.names
+                )
+            )
+            if is_viol:
+                content = lines[node.lineno - 1].strip() if 0 < node.lineno <= len(lines) else f"from {node.module} import ..."
+                return node.lineno, content
+    elif isinstance(node, ast.Import):
+        for alias in node.names:
+            parts = alias.name.split(".")
+            if parts[0] in hub_packages and (len(parts) >= 3 or (len(parts) >= 2 and any(p.startswith("_") for p in parts[1:]))):
+                content = lines[node.lineno - 1].strip() if 0 < node.lineno <= len(lines) else f"import {alias.name}"
+                return node.lineno, content
+    return None
 
 
 def scan_file(
     filepath: Path,
     hub_packages: tuple[str, ...] | None = None,
 ) -> list[tuple[int, str]]:
-    """Scans a Python file for deep Hub package imports using AST parsing.
-
-    Returns list of (line_number, line_content) violations.
-    """
+    """Scans a Python file for deep Hub package imports using AST parsing."""
     if hub_packages is None:
         hub_packages = HUB_PACKAGES
 
@@ -315,51 +265,27 @@ def scan_file(
         return violations
 
     lines = content.splitlines()
-
     for node in ast.walk(tree):
-        if isinstance(node, ast.ImportFrom):
-            if not node.module or node.level > 0:
-                continue
-            parts = node.module.split(".")
-            pkg = parts[0]
-            if pkg in hub_packages:
-                is_violation = (
-                    len(parts) >= 3
-                    or (len(parts) >= 2 and any(p.startswith("_") for p in parts[1:]))
-                    or any(
-                        alias.name.startswith("_")
-                        and not (alias.name.startswith("__") and alias.name.endswith("__"))
-                        for alias in node.names
-                    )
-                )
-                if is_violation:
-                    line_num = node.lineno
-                    line_content = (
-                        lines[line_num - 1].strip()
-                        if 0 < line_num <= len(lines)
-                        else f"from {node.module} import ..."
-                    )
-                    violations.append((line_num, line_content))
+        hit = _check_import_node(node, hub_packages, lines)
+        if hit:
+            violations.append(hit)
 
-        elif isinstance(node, ast.Import):
-            for alias in node.names:
-                parts = alias.name.split(".")
-                pkg = parts[0]
-                if pkg in hub_packages:
-                    is_violation = len(parts) >= 3 or (
-                        len(parts) >= 2 and any(p.startswith("_") for p in parts[1:])
-                    )
-                    if is_violation:
-                        line_num = node.lineno
-                        line_content = (
-                            lines[line_num - 1].strip()
-                            if 0 < line_num <= len(lines)
-                            else f"import {alias.name}"
-                        )
-                        violations.append((line_num, line_content))
-
-    # Deduplicate by line number and sort
     return sorted(set(violations), key=lambda x: x[0])
+
+
+def _collect_target_files(args_path: str, args_files: list[str]) -> list[Path]:
+    """Collect candidate python files while excluding caches and venvs."""
+    if args_files:
+        files = [Path(f) for f in args_files if f.endswith(".py")]
+    else:
+        root = Path(args_path).resolve()
+        files = list(root.glob("*.py"))
+        for scan_dir in (root / "scripts", root / "src", root / "tests"):
+            if scan_dir.exists():
+                files.extend(scan_dir.rglob("*.py"))
+
+    exclude = {".venv", "venv", "__pycache__", ".git", "node_modules", ".agents", ".md"}
+    return sorted({f for f in files if not any(part in exclude for part in f.parts)})
 
 
 def main() -> int:
@@ -370,56 +296,23 @@ def main() -> int:
         sys.stderr.reconfigure(encoding="utf-8")
 
     parser = argparse.ArgumentParser(description="CCBA Hub Import Depth Checker (ADR 0044)")
-    parser.add_argument(
-        "--path",
-        "-p",
-        default=".",
-        help="Root directory to scan (default: current dir)",
-    )
-    parser.add_argument(
-        "--hub-path",
-        default=None,
-        help="Path to Hub root directory (optional, discovered automatically if omitted)",
-    )
-    parser.add_argument(
-        "files",
-        nargs="*",
-        help="Specific files to check (for pre-commit integration)",
-    )
+    parser.add_argument("--path", "-p", default=".", help="Root directory to scan (default: current dir)")
+    parser.add_argument("--hub-path", default=None, help="Path to Hub root directory (optional)")
+    parser.add_argument("files", nargs="*", help="Specific files to check")
     args = parser.parse_args()
 
     hub_root = Path(args.hub_path).resolve() if args.hub_path else None
-    if hub_root:
-        active_packages = discover_hub_packages(hub_root=hub_root)
-    else:
-        active_packages = discover_hub_packages(hub_root=Path(args.path).resolve())
-        if active_packages == FALLBACK_HUB_PACKAGES:
-            active_packages = discover_hub_packages(hub_root=None)
+    active_packages = (
+        discover_hub_packages(hub_root=hub_root)
+        if hub_root
+        else discover_hub_packages(hub_root=Path(args.path).resolve())
+    )
+    if not hub_root and active_packages == FALLBACK_HUB_PACKAGES:
+        active_packages = discover_hub_packages(hub_root=None)
 
-    # Collect files to scan
-    target_files: list[Path] = []
-    if args.files:
-        target_files = [Path(f) for f in args.files if f.endswith(".py")]
-    else:
-        root = Path(args.path).resolve()
-        # Scan root .py files + scripts/, src/, tests/
-        target_files.extend(root.glob("*.py"))
-        for scan_dir in [root / "scripts", root / "src", root / "tests"]:
-            if scan_dir.exists():
-                target_files.extend(scan_dir.rglob("*.py"))
-
-    # Exclude .venv, __pycache__, .git, .agents, .md
-    target_files = [
-        f
-        for f in target_files
-        if not any(
-            part in (".venv", "venv", "__pycache__", ".git", "node_modules", ".agents", ".md")
-            for part in f.parts
-        )
-    ]
-
+    target_files = _collect_target_files(args.path, args.files)
     total_violations = 0
-    for filepath in sorted(set(target_files)):
+    for filepath in target_files:
         violations = scan_file(filepath, hub_packages=active_packages)
         if violations:
             total_violations += len(violations)
@@ -432,7 +325,7 @@ def main() -> int:
             "   Quy tắc: Chỉ import từ top-level Hub package.\n"
             "   ✅ Đúng:  from ccba_legal import ChromeCDP\n"
             "   ❌ Sai:   from ccba_legal.crawler.chrome_cdp import ChromeCDP\n"
-            "   Nếu cần symbol chưa có trong top-level, tạo issue đề xuất bổ sung __all__.",
+            "   Nếu cần symbol chưa có trong top-level, tạo issue đề xuất bổ sung __all__."
         )
         return 1
 
