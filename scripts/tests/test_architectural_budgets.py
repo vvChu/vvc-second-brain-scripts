@@ -21,7 +21,7 @@ PROMPT_FILE_ALLOWLIST = {
     "core/prompts/services.py",
 }
 
-# Monotonic line budget ratchets for legacy production files > 350 lines (25 files).
+# Monotonic line budget ratchets for legacy production files > 350 lines (24 files).
 # Files may ONLY decrease in size. Any increase will fail the test, forcing decomposition.
 LEGACY_LINE_RATCHET: dict[str, int] = {
     "book_ingest.py": 456,
@@ -30,7 +30,6 @@ LEGACY_LINE_RATCHET: dict[str, int] = {
     "daemon.py": 639,
     "epub_convert.py": 482,
     "knowledge_graph/verify_graph.py": 493,
-    "pipeline/book_assets.py": 370,
     "pipeline/ground_truth.py": 468,
     "pipeline/image_processor.py": 517,
     "pipeline/map_reduce.py": 450,
@@ -51,7 +50,7 @@ LEGACY_LINE_RATCHET: dict[str, int] = {
     "wiki_maintain.py": 621,
 }
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (79 files).
+# Monotonic function count ratchets for legacy files with functions > 50 lines (78 files).
 # Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
 LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "book_ingest.py": 2,
@@ -86,7 +85,6 @@ LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
     "heal_existing_tocs.py": 1,
     "knowledge_graph/verify_graph.py": 4,
     "pdf_convert.py": 1,
-    "pipeline/book_assets.py": 2,
     "pipeline/ground_truth.py": 3,
     "pipeline/image_processor.py": 2,
     "pipeline/map_reduce.py": 3,

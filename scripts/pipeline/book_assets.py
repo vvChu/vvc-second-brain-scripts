@@ -105,37 +105,64 @@ def compute_adaptive_asset_name(
     return f"{'_'.join(parts)}.webp"
 
 
+def _compress_or_copy_diagram(
+    orig_path: Path, dest_path: Path, assets_dir: Path
+) -> str | None:
+    """Compress image to WebP or fallback to raw copy, returning saved filename."""
+    if dest_path.exists():
+        return dest_path.name
+    try:
+        from PIL import Image as PILImage
+        img = PILImage.open(orig_path)
+        if img.mode not in ("RGB", "RGBA"):
+            img = img.convert("RGB")
+        img.thumbnail((1536, 1536), PILImage.Resampling.LANCZOS)
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        img.save(dest_path, "WEBP", quality=80)
+        _logger.info(f"[JIT Image] Compressed image: {orig_path.name} -> {dest_path.name}")
+        return dest_path.name
+    except Exception as e:
+        _logger.warning(f"[JIT Image] WebP failed for {orig_path.name}: {e}. Fallback to copy.")
+        dest_raw = dest_path.with_suffix(orig_path.suffix)
+        try:
+            assets_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(str(orig_path), str(dest_raw))
+            return dest_raw.name
+        except Exception as copy_err:
+            _logger.warning(f"[JIT Image] Copy failed: {copy_err}")
+            return None
+
+
+def _embed_aligned_diagrams(content: str, aligned_images: list[str]) -> str:
+    """Embed aligned diagram wikilinks right before Ground Truth heading."""
+    gt_match = re.search(r"## (?:📖|Ground Truth)", content)
+    if not gt_match:
+        return content
+
+    embed_lines = [f"\n![[{name}]]\n" for name in aligned_images if f"![[{name}]]" not in content]
+    if not embed_lines:
+        return content
+
+    idx = gt_match.start()
+    _logger.info(f"[JIT Image] Aligned {len(aligned_images)} original image(s)")
+    return content[:idx].rstrip() + "\n" + "".join(embed_lines) + "\n" + content[idx:]
+
+
 def align_book_diagrams(content: str, book_name: str) -> str:
     """Scan original book corpus MD files to find and align crisp publisher diagrams."""
     if not book_name:
         return content
 
-    # 1. Parse frontmatter
     fm = parse_frontmatter(content)
     gt_ch = fm.get("ground_truth_chapter")
-    if not gt_ch:
-        return content
-
-    # Extract clean chapter stem from wiki-link
-    chapter_stem = str(gt_ch).replace("[[", "").replace("]]", "").strip()
+    chapter_stem = str(gt_ch).replace("[[", "").replace("]]", "").strip() if gt_ch else ""
     if not chapter_stem:
         return content
 
-    # OCR page and ground truth page for metadata resolution
-    page = str(fm.get("source_page", "")).strip()
-    if not page:
-        page = str(fm.get("ground_truth_page", "")).strip()
-
-    # 2. Find book MD corpus folder
+    page = str(fm.get("source_page", "")).strip() or str(fm.get("ground_truth_page", "")).strip()
     md_dir = find_book_md_dir(book_name)
-    if not md_dir or not md_dir.exists():
-        _logger.debug(f"[JIT Image] MD directory not found for book: {book_name}")
-        return content
-
-    # 3. Locate chapter file
-    chapter_file = md_dir / f"{chapter_stem}.md"
-    if not chapter_file.exists():
-        _logger.debug(f"[JIT Image] Chapter file '{chapter_stem}.md' not found in {md_dir}")
+    chapter_file = md_dir / f"{chapter_stem}.md" if md_dir else None
+    if not md_dir or not chapter_file or not chapter_file.exists():
         return content
 
     try:
@@ -144,90 +171,129 @@ def align_book_diagrams(content: str, book_name: str) -> str:
         _logger.warning(f"[JIT Image] Failed to read chapter file: {e}")
         return content
 
-    # 4. Extract Ground Truth paragraphs from note content
-    gt_section_match = re.search(
-        r"## (?:📖|Ground Truth)[^\n]*\n+(.*?)(?:\n\n---|\n\n##|\Z)",
-        content,
-        re.DOTALL,
-    )
-    if not gt_section_match:
-        _logger.debug("[JIT Image] No Ground Truth section found in note content")
+    gt_match = re.search(r"## (?:📖|Ground Truth)[^\n]*\n+(.*?)(?:\n\n---|\n\n##|\Z)", content, re.DOTALL)
+    if not gt_match:
         return content
 
-    gt_block = gt_section_match.group(1)
-
-    # 5. Search for images around Ground Truth in the chapter file
     from pipeline.ground_truth import find_images_around_ground_truth
-    found_images = find_images_around_ground_truth(chapter_text, gt_block)
+    found_images = find_images_around_ground_truth(chapter_text, gt_match.group(1))
     if not found_images:
-        _logger.debug("[JIT Image] No book images found close to Ground Truth in chapter")
         return content
 
-    # 6. Process, copy, and compress original images
     aligned_images: list[str] = []
     book_slug = normalize_stem(book_name)[:30].rstrip("_")
+    assets_dir = cfg.assets_dir / book_slug
 
     for img_name in found_images:
-        original_img_path = md_dir / img_name
-        if not original_img_path.exists():
-            _logger.debug(f"[JIT Image] Original image file {img_name} not found in {md_dir}")
+        orig_path = md_dir / img_name
+        if not orig_path.exists() or is_decorative_image(img_name, orig_path):
             continue
-
-        # Filter decorative/tiny images
-        if is_decorative_image(img_name, original_img_path):
-            _logger.debug(f"[JIT Image] Filtered decorative image: {img_name}")
-            continue
-
-        dest_name = compute_adaptive_asset_name(
-            book_name, chapter_stem, page, original_img_path.stem
-        )
-
-        assets_dir = cfg.assets_dir / book_slug
+        dest_name = compute_adaptive_asset_name(book_name, chapter_stem, page, orig_path.stem)
         dest_path = assets_dir / dest_name
+        saved_name = _compress_or_copy_diagram(orig_path, dest_path, assets_dir)
+        if saved_name:
+            aligned_images.append(saved_name)
 
-        # Compress to WebP or copy
-        if not dest_path.exists():
-            try:
-                from PIL import Image as PILImage
-                img = PILImage.open(original_img_path)
-                if img.mode not in ("RGB", "RGBA"):
-                    img = img.convert("RGB")
-                img.thumbnail((1536, 1536), PILImage.Resampling.LANCZOS)
-                assets_dir.mkdir(parents=True, exist_ok=True)
-                img.save(dest_path, "WEBP", quality=80)
-                _logger.info(f"[JIT Image] Compressed and saved original image: {original_img_path.name} -> {dest_path.name}")
-            except Exception as e:
-                _logger.warning(f"[JIT Image] WebP compression failed for {original_img_path.name}: {e}. Falling back to copy.")
-                dest_path_raw = dest_path.with_suffix(original_img_path.suffix)
-                try:
-                    assets_dir.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(str(original_img_path), str(dest_path_raw))
-                    _logger.info(f"[JIT Image] Copied original image (fallback): {original_img_path.name} -> {dest_path_raw.name}")
-                    dest_name = dest_path_raw.name
-                except Exception as copy_err:
-                    _logger.warning(f"[JIT Image] Copy failed completely: {copy_err}")
-                    continue
+    return _embed_aligned_diagrams(content, aligned_images) if aligned_images else content
 
-        aligned_images.append(dest_name)
 
-    if not aligned_images:
-        return content
+def _load_figure_inventory(inventory_path: Path) -> dict[str, Any]:
+    """Load existing figure inventory map indexed by lowercase filename."""
+    if not inventory_path.exists():
+        return {}
+    try:
+        inv_data = json.loads(inventory_path.read_text(encoding="utf-8"))
+        return {fig["filename"].lower(): fig for fig in inv_data.get("figures", [])}
+    except Exception:
+        return {}
 
-    # 7. Embed aligned images right before ## 📖 Ground Truth section
-    gt_heading_match = re.search(r"## (?:📖|Ground Truth)", content)
-    if gt_heading_match:
-        idx = gt_heading_match.start()
-        embed_lines = []
-        for dest_name in aligned_images:
-            embed_syntax = f"![[{dest_name}]]"
-            if embed_syntax not in content:
-                embed_lines.append(f"\n{embed_syntax}\n")
-        if embed_lines:
-            embed_block = "".join(embed_lines)
-            content = content[:idx].rstrip() + "\n" + embed_block + "\n" + content[idx:]
-            _logger.info(f"[JIT Image] Successfully aligned {len(aligned_images)} original image(s) to concept note")
 
-    return content
+def _resolve_vision_caller(vision_caller: Callable[..., str] | None) -> Callable[..., str]:
+    """Resolve vision API caller with image_processor monkeypatch fallback."""
+    if vision_caller is not None:
+        return vision_caller
+    ip_mod = sys.modules.get("pipeline.image_processor")
+    if ip_mod and hasattr(ip_mod, "call_gateway_vision"):
+        return getattr(ip_mod, "call_gateway_vision")
+    from core.llm.gateway_client import call_gateway_vision
+    return call_gateway_vision
+
+
+def _save_figure_inventory(inventory: dict[str, Any], inventory_path: Path) -> None:
+    """Save enriched figure inventory back to disk."""
+    try:
+        inventory_data = {"figures": list(inventory.values())}
+        inventory_path.write_text(json.dumps(inventory_data, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as save_err:
+        _logger.warning(f"Failed to save figure_inventory.json during JIT: {save_err}")
+
+
+def _parse_json_block(text: str) -> dict[str, Any]:
+    """Parse JSON object from LLM response, stripping markdown code fences."""
+    clean = text.strip()
+    if clean.startswith("```"):
+        m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean, re.DOTALL)
+        clean = m.group(1) if m else clean
+    return json.loads(clean)
+
+
+def _format_diagram_xml(img_name: str, dest_name: str, caption: str, alt_text: str) -> list[str]:
+    """Format XML lines for a single book diagram entry."""
+    lines = ["  <DIAGRAM>", f"    <FILENAME>{img_name}</FILENAME>", f"    <ADAPTIVE_NAME>{dest_name}</ADAPTIVE_NAME>"]
+    if caption:
+        lines.append(f"    <CAPTION>{caption}</CAPTION>")
+    if alt_text:
+        lines.append(f"    <ALT_TEXT>{alt_text}</ALT_TEXT>")
+    lines.append("  </DIAGRAM>")
+    return lines
+
+
+def _enrich_diagram_metadata(
+    img_name: str,
+    orig_path: Path,
+    chapter_text: str,
+    gt_text: str,
+    book_name: str,
+    chapter_stem: str,
+    caller: Callable[..., str],
+    inventory: dict[str, Any],
+    inventory_path: Path,
+) -> tuple[str, str]:
+    """Perform JIT vision enrichment to generate caption and alt-text for a book diagram."""
+    fig_info = inventory.get(img_name.lower())
+    caption = fig_info.get("caption", "") if fig_info else ""
+    alt_text = fig_info.get("alt_text", "") if fig_info else ""
+    if caption and alt_text:
+        return caption, alt_text
+
+    _logger.info(f"JIT Diagram Enrichment triggered for: {img_name}")
+    try:
+        img_pos = chapter_text.find(img_name)
+        ctx = (
+            chapter_text[max(0, img_pos - 500) : min(len(chapter_text), img_pos + len(img_name) + 500)]
+            if img_pos != -1 else gt_text[:1000]
+        )
+        image_b64 = encode_image(orig_path, max_pixels=1024)
+        res = caller(image_b64, FIGURE_ENRICH_PROMPT.format(context_text=ctx), timeout=cfg.gemini_vision_timeout)
+        if not res:
+            return caption, alt_text
+
+        parsed = _parse_json_block(res)
+        new_caption, new_alt = parsed.get("caption", "").strip(), parsed.get("alt_text", "").strip()
+        if new_caption and new_alt:
+            caption, alt_text = new_caption, new_alt
+            inventory[img_name.lower()] = {
+                "path": str(orig_path), "filename": img_name, "book": book_name,
+                "topology": fig_info.get("topology", "other") if fig_info else "other",
+                "chapter_file": f"{chapter_stem}.md", "chapter_title": chapter_stem.replace("_", " "),
+                "chapter_num": None, "surrounding_context": ctx[:1000],
+                "caption": caption, "alt_text": alt_text,
+            }
+            _save_figure_inventory(inventory, inventory_path)
+    except Exception as enrich_err:
+        _logger.warning(f"Failed to enrich diagram {img_name} JIT: {enrich_err}")
+
+    return caption, alt_text
 
 
 def build_chapter_diagrams_catalog(
@@ -243,11 +309,8 @@ def build_chapter_diagrams_catalog(
         return ""
 
     md_dir = find_book_md_dir(book_name)
-    if not md_dir or not md_dir.exists():
-        return ""
-
-    chapter_file = md_dir / f"{chapter_stem}.md"
-    if not chapter_file.exists():
+    chapter_file = md_dir / f"{chapter_stem}.md" if md_dir else None
+    if not md_dir or not chapter_file or not chapter_file.exists():
         return ""
 
     try:
@@ -260,111 +323,23 @@ def build_chapter_diagrams_catalog(
     if not found_images:
         return ""
 
-    # Load figure inventory if exists to fetch caption & alt-text
     if inventory_path is None:
         inventory_path = Path(__file__).parent.parent / "resources" / "figure_inventory.json"
-    inventory = {}
-    if inventory_path.exists():
-        try:
-            with open(inventory_path, "r", encoding="utf-8") as f:
-                inv_data = json.load(f)
-                for fig in inv_data.get("figures", []):
-                    inventory[fig["filename"].lower()] = fig
-        except Exception:
-            pass
-
-    # Resolve vision caller (checking monkeypatch on image_processor if any)
-    if vision_caller is None:
-        ip_mod = sys.modules.get("pipeline.image_processor")
-        if ip_mod and hasattr(ip_mod, "call_gateway_vision"):
-            vision_caller = getattr(ip_mod, "call_gateway_vision")
-        else:
-            from core.llm.gateway_client import call_gateway_vision
-            vision_caller = call_gateway_vision
+    inventory = _load_figure_inventory(inventory_path)
+    caller = _resolve_vision_caller(vision_caller)
 
     xml_lines = ["\n<CHAPTER_DIAGRAMS>"]
-
     for img_name in found_images:
-        original_img_path = md_dir / img_name
-        if not original_img_path.exists():
-            continue
-        if is_decorative_image(img_name, original_img_path):
+        orig_path = md_dir / img_name
+        if not orig_path.exists() or is_decorative_image(img_name, orig_path):
             continue
 
-        dest_name = compute_adaptive_asset_name(
-            book_name, chapter_stem, page, original_img_path.stem
+        dest_name = compute_adaptive_asset_name(book_name, chapter_stem, page, orig_path.stem)
+        caption, alt_text = _enrich_diagram_metadata(
+            img_name, orig_path, chapter_text, ground_truth_text,
+            book_name, chapter_stem, caller, inventory, inventory_path,
         )
-
-        fig_info = inventory.get(img_name.lower())
-        caption = fig_info.get("caption") if fig_info else ""
-        alt_text = fig_info.get("alt_text") if fig_info else ""
-
-        if not caption or not alt_text:
-            _logger.info(f"JIT Diagram Enrichment triggered for: {img_name}")
-            try:
-                img_pos = chapter_text.find(img_name)
-                if img_pos != -1:
-                    context_window = chapter_text[max(0, img_pos - 500) : min(len(chapter_text), img_pos + len(img_name) + 500)]
-                else:
-                    context_window = ground_truth_text[:1000]
-
-                image_b64 = encode_image(original_img_path, max_pixels=1024)
-                formatted_prompt = FIGURE_ENRICH_PROMPT.format(context_text=context_window)
-                llm_result = vision_caller(
-                    image_b64,
-                    formatted_prompt,
-                    timeout=cfg.gemini_vision_timeout,
-                )
-                if llm_result:
-                    clean_result = llm_result.strip()
-                    if clean_result.startswith("```"):
-                        json_match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", clean_result, re.DOTALL)
-                        if json_match:
-                            clean_result = json_match.group(1)
-
-                    parsed_res = json.loads(clean_result)
-                    new_caption = parsed_res.get("caption", "").strip()
-                    new_alt = parsed_res.get("alt_text", "").strip()
-
-                    if new_caption and new_alt:
-                        caption = new_caption
-                        alt_text = new_alt
-                        # Update inventory JIT
-                        inventory[img_name.lower()] = {
-                            "path": str(original_img_path),
-                            "filename": img_name,
-                            "book": book_name,
-                            "topology": fig_info.get("topology", "other") if fig_info else "other",
-                            "chapter_file": f"{chapter_stem}.md",
-                            "chapter_title": chapter_stem.replace("_", " "),
-                            "chapter_num": None,
-                            "surrounding_context": context_window[:1000],
-                            "caption": caption,
-                            "alt_text": alt_text,
-                        }
-                        # Save back to figure_inventory.json
-                        try:
-                            inventory_data = {"figures": list(inventory.values())}
-                            with open(inventory_path, "w", encoding="utf-8") as f_out:
-                                json.dump(inventory_data, f_out, ensure_ascii=False, indent=2)
-                            _logger.info(f"Successfully saved enriched diagram JIT: {img_name}")
-                        except Exception as save_err:
-                            _logger.warning(f"Failed to save figure_inventory.json during JIT: {save_err}")
-            except Exception as enrich_err:
-                _logger.warning(f"Failed to enrich diagram {img_name} JIT: {enrich_err}")
-
-        xml_lines.append("  <DIAGRAM>")
-        xml_lines.append(f"    <FILENAME>{img_name}</FILENAME>")
-        xml_lines.append(f"    <ADAPTIVE_NAME>{dest_name}</ADAPTIVE_NAME>")
-        if caption:
-            xml_lines.append(f"    <CAPTION>{caption}</CAPTION>")
-        if alt_text:
-            xml_lines.append(f"    <ALT_TEXT>{alt_text}</ALT_TEXT>")
-        xml_lines.append("  </DIAGRAM>")
+        xml_lines.extend(_format_diagram_xml(img_name, dest_name, caption, alt_text))
 
     xml_lines.append("</CHAPTER_DIAGRAMS>\n")
-
-    if len(xml_lines) <= 2:
-        return ""
-
-    return "\n".join(xml_lines)
+    return "\n".join(xml_lines) if len(xml_lines) > 2 else ""
