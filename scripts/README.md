@@ -6,7 +6,7 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 > - **Full Constitution & Rules**: [`AGENTS.md`](../AGENTS.md) (Authoritative Source of Truth)
 > - **Pipeline Mode Override**: [`scripts/GEMINI.md`](GEMINI.md) (Automated daemon JIT prompt instructions)
 > - **Complete Version History**: [`CHANGELOG.md`](../CHANGELOG.md) (All releases and architectural seam milestones)
-> - **Current Milestone**: `v8.15.13 — Deep Module Seams: Weekly Synthesis Extraction, RAG & Wiki Health Deep Packages` (100% tests passed, 0 regressions).
+> - **Current Milestone**: `v8.15.13 — Deep Module Seams: Diagram Base & YouTube Graduation (0 Legacy Line Ratchets, 100% Line Budget Compliance)` (100% tests passed, 0 regressions).
 
 ---
 
@@ -86,7 +86,12 @@ scripts/
 ├── services/                  ← Interactive & Batch Services
 │   ├── command/               ← Interactive Command Center Deep Package (inbox, coordinator, styles)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
-│   ├── youtube/               ← YouTube Decomposition Package (4-tier native ASR, visual frames)
+│   ├── youtube/               ← YouTube Deep Package (4-tier native ASR, Storyboard, Visual Judge, Stage 2)
+│   │   ├── transcript.py      ← 4-tier native ASR, faster-whisper fallback & transcript cleaner
+│   │   ├── visual_extractor.py← Pipeline orchestrator & backward-compatible facade (v12.0)
+│   │   ├── storyboard_sampler.py ← Storyboard tile crop, pHash dedup, target timestamps & heatmap
+│   │   ├── visual_judge.py    ← Context-Aware Visual Judge, prompt builder, Vision API & parser
+│   │   └── stage2_extractor.py← High-res video download, offline seek FFmpeg & WebP compression
 │   ├── rag/                   ← Hybrid RAG Deep Package (hybrid_search.py, context_builder.py)
 │   ├── wiki_health/           ← Wiki Health Deep Package (linter, link_healer, title_standardizer...)
 │   ├── weekly_synthesis.py    ← Weekly Synthesis & System Status Report compiler
