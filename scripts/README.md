@@ -71,6 +71,7 @@ scripts/
 ├── pipeline/                  ← 5-Stage Ingestion Pipeline
 │   ├── image_processor.py     ← 5-stage pipeline orchestrator (single image mode)
 │   ├── batch_processor.py     ← Map-Reduce multi-page burst batch processor & hook exclusion
+│   ├── batch_helpers.py       ← Batch page interpolation, hook exclusion directive & cleanup helpers
 │   ├── ocr.py                 ← Stage 1: Vision API auto-orient + OCR + highlight extraction
 │   ├── ground_truth.py        ← Stage 2: Chapter-scoped BM25 Ground Truth matching & correction
 │   ├── synthesize.py          ← Stage 3: LLM Concept Note synthesis (Canonical v8.3 Cognitive Flow)
@@ -80,6 +81,8 @@ scripts/
 │   ├── semantic_fallback.py   ← BM25 2-tier cache & LLM fallback semantic overlap matcher
 │   ├── image_archiver.py      ← WebP compression, collision suffixing & per-book archive manifest
 │   ├── book_assets.py         ← JIT illustration extraction & publisher diagram alignment
+│   ├── book_diagram_enricher.py ← JIT Vision API figure enrichment & diagram catalog builder
+│   ├── book_staging.py        ← Workspace initialization, source note stub & EPUB/PDF corpus conversion
 │   ├── map_reduce.py          ← Multi-page batch ingestion Map-Reduce compiler
 │   └── process_markdown.py    ← Raw markdown document ingestion & atomic concept decomposition
 │
@@ -87,7 +90,8 @@ scripts/
 │   ├── command/               ← Interactive Command Center Deep Package (inbox, coordinator, styles)
 │   ├── brain_dump/            ← Brain Dump Decomposition Package (coordinator & workers)
 │   ├── youtube/               ← YouTube Deep Package (4-tier native ASR, Storyboard, Visual Judge, Stage 2)
-│   │   ├── transcript.py      ← 4-tier native ASR, faster-whisper fallback & transcript cleaner
+│   │   ├── transcript.py      ← 4-tier native ASR, faster-whisper fallback orchestrator
+│   │   ├── transcript_cleaner.py ← Subtitle stream selection, JSON3 parser & timestamp grouper
 │   │   ├── visual_extractor.py← Pipeline orchestrator & backward-compatible facade (v12.0)
 │   │   ├── storyboard_sampler.py ← Storyboard tile crop, pHash dedup, target timestamps & heatmap
 │   │   ├── visual_judge.py    ← Context-Aware Visual Judge, prompt builder, Vision API & parser
@@ -121,7 +125,8 @@ scripts/
 ├── tools/                     ← Operational & Batch Migration Utilities
 │   ├── batch_ingest_books.py  ← Bulk book ingestion coordinator
 │   ├── deduplicate_sources.py ← Source deduplication & automatic link redirection
-│   ├── heal_video_frames.py   ← YouTube frame re-alignment & visual healing
+│   ├── heal_video_frames.py   ← YouTube frame re-alignment & visual healing orchestrator
+│   ├── video_heal_extractor.py← FFmpeg frame extraction, local video download & WebP conversion
 │   ├── classify_figures.py    ← Figure classifier (diagram vs photo vs typography)
 │   ├── enrich_figure_inventory.py ← Figure inventory metadata enrichment
 │   ├── diagram_template_builder.py ← Excalidraw template scaffold builder
