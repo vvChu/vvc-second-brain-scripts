@@ -100,6 +100,9 @@ scripts/
 │   ├── orthography.py         ← ASR phonetic correction & Smart Bypass seam
 │   ├── url_fetcher.py         ← Web scraping & garbage detection engine
 │   ├── diagram_base.py        ← Shared diagram layout & Mermaid hygiene seam
+│   ├── diagram_geometry.py    ← Shape boundaries, arrow routing & canvas normalization
+│   ├── diagram_templates.py   ← Template library loader & semantic embedding matcher
+│   ├── diagram_fallback.py    ← Mermaid, Excalidraw & D2 warning fallback generator
 │   ├── moc_mermaid.py         ← Domain MOC Concept Map flowchart generator
 │   ├── moc_source_diagram.py  ← Source MOC chapter & flat overview diagram generator
 │   ├── excalidraw_worker.py   ← Excalidraw 16:9 diagram generator (Auto-Expand, Wheel layout)
