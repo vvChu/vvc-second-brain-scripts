@@ -56,6 +56,30 @@ def _update_all_links_vault_wide_batch(renames: dict[str, str]) -> None:
     _logger.info(f"Batch Link Update complete: updated links in {updated_files}/{total_files} files.")
 
 
+def _detect_orthographic_typo(title: str, summary: str) -> str | None:
+    """Query LLM to detect homophone/orthographic typos."""
+    prompt = (
+        f"Khái niệm sau đây có bị lỗi chính tả nghiêm trọng do nhầm lẫn đồng âm vùng miền (ví dụ: Tr/Ch, S/X, D/Gi/R) không?\n"
+        f"Title: {title}\nSummary: {summary}\n\n"
+        f"Trả về ĐÚNG 1 JSON object (KHÔNG giải thích thêm):\n"
+        f"{{\"is_typo\": true/false, \"correct\": \"Tên Đúng (nếu có)\"}}\n"
+    )
+    result = call_llm(prompt, task="correction")
+    if not result:
+        return None
+    try:
+        match = re.search(r"\{.*?\}", result, re.DOTALL)
+        if match:
+            ans = json.loads(match.group(0))
+            if ans.get("is_typo") and ans.get("correct"):
+                correct = ans["correct"].strip()
+                if correct.lower() != title.lower() and len(correct) > 2:
+                    return correct
+    except Exception as e:
+        _logger.warning(f"OrthographicHealer failed parsing JSON: {e}")
+    return None
+
+
 class OrthographicHealer:
     """Checks and heals orthographic/homophone errors in concept titles."""
 
@@ -66,56 +90,30 @@ class OrthographicHealer:
             self.concepts = VaultLinter().concepts
 
     def heal(self, batch_size: int = 20) -> int:
-        # Sort concepts by date_modified descending
         sorted_concepts = sorted(
             self.concepts,
             key=lambda c: str(c.get("date_modified", "")),
-            reverse=True
+            reverse=True,
         )
-        batch = sorted_concepts[:batch_size]
-        healed_count = 0
-        renames = {}  # {old_stem: (new_stem, correct_title, concept_dict)}
-
-        for c in batch:
+        renames = {}
+        for c in sorted_concepts[:batch_size]:
             title = c.get("title", c["_stem"])
-            summary = c.get("summary", "")
+            correct = _detect_orthographic_typo(title, c.get("summary", ""))
+            if correct:
+                old_stem = c["_stem"]
+                new_stem = normalize_stem(correct)
+                if old_stem != new_stem:
+                    renames[old_stem] = (new_stem, correct, c)
 
-            prompt = (
-                f"Khái niệm sau đây có bị lỗi chính tả nghiêm trọng do nhầm lẫn đồng âm vùng miền (ví dụ: Tr/Ch, S/X, D/Gi/R) không?\n"
-                f"Title: {title}\nSummary: {summary}\n\n"
-                f"Trả về ĐÚNG 1 JSON object (KHÔNG giải thích thêm):\n"
-                f"{{\"is_typo\": true/false, \"correct\": \"Tên Đúng (nếu có)\"}}\n"
-            )
-
-            result = call_llm(prompt, task="correction")
-            if not result:
-                continue
-
-            try:
-                match = re.search(r"\{.*?\}", result, re.DOTALL)
-                if match:
-                    ans = json.loads(match.group(0))
-                    if ans.get("is_typo") and ans.get("correct"):
-                        correct_title = ans["correct"].strip()
-                        if correct_title.lower() != title.lower() and len(correct_title) > 2:
-                            old_stem = c["_stem"]
-                            new_stem = normalize_stem(correct_title)
-                            if old_stem != new_stem:
-                                renames[old_stem] = (new_stem, correct_title, c)
-            except Exception as e:
-                _logger.warning(f"OrthographicHealer failed parsing JSON: {e}")
-
-        # Now apply all renames and collect actual successfully renamed stems
         successful_renames = {}
+        healed_count = 0
         for old_stem, (new_stem, correct_title, c) in renames.items():
             if self._apply_rename_only(c, correct_title, old_stem, new_stem):
                 successful_renames[old_stem] = new_stem
                 healed_count += 1
 
-        # Perform Single-Pass Link Update across the entire vault
         if successful_renames:
             _update_all_links_vault_wide_batch(successful_renames)
-
         if healed_count:
             log("heal", f"OrthographicHealer fixed {healed_count} typos")
         return healed_count
@@ -142,6 +140,32 @@ class OrthographicHealer:
             return False
 
 
+def _is_non_standard_concept(c: dict) -> bool:
+    """Check if concept title violates naming standards."""
+    title = c.get("title", "")
+    stem = c.get("_stem", "")
+    return not title or "_" in title or stem != normalize_stem(title)
+
+
+def _query_standardized_title(title: str, stem: str, summary: str) -> str | None:
+    """Query LLM to produce academic Title Case Vietnamese title."""
+    prompt = (
+        f"Hãy chuẩn hóa và Việt hóa tiêu đề thô sau đây thành một tiêu đề học thuật tiếng Việt cực kỳ chuẩn xác, chuyên nghiệp và có dấu (Title Case):\n"
+        f"Tiêu đề thô: \"{title}\"\n"
+        f"Tên tệp: \"{stem}\"\n"
+        f"Mô tả khái niệm: \"{summary}\"\n\n"
+        f"Quy tắc nghiêm ngặt:\n"
+        f"1. Trả lời CHÍNH XÁC duy nhất tiêu đề mới đã chuẩn hóa (KHÔNG giải thích gì thêm, KHÔNG đặt trong dấu ngoặc kép).\n"
+        f"2. Nếu tiêu đề gốc là tiếng Anh thô, hãy dịch sang thuật ngữ tiếng Việt học thuật chuẩn xác tương đương (song ngữ nếu cần thiết).\n"
+        f"3. Loại bỏ toàn bộ các ký tự lỗi như gạch dưới, viết tắt thô sơ."
+    )
+    result = call_llm(prompt, task="correction", min_length=3)
+    if not result:
+        return None
+    correct = result.strip().strip('"').strip("'")
+    return correct if correct.lower() != title.lower() and len(correct) > 2 else None
+
+
 class TitleStandardizer:
     """Detects and standardizes raw, non-academic, or incorrectly formatted concept titles."""
 
@@ -152,67 +176,32 @@ class TitleStandardizer:
             self.concepts = VaultLinter().concepts
 
     def standardize(self, batch_size: int = 15) -> int:
-        non_standard = []
-        for c in self.concepts:
-            title = c.get("title", "")
-            stem = c.get("_stem", "")
-
-            # Kiểm tra các tiêu chuẩn thô
-            is_bad = False
-            if not title:
-                is_bad = True
-            elif "_" in title:
-                is_bad = True
-            elif stem != normalize_stem(title):
-                is_bad = True
-
-            if is_bad:
-                non_standard.append(c)
-
+        non_standard = [c for c in self.concepts if _is_non_standard_concept(c)]
         if not non_standard:
             return 0
 
-        # Ưu tiên sửa đổi các file mới nhất
         sorted_non_standard = sorted(
             non_standard,
             key=lambda x: str(x.get("date_modified", "")),
-            reverse=True
+            reverse=True,
         )
-        batch = sorted_non_standard[:batch_size]
         healed_count = 0
         renames = {}
 
-        for c in batch:
+        for c in sorted_non_standard[:batch_size]:
             title = c.get("title", c["_stem"])
             stem = c["_stem"]
-            summary = c.get("summary", "")
-
-            prompt = (
-                f"Hãy chuẩn hóa và Việt hóa tiêu đề thô sau đây thành một tiêu đề học thuật tiếng Việt cực kỳ chuẩn xác, chuyên nghiệp và có dấu (Title Case):\n"
-                f"Tiêu đề thô: \"{title}\"\n"
-                f"Tên tệp: \"{stem}\"\n"
-                f"Mô tả khái niệm: \"{summary}\"\n\n"
-                f"Quy tắc nghiêm ngặt:\n"
-                f"1. Trả lời CHÍNH XÁC duy nhất tiêu đề mới đã chuẩn hóa (KHÔNG giải thích gì thêm, KHÔNG đặt trong dấu ngoặc kép).\n"
-                f"2. Nếu tiêu đề gốc là tiếng Anh thô, hãy dịch sang thuật ngữ tiếng Việt học thuật chuẩn xác tương đương (song ngữ nếu cần thiết).\n"
-                f"3. Loại bỏ toàn bộ các ký tự lỗi như gạch dưới, viết tắt thô sơ."
-            )
-
-            result = call_llm(prompt, task="correction", min_length=3)
-            if not result:
+            correct = _query_standardized_title(title, stem, c.get("summary", ""))
+            if not correct:
                 continue
 
-            correct_title = result.strip().strip('"').strip("'")
-            if correct_title.lower() != title.lower() and len(correct_title) > 2:
-                old_stem = stem
-                new_stem = normalize_stem(correct_title)
-                if old_stem != new_stem:
-                    if self._apply_rename_only(c, correct_title, old_stem, new_stem):
-                        renames[old_stem] = new_stem
-                        healed_count += 1
-                else:
-                    if self._apply_frontmatter_update_only(c, correct_title):
-                        healed_count += 1
+            new_stem = normalize_stem(correct)
+            if stem != new_stem:
+                if self._apply_rename_only(c, correct, stem, new_stem):
+                    renames[stem] = new_stem
+                    healed_count += 1
+            elif self._apply_frontmatter_update_only(c, correct):
+                healed_count += 1
 
         if renames:
             _update_all_links_vault_wide_batch(renames)

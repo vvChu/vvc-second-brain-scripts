@@ -34,6 +34,40 @@ CANONICAL_DOMAINS = [
 ]
 
 
+def _build_domain_prompt(title: str, summary: str) -> str:
+    """Build classification prompt for domain tagging."""
+    return (
+        f"Hãy phân tích và phân loại khái niệm (Concept) sau vào ĐÚNG MỘT danh mục phân cấp (domain) phù hợp nhất.\n\n"
+        f"Khái niệm:\n- Tiêu đề: {title}\n- Tóm tắt/Nội dung: {summary}\n\n"
+        "Danh sách các phân cấp domain có sẵn:\n"
+        "1. Tech & Science (Công nghệ & Khoa học):\n"
+        "   - tech/ai: Trí tuệ nhân tạo, Học máy, LLM, Agents, Neural Networks.\n"
+        "   - tech/computing: Hạ tầng tính toán, phần cứng, hệ điều hành, mạng máy tính.\n"
+        "   - tech/security: Bảo mật, an ninh mạng, mã hóa dữ liệu.\n"
+        "   - tech/software: Kỹ nghệ phần mềm, kiến trúc hệ thống, ngôn ngữ lập trình.\n"
+        "   - tech/data: Khoa học dữ liệu, cơ sở dữ liệu, phân tích số liệu.\n"
+        "2. Business & Management (Kinh doanh & Quản trị):\n"
+        "   - business/strategy: Chiến lược kinh doanh, mô hình doanh nghiệp, định vị thị trường.\n"
+        "   - business/leadership: Kỹ năng lãnh đạo, dẫn dắt đội ngũ, quản trị tổ chức.\n"
+        "   - business/hr: Quản trị nguồn nhân lực, văn hóa doanh nghiệp, tuyển dụng, đãi ngộ.\n"
+        "   - business/marketing: Marketing, thương hiệu, phễu bán hàng, hành vi khách hàng.\n"
+        "   - business/finance: Tài chính doanh nghiệp, đầu tư, kế toán, dòng tiền.\n"
+        "3. Cognitive & Human (Nhận thức & Phát triển con người):\n"
+        "   - cognitive/psychology: Tâm lý học hành vi, nhận thức con người, thiên kiến.\n"
+        "   - cognitive/philosophy: Triết học, tư duy hệ thống, tư duy phản biện, đạo đức học.\n"
+        "   - cognitive/learning: Phương pháp học tập, giáo dục, tư duy mở (growth mindset).\n"
+        "   - cognitive/decision: Lý thuyết ra quyết định, giải quyết vấn đề, đàm phán.\n"
+        "   - cognitive/communication: Nghệ thuật truyền thông, thuyết trình, viết lách, thuyết phục.\n"
+        "4. Innovation & Productivity (Đổi mới & Hiệu suất):\n"
+        "   - innovation/design: Tư duy thiết kế (Design Thinking), phát triển và đổi mới sản phẩm.\n"
+        "   - innovation/process: Quản trị quy trình, Lean, Agile, tối ưu vận hành.\n"
+        "   - innovation/creativity: Tư duy sáng tạo, phát minh, giải pháp đột phá.\n"
+        "   - productivity/personal: Hiệu suất cá nhân, quản lý thời gian, ghi chú Zettelkasten.\n"
+        "   - productivity/collaboration: Làm việc nhóm, công cụ cộng tác, quản lý dự án.\n\n"
+        "Quy tắc nghiêm ngặt: Trả về DUY NHẤT mã domain từ danh sách trên (ví dụ: 'tech/ai' hoặc 'business/strategy'), không viết thêm bất kỳ từ nào khác, không dùng dấu ngoặc kép."
+    )
+
+
 class DomainEnricher:
     """Batch classifies un-tagged concepts into canonical domains."""
 
@@ -44,68 +78,32 @@ class DomainEnricher:
         else:
             self.concepts = VaultLinter().concepts
 
+    def _enrich_single_concept(self, c: dict) -> bool:
+        """Classify and tag a single concept."""
+        title = c.get("title", c["_stem"])
+        summary = c.get("summary", "")
+        prompt = _build_domain_prompt(title, summary)
+        result = call_llm(prompt, task="correction", allowed_shorts=tuple(CANONICAL_DOMAINS))
+        if not result:
+            return False
+
+        domain = re.sub(r"[^a-z\-/]", "", result.strip().lower().replace(" ", "-"))
+        if domain in CANONICAL_DOMAINS:
+            self._update_concept_tag(c["_path"], f"domain/{domain}")
+            return True
+        if len(domain) > 2 and domain not in ["yes", "no", "true", "false", "none", "null"]:
+            self._record_domain_suggestion(c, domain)
+        return False
+
     def enrich(self, batch_size: int = 20) -> int:
         untagged = [c for c in self.concepts if not any(
             t.startswith("domain/") for t in c.get("tags", [])
         )]
-
         if not untagged:
             return 0
 
         batch = untagged[:batch_size]
-        enriched = 0
-
-        for c in batch:
-            title = c.get("title", c["_stem"])
-            summary = c.get("summary", "")
-
-            prompt = (
-                f"Hãy phân tích và phân loại khái niệm (Concept) sau vào ĐÚNG MỘT danh mục phân cấp (domain) phù hợp nhất.\n\n"
-                f"Khái niệm:\n"
-                f"- Tiêu đề: {title}\n"
-                f"- Tóm tắt/Nội dung: {summary}\n\n"
-                f"Danh sách các phân cấp domain có sẵn:\n"
-                f"1. Tech & Science (Công nghệ & Khoa học):\n"
-                f"   - tech/ai: Trí tuệ nhân tạo, Học máy, LLM, Agents, Neural Networks.\n"
-                f"   - tech/computing: Hạ tầng tính toán, phần cứng, hệ điều hành, mạng máy tính.\n"
-                f"   - tech/security: Bảo mật, an ninh mạng, mã hóa dữ liệu.\n"
-                f"   - tech/software: Kỹ nghệ phần mềm, kiến trúc hệ thống, ngôn ngữ lập trình.\n"
-                f"   - tech/data: Khoa học dữ liệu, cơ sở dữ liệu, phân tích số liệu.\n"
-                f"2. Business & Management (Kinh doanh & Quản trị):\n"
-                f"   - business/strategy: Chiến lược kinh doanh, mô hình doanh nghiệp, định vị thị trường.\n"
-                f"   - business/leadership: Kỹ năng lãnh đạo, dẫn dắt đội ngũ, quản trị tổ chức.\n"
-                f"   - business/hr: Quản trị nguồn nhân lực, văn hóa doanh nghiệp, tuyển dụng, đãi ngộ.\n"
-                f"   - business/marketing: Marketing, thương hiệu, phễu bán hàng, hành vi khách hàng.\n"
-                f"   - business/finance: Tài chính doanh nghiệp, đầu tư, kế toán, dòng tiền.\n"
-                f"3. Cognitive & Human (Nhận thức & Phát triển con người):\n"
-                f"   - cognitive/psychology: Tâm lý học hành vi, nhận thức con người, thiên kiến.\n"
-                f"   - cognitive/philosophy: Triết học, tư duy hệ thống, tư duy phản biện, đạo đức học.\n"
-                f"   - cognitive/learning: Phương pháp học tập, giáo dục, tư duy mở (growth mindset).\n"
-                f"   - cognitive/decision: Lý thuyết ra quyết định, giải quyết vấn đề, đàm phán.\n"
-                f"   - cognitive/communication: Nghệ thuật truyền thông, thuyết trình, viết lách, thuyết phục.\n"
-                f"4. Innovation & Productivity (Đổi mới & Hiệu suất):\n"
-                f"   - innovation/design: Tư duy thiết kế (Design Thinking), phát triển và đổi mới sản phẩm.\n"
-                f"   - innovation/process: Quản trị quy trình, Lean, Agile, tối ưu vận hành.\n"
-                f"   - innovation/creativity: Tư duy sáng tạo, phát minh, giải pháp đột phá.\n"
-                f"   - productivity/personal: Hiệu suất cá nhân, quản lý thời gian, ghi chú Zettelkasten.\n"
-                f"   - productivity/collaboration: Làm việc nhóm, công cụ cộng tác, quản lý dự án.\n\n"
-                f"Quy tắc nghiêm ngặt: Trả về DUY NHẤT mã domain từ danh sách trên (ví dụ: 'tech/ai' hoặc 'business/strategy'), không viết thêm bất kỳ từ nào khác, không dùng dấu ngoặc kép."
-            )
-
-            result = call_llm(prompt, task="correction", allowed_shorts=tuple(CANONICAL_DOMAINS))
-            if not result:
-                continue
-
-            domain = result.strip().lower().replace(" ", "-")
-            # Clean up the output to prevent random punctuation/junk, keeping slashes
-            domain = re.sub(r"[^a-z\-/]", "", domain)
-            if domain in CANONICAL_DOMAINS:
-                self._update_concept_tag(c["_path"], f"domain/{domain}")
-                enriched += 1
-            elif len(domain) > 2 and domain not in ["yes", "no", "true", "false", "none", "null"]:
-                # Record domain suggestions for Weekly Synthesis
-                self._record_domain_suggestion(c, domain)
-
+        enriched = sum(1 for c in batch if self._enrich_single_concept(c))
         if enriched:
             log("enrich", f"Tagged {enriched}/{len(batch)} concepts with domains")
         return enriched

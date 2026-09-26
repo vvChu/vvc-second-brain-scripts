@@ -94,55 +94,31 @@ class VaultLinter:
             if fleeting_file.exists():
                 self.existing_stems.add(normalize_stem(fleeting_file.stem))
 
-    def _evaluate_concept_metrics(
+    def _collect_concept_links(
         self,
         c: dict,
+        stem: str,
         report: LintReport,
         all_linked: set,
-        by_prefix: dict,
     ) -> None:
-        """Helper to process a single concept during linting."""
-        stem = c["_stem"]
-
-        # Check 1: Missing frontmatter (support both 'source' and 'sources' from merged notes)
-        has_source = bool(c.get("source") or c.get("sources"))
-        missing = [f for f in ["title", "type", "tags"] if not c.get(f)]
-        if not has_source:
-            missing.append("source")
-        if missing:
-            report["missing_frontmatter"].append({"file": stem, "missing": missing})
-
-        # Check 2: Tag clusters
-        for tag in c.get("tags", []):
-            if tag.startswith("domain/"):
-                report["tag_clusters"][tag] += 1
-
-        # Check 3: Broken links (ignore media file attachments)
+        """Check broken links and track outgoing references for a concept."""
         rel_field = c.get("related", [])
         rel_str = " ".join(str(r) for r in rel_field) if isinstance(rel_field, list) else str(rel_field)
 
         for link in c.get("_links", []):
-            lower_link = link.lower()
-            if any(lower_link.endswith(ext) for ext in MEDIA_EXTENSIONS):
+            if any(link.lower().endswith(ext) for ext in MEDIA_EXTENSIONS):
                 continue
             normalized = normalize_stem(link)
             all_linked.add(normalized)
             if normalized not in self.existing_stems:
-                is_frontmatter_related = link in rel_str or normalized in normalize_stem(rel_str)
-                origin = "frontmatter_related" if is_frontmatter_related else "body"
+                is_fm = link in rel_str or normalized in normalize_stem(rel_str)
+                origin = "frontmatter_related" if is_fm else "body"
                 broken_item = {"from": stem, "to": link, "origin": origin}
                 report["broken_links"].append(broken_item)
-                if origin == "body":
-                    report["broken_body_links"].append(broken_item)
-                else:
-                    report["prospective_related_seeds"].append(broken_item)
+                (report["broken_body_links"] if origin == "body" else report["prospective_related_seeds"]).append(broken_item)
 
-        # Check 4: Prefix for duplicates
-        prefix = normalize_stem(c.get("title", ""))[:20]
-        if prefix:
-            by_prefix[prefix].append(stem)
-
-        # Check 5: Code-pill wikilinks
+    def _check_concept_code_pills(self, c: dict, stem: str, report: LintReport) -> None:
+        """Detect code-pill wikilinks in raw file content."""
         try:
             raw_content = c["_path"].read_text(encoding="utf-8")
             pills = _CODE_PILL_LINK_PATTERN.findall(raw_content)
@@ -156,34 +132,41 @@ class VaultLinter:
         except OSError:
             pass
 
-    def lint(self) -> LintReport:
-        report: LintReport = {
-            "orphans": [],
-            "broken_links": [],
-            "missing_frontmatter": [],
-            "duplicates": [],
-            "bridge_candidates": [],
-            "tag_clusters": defaultdict(int),
-            "total_concepts": len(self.concepts),
-            "broken_body_links": [],
-            "prospective_related_seeds": [],
-            "code_pill_wikilinks": [],
-        }
+    def _evaluate_concept_metrics(
+        self,
+        c: dict,
+        report: LintReport,
+        all_linked: set,
+        by_prefix: dict,
+    ) -> None:
+        """Helper to process a single concept during linting."""
+        stem = c["_stem"]
+        has_source = bool(c.get("source") or c.get("sources"))
+        missing = [f for f in ["title", "type", "tags"] if not c.get(f)]
+        if not has_source:
+            missing.append("source")
+        if missing:
+            report["missing_frontmatter"].append({"file": stem, "missing": missing})
 
-        all_linked = set()
-        by_prefix: dict[str, list] = defaultdict(list)
+        for tag in c.get("tags", []):
+            if tag.startswith("domain/"):
+                report["tag_clusters"][tag] += 1
 
-        # Single pass through all concepts
-        for c in self.concepts:
-            self._evaluate_concept_metrics(c, report, all_linked, by_prefix)
+        self._collect_concept_links(c, stem, report, all_linked)
 
-        # Ingest outgoing links from Maps of Content (MOCs), Sources, and Topics to eliminate False Orphans
+        prefix = normalize_stem(c.get("title", ""))[:20]
+        if prefix:
+            by_prefix[prefix].append(stem)
+
+        self._check_concept_code_pills(c, stem, report)
+
+    def _collect_external_linked(self, all_linked: set, report: LintReport) -> None:
+        """Ingest outgoing links from MOCs, sources, and topics to prevent false orphans."""
         for moc_file in cfg.moc_dir.rglob("*.md"):
             if moc_file.name == "Weekly_Synthesis.md":
                 continue
             try:
-                content = moc_file.read_text(encoding="utf-8")
-                for link in _LINK_PATTERN.findall(content):
+                for link in _LINK_PATTERN.findall(moc_file.read_text(encoding="utf-8")):
                     all_linked.add(normalize_stem(link))
             except OSError:
                 pass
@@ -191,8 +174,7 @@ class VaultLinter:
         if cfg.sources_dir.exists():
             for src_file in cfg.sources_dir.rglob("*.md"):
                 try:
-                    content = src_file.read_text(encoding="utf-8")
-                    for link in _LINK_PATTERN.findall(content):
+                    for link in _LINK_PATTERN.findall(src_file.read_text(encoding="utf-8")):
                         all_linked.add(normalize_stem(link))
                 except OSError:
                     pass
@@ -215,21 +197,40 @@ class VaultLinter:
                 except OSError:
                     pass
 
-        # Check 5: Orphans (Post-pass evaluation)
+    def lint(self) -> LintReport:
+        report: LintReport = {
+            "orphans": [],
+            "broken_links": [],
+            "missing_frontmatter": [],
+            "duplicates": [],
+            "bridge_candidates": [],
+            "tag_clusters": defaultdict(int),
+            "total_concepts": len(self.concepts),
+            "broken_body_links": [],
+            "prospective_related_seeds": [],
+            "code_pill_wikilinks": [],
+        }
+
+        all_linked = set()
+        by_prefix: dict[str, list] = defaultdict(list)
+
+        for c in self.concepts:
+            self._evaluate_concept_metrics(c, report, all_linked, by_prefix)
+
+        self._collect_external_linked(all_linked, report)
+
         for c in self.concepts:
             stem_norm = normalize_stem(c["_stem"])
             if stem_norm not in all_linked and c.get("type") == "concept":
                 if not c.get("related", []):
                     report["orphans"].append(c["_stem"])
 
-        # Check 6: Populate duplicates
         for prefix, items in by_prefix.items():
             if len(items) > 1:
                 report["duplicates"].append(items)
 
-        # Check 7: Bridge candidates for cross-domain knowledge synthesis
         finder = BridgeCandidateFinder(self.concepts)
-        report["bridge_candidates"] = [c.to_dict() for c in finder.score_candidates(top_n=10)]
+        report["bridge_candidates"] = [cand.to_dict() for cand in finder.score_candidates(top_n=10)]
 
         _logger.info(
             f"Lint: {len(report['orphans'])} orphans, "

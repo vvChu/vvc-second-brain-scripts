@@ -65,76 +65,69 @@ class LinkHealer:
         except Exception as e:
             _logger.warning(f"Failed to load whitelist_stubs from config.yaml: {e}")
 
+    def _check_stub_approval(self, target: str) -> bool | None:
+        """Check if target is approved as a valid concept stub."""
+        norm_target = normalize_stem(target)
+        if norm_target in getattr(self, "whitelisted_stubs", set()):
+            _logger.info(f"Whitelisted stub approved directly: {target}")
+            return True
+        time.sleep(3.0)
+        return self._is_valid_concept(target)
+
+    def _handle_rejected_target(self, target: str, sources: list[str]) -> None:
+        """Cache rejected target and unlink it from source notes."""
+        _logger.debug(f"Rejected by LLM: {target}")
+        self.rejected_cache.add(target)
+        try:
+            self.rejected_file.write_text(json.dumps(list(self.rejected_cache)), encoding="utf-8")
+        except OSError:
+            pass
+        self._unlink_in_sources(target, sources)
+
+    def _handle_approved_target(self, target: str, sources: list[str]) -> bool:
+        """Clean rejected cache if needed and create stub note."""
+        if target in self.rejected_cache:
+            self.rejected_cache.discard(target)
+            _logger.info(f"Self-healed cache: removed whitelisted stub '{target}' from rejected stubs list.")
+            try:
+                self.rejected_file.write_text(json.dumps(list(self.rejected_cache)), encoding="utf-8")
+            except OSError:
+                pass
+        return bool(self._create_stub(target, sources))
+
     def heal(self, report: LintReport, max_heal_limit: int = 15) -> int:
         broken = report.get("broken_links", [])
         if not broken:
             return 0
 
-        # Deduplicate by target
         targets: dict[str, list[str]] = defaultdict(list)
         for entry in broken:
             targets[entry["to"]].append(entry["from"])
-
-        # Sort targets by frequency descending (number of source documents linking to it)
         sorted_targets = sorted(targets.items(), key=lambda item: len(item[1]), reverse=True)
-
-        # Apply batch limit
         if len(sorted_targets) > max_heal_limit:
             _logger.info(f"LinkHealer: Found {len(sorted_targets)} broken links. Limiting to top {max_heal_limit} most frequent targets to protect API.")
             sorted_targets = sorted_targets[:max_heal_limit]
 
-        created = 0
-        consecutive_errors = 0
-
+        created = consecutive_errors = 0
         for target, sources in sorted_targets:
-            # Heuristic pre-filter (Fast rejection without LLM)
             if self._heuristic_reject(target):
                 self._unlink_in_sources(target, sources)
                 continue
 
-            # LLM Semantic Arbitrator (bypassed if target is whitelisted)
-            norm_target = normalize_stem(target)
-            if norm_target in getattr(self, "whitelisted_stubs", set()):
-                _logger.info(f"Whitelisted stub approved directly: {target}")
-                is_valid = True
-            else:
-                # Throttle to max 20 Requests Per Minute (RPM)
-                time.sleep(3.0)
-
-                is_valid = self._is_valid_concept(target)
-                if is_valid is None:
-                    consecutive_errors += 1
-                    _logger.debug(f"LLM API failure for: {target} ({consecutive_errors}/3). Backing off 30s...")
-                    time.sleep(30)  # Long backoff to allow rate-limits to reset
-                    if consecutive_errors >= 3:
-                        _logger.error("Consecutive API failures reached 3. Aborting LinkHealer to protect API.")
-                        break
-                    continue
-
-            # Reset error counter on success
-            consecutive_errors = 0
-
-            if not is_valid:
-                _logger.debug(f"Rejected by LLM: {target}")
-                self.rejected_cache.add(target)
-                try:
-                    self.rejected_file.write_text(json.dumps(list(self.rejected_cache)), encoding="utf-8")
-                except OSError:
-                    pass
-                self._unlink_in_sources(target, sources)
+            is_valid = self._check_stub_approval(target)
+            if is_valid is None:
+                consecutive_errors += 1
+                _logger.debug(f"LLM API failure for: {target} ({consecutive_errors}/3). Backing off 30s...")
+                time.sleep(30)
+                if consecutive_errors >= 3:
+                    _logger.error("Consecutive API failures reached 3. Aborting LinkHealer to protect API.")
+                    break
                 continue
 
-            # Self-healing: if the approved concept was previously in rejected cache, remove it!
-            if target in self.rejected_cache:
-                self.rejected_cache.discard(target)
-                _logger.info(f"Self-healed cache: removed whitelisted stub '{target}' from rejected stubs list.")
-                try:
-                    self.rejected_file.write_text(json.dumps(list(self.rejected_cache)), encoding="utf-8")
-                except OSError:
-                    pass
-
-            # Create stub
-            if self._create_stub(target, sources):
+            consecutive_errors = 0
+            if not is_valid:
+                self._handle_rejected_target(target, sources)
+            elif self._handle_approved_target(target, sources):
                 created += 1
 
         if created:

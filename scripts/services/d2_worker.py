@@ -172,57 +172,35 @@ def compile_d2_via_kroki(d2_code: str, timeout: float = 15.0) -> str:
         raise RuntimeError(f"Kroki D2 compilation failed: {e}") from e
 
 
-def compile_d2_to_svg(
-    d2_code: str,
-    output_svg_path: Path | str | None = None,
-    timeout: float = 15.0,
+def _compile_d2_locally(
+    d2_bin: str, d2_code: str, output_svg_path: Path | None, timeout: float
 ) -> str | None:
-    """Compile D2 code to SVG via local CLI or Kroki fallback.
+    """Compile D2 code using local d2 CLI binary."""
+    try:
+        cmd = [d2_bin, "-", str(output_svg_path)] if output_svg_path else [d2_bin, "-", "-"]
+        use_shell = sys.platform == "win32" and d2_bin.lower().endswith((".cmd", ".bat"))
+        res = subprocess.run(
+            cmd,
+            input=d2_code.encode("utf-8"),
+            capture_output=True,
+            check=True,
+            timeout=timeout,
+            shell=use_shell,
+        )
+        if output_svg_path and output_svg_path.exists():
+            return output_svg_path.read_text(encoding="utf-8")
+        if res.stdout:
+            content = res.stdout.decode("utf-8")
+            if output_svg_path:
+                output_svg_path.write_text(content, encoding="utf-8")
+            return content
+    except Exception as e:
+        _logger.warning(f"Local d2 CLI ({d2_bin}) failed: {e}. Falling back to Kroki.")
+    return None
 
-    Primary: if local d2 CLI exists via find_d2_bin(), run `d2 - output.svg`.
-    Fallback: send HTTP POST to https://kroki.io/d2/svg via urllib.request.
 
-    Args:
-        d2_code: Cleaned D2 source code.
-        output_svg_path: Optional destination Path or str for the SVG file.
-        timeout: Timeout in seconds.
-
-    Returns:
-        SVG content string, or None if compilation failed.
-    """
-    if not d2_code or not d2_code.strip():
-        _logger.warning("Empty D2 code provided for compilation")
-        return None
-
-    if output_svg_path:
-        output_svg_path = Path(output_svg_path)
-        output_svg_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # 1. Primary: local d2 CLI via portable seam locator
-    d2_bin = find_d2_bin()
-    if d2_bin:
-        try:
-            cmd = [d2_bin, "-", str(output_svg_path)] if output_svg_path else [d2_bin, "-", "-"]
-            use_shell = sys.platform == "win32" and d2_bin.lower().endswith((".cmd", ".bat"))
-            res = subprocess.run(
-                cmd,
-                input=d2_code.encode("utf-8"),
-                capture_output=True,
-                check=True,
-                timeout=timeout,
-                shell=use_shell,
-            )
-            if output_svg_path and output_svg_path.exists():
-                return output_svg_path.read_text(encoding="utf-8")
-            if res.stdout:
-                content = res.stdout.decode("utf-8")
-                if output_svg_path:
-                    output_svg_path.write_text(content, encoding="utf-8")
-                return content
-        except Exception as e:
-            _logger.warning(f"Local d2 CLI ({d2_bin}) failed: {e}. Falling back to Kroki.")
-
-    # 2. Fallback: Kroki HTTP API (auto-sanitizes tala to elk)
+def _compile_d2_fallback(d2_code: str, output_svg_path: Path | None, timeout: float) -> str | None:
+    """Compile D2 code via Kroki HTTP API fallback."""
     try:
         svg_content = compile_d2_via_kroki(d2_code, timeout=timeout)
         if output_svg_path:
@@ -234,8 +212,34 @@ def compile_d2_to_svg(
         return None
 
 
-compile_d2 = compile_d2_to_svg
+def compile_d2_to_svg(
+    d2_code: str,
+    output_svg_path: Path | str | None = None,
+    timeout: float = 15.0,
+) -> str | None:
+    """Compile D2 code to SVG via local CLI or Kroki fallback.
 
+    Primary: if local d2 CLI exists via find_d2_bin(), run `d2 - output.svg`.
+    Fallback: send HTTP POST to https://kroki.io/d2/svg via urllib.request.
+    """
+    if not d2_code or not d2_code.strip():
+        _logger.warning("Empty D2 code provided for compilation")
+        return None
+
+    target_path = Path(output_svg_path) if output_svg_path else None
+    if target_path:
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+
+    d2_bin = find_d2_bin()
+    if d2_bin:
+        result = _compile_d2_locally(d2_bin, d2_code, target_path, timeout)
+        if result is not None:
+            return result
+
+    return _compile_d2_fallback(d2_code, target_path, timeout)
+
+
+compile_d2 = compile_d2_to_svg
 
 
 def trigger_d2_generation(diagram_name: str, source_text: str) -> None:
@@ -252,33 +256,29 @@ def trigger_d2_generation(diagram_name: str, source_text: str) -> None:
     )
 
 
-def _generate_d2(diagram_name: str, source_text: str) -> None:
-    """Worker function: extract context, generate D2 code, compile to SVG, and save."""
-    # Sanitize diagram name (strip pipe options if present)
-    diagram_name = diagram_name.split("|")[0].strip()
-    if not diagram_name:
-        return
-
+def _generate_and_clean_d2_code(diagram_name: str, source_text: str) -> str | None:
+    """Extract context and generate cleaned D2 source via LLM."""
     context = find_diagram_context(diagram_name, source_text)
-
     _logger.info(f"Generating D2 diagram: {diagram_name}")
     log("diagram", f"D2 generation started: {diagram_name}")
 
     prompt = D2_GENERATE.format(context=context)
     d2_code = call_llm(prompt, task="synthesis")
-
     if not d2_code:
         log("error", f"D2 generation failed: {diagram_name}")
         save_fallback_diagram(diagram_name, "Lỗi kết nối hoặc LLM không trả về phản hồi", "d2")
-        return
+        return None
 
-    d2_code = _clean_d2(d2_code)
-    if not d2_code:
+    cleaned = _clean_d2(d2_code)
+    if not cleaned:
         log("error", f"D2 validation failed: {diagram_name}")
         save_fallback_diagram(diagram_name, "Lỗi cú pháp mã D2", "d2")
-        return
+        return None
+    return cleaned
 
-    # Derive filenames: e.g. "arch.d2.svg" -> "arch.d2", "arch.svg" -> "arch.d2"
+
+def _save_raw_d2_file(diagram_name: str, d2_code: str) -> None:
+    """Save raw D2 code file alongside SVG for inspection and versioning."""
     if diagram_name.endswith(".d2.svg"):
         d2_filename = diagram_name[:-4]
     elif diagram_name.endswith(".svg"):
@@ -286,25 +286,32 @@ def _generate_d2(diagram_name: str, source_text: str) -> None:
     else:
         d2_filename = f"{diagram_name}.d2"
 
-    attachments_dir = cfg.attachments_dir
-    attachments_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save raw .d2 code alongside for versioning and user inspection
-    d2_path = attachments_dir / d2_filename
+    d2_path = cfg.attachments_dir / d2_filename
+    d2_path.parent.mkdir(parents=True, exist_ok=True)
     try:
         d2_path.write_text(d2_code, encoding="utf-8")
         _logger.info(f"Saved raw D2 code: {d2_path.name}")
     except OSError as e:
         _logger.warning(f"Failed to save raw D2 file {d2_path.name}: {e}")
 
-    # Compile D2 to SVG
-    svg_path = attachments_dir / diagram_name
+
+def _generate_d2(diagram_name: str, source_text: str) -> None:
+    """Worker function: extract context, generate D2 code, compile to SVG, and save."""
+    clean_name = diagram_name.split("|")[0].strip()
+    if not clean_name:
+        return
+
+    d2_code = _generate_and_clean_d2_code(clean_name, source_text)
+    if not d2_code:
+        return
+
+    _save_raw_d2_file(clean_name, d2_code)
+    svg_path = cfg.attachments_dir / clean_name
     svg_content = compile_d2_to_svg(d2_code, output_svg_path=svg_path)
 
     if not svg_content:
-        log("error", f"D2 compilation failed: {diagram_name}")
-        save_fallback_diagram(diagram_name, "Lỗi biên dịch D2 vector sang SVG", "d2")
+        log("error", f"D2 compilation failed: {clean_name}")
+        save_fallback_diagram(clean_name, "Lỗi biên dịch D2 vector sang SVG", "d2")
         return
 
-    # Ensure diagram file is recorded via save_diagram_file
-    save_diagram_file(diagram_name, svg_content, "d2")
+    save_diagram_file(clean_name, svg_content, "d2")
