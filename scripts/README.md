@@ -67,7 +67,8 @@ scripts/
 │   └── vector_store.py        ← Fast NumPy/TF-IDF vector store & cosine indexing
 │
 ├── pipeline/                  ← 5-Stage Ingestion Pipeline
-│   ├── image_processor.py     ← 5-stage pipeline orchestrator (single image & batch mode)
+│   ├── image_processor.py     ← 5-stage pipeline orchestrator (single image mode)
+│   ├── batch_processor.py     ← Map-Reduce multi-page burst batch processor & hook exclusion
 │   ├── ocr.py                 ← Stage 1: Vision API auto-orient + OCR + highlight extraction
 │   ├── ground_truth.py        ← Stage 2: Chapter-scoped BM25 Ground Truth matching & correction
 │   ├── synthesize.py          ← Stage 3: LLM Concept Note synthesis (Canonical v8.3 Cognitive Flow)
