@@ -67,6 +67,116 @@ def _find_native_asr(auto_dict: dict, lang_prefix: str) -> list | None:
     return None
 
 
+_IGNORED_SUB_KEYS = {"live_chat", "live_chat_replay"}
+
+
+def _select_subtitle_stream(subtitles: dict, auto_subtitles: dict) -> list | None:
+    """Select best subtitle format using 4-Tier Selection Hierarchy."""
+    selected = _find_lang(subtitles, "vi") or _find_lang(subtitles, "en")
+    if not selected and subtitles:
+        selected = next(iter(subtitles.values()))
+    if selected:
+        return selected
+
+    selected = _find_native_asr(auto_subtitles, "vi") or _find_native_asr(auto_subtitles, "en")
+    if not selected:
+        for v in auto_subtitles.values():
+            if not _is_machine_translated(v):
+                selected = v
+                break
+    if selected:
+        return selected
+
+    selected = _find_lang(auto_subtitles, "vi") or _find_lang(auto_subtitles, "en")
+    if not selected and auto_subtitles:
+        selected = next(iter(auto_subtitles.values()))
+    return selected
+
+
+def _find_target_sub_url(selected_sub: list[dict]) -> str | None:
+    """Prefer JSON3 format for precise timestamps, fallback to vtt / srv3."""
+    json3_url = None
+    vtt_url = None
+    for fmt in selected_sub:
+        ext = fmt.get("ext")
+        if ext == "json3":
+            json3_url = fmt.get("url")
+            break
+        if ext == "vtt":
+            vtt_url = fmt.get("url")
+    return json3_url or vtt_url or (selected_sub[0].get("url") if selected_sub else None)
+
+
+def _group_timed_segments(segments: list[tuple[float, str]], window_sec: float = 30.0) -> str:
+    """Group timed text segments into time-windowed blocks (e.g. [00:01] text)."""
+    formatted_lines: list[str] = []
+    curr_start: float | None = None
+    curr_texts: list[str] = []
+
+    for t_offset, text_part in segments:
+        text_clean = text_part.strip()
+        if not text_clean or text_clean == "\n":
+            continue
+        if curr_start is None:
+            curr_start = t_offset
+            curr_texts.append(text_clean)
+        elif t_offset - curr_start >= window_sec:
+            m, s = int(curr_start // 60), int(curr_start % 60)
+            formatted_lines.append(f"[{m:02d}:{s:02d}] " + " ".join(curr_texts))
+            curr_start = t_offset
+            curr_texts = [text_clean]
+        else:
+            curr_texts.append(text_clean)
+
+    if curr_texts and curr_start is not None:
+        m, s = int(curr_start // 60), int(curr_start % 60)
+        formatted_lines.append(f"[{m:02d}:{s:02d}] " + " ".join(curr_texts))
+
+    return "\n\n".join(formatted_lines)
+
+
+def _parse_json3_subtitles(sub_content: str) -> str | None:
+    """Parse JSON3 format subtitles into timestamped lines."""
+    try:
+        data = json.loads(sub_content)
+        segments: list[tuple[float, str]] = []
+        for event in data.get("events", []):
+            segs = event.get("segs")
+            if not segs:
+                continue
+            t_offset = event.get("tStartMs", 0) / 1000.0
+            text_part = "".join(s.get("utf8", "") for s in segs).strip()
+            if text_part and text_part != "\n":
+                segments.append((t_offset, text_part))
+        res = _group_timed_segments(segments)
+        return res if res else None
+    except Exception as e:
+        _logger.warning(f"Failed parsing JSON3 subtitles: {e}")
+        return None
+
+
+def _build_ytdlp_subtitle_opts() -> dict[str, Any]:
+    """Base options for subtitle extraction via yt-dlp."""
+    opts = get_base_ydl_opts()
+    opts.update({
+        "skip_download": True,
+        "writesubtitles": True,
+        "writeautomaticsub": True,
+        "subtitleslangs": ["vi", "en"],
+    })
+    return opts
+
+
+def _parse_fallback_text(sub_content: str) -> str | None:
+    """Parse fallback subtitle formats (vtt, srt, etc.)."""
+    lines = [
+        line.strip()
+        for line in sub_content.splitlines()
+        if line.strip() and not line.strip().isdigit() and "-->" not in line
+    ]
+    return "\n".join(lines) if lines else None
+
+
 def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str | None:
     """Extract official or auto-generated subtitles directly using yt-dlp.
 
@@ -75,136 +185,35 @@ def extract_transcript_via_ytdlp(url: str, info_dict: dict | None = None) -> str
     try:
         import yt_dlp
 
-        ydl_opts = get_base_ydl_opts()
-        ydl_opts.update({
-            "skip_download": True,
-            "writesubtitles": True,
-            "writeautomaticsub": True,
-            "subtitleslangs": ["vi", "en"],
-        })
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with yt_dlp.YoutubeDL(_build_ytdlp_subtitle_opts()) as ydl:
             info = info_dict or ydl.extract_info(url, download=False)
-            if not info:
+            if not info or info.get("is_live"):
+                if info and info.get("is_live"):
+                    _logger.warning(f"Video {url} đang phát sóng trực tiếp (Live Stream). Không thể trích xuất phụ đề tĩnh.")
                 return None
 
-            # Skip active livestream extraction (no static captions)
-            if info.get("is_live"):
-                _logger.warning(f"Video {url} đang phát sóng trực tiếp (Live Stream). Không thể trích xuất phụ đề tĩnh.")
-                return None
-
-            _IGNORED_SUB_KEYS = {"live_chat", "live_chat_replay"}
             subtitles = {k: v for k, v in (info.get("subtitles") or {}).items() if k not in _IGNORED_SUB_KEYS}
             auto_subtitles = {k: v for k, v in (info.get("automatic_captions") or {}).items() if k not in _IGNORED_SUB_KEYS}
 
-            # 4-Tier Selection Hierarchy:
-            # Tier 1: Manual human subtitles (Manual vi -> Manual en -> Any manual)
-            # Tier 2: Native ASR (Native vi ASR -> Native en ASR -> Any native ASR)
-            # Tier 3: Machine-translated auto captions (Auto-translated vi -> Auto-translated en -> Any auto)
-            # Tier 4: Downstream Whisper fallback (in caller)
-            selected_sub = None
-
-            # Tier 1: Manual human subtitles
-            if not selected_sub:
-                selected_sub = _find_lang(subtitles, "vi")
-            if not selected_sub:
-                selected_sub = _find_lang(subtitles, "en")
-            if not selected_sub and subtitles:
-                selected_sub = next(iter(subtitles.values()))
-
-            # Tier 2: Native ASR (no tlang= parameter in URL)
-            if not selected_sub:
-                selected_sub = _find_native_asr(auto_subtitles, "vi")
-            if not selected_sub:
-                selected_sub = _find_native_asr(auto_subtitles, "en")
-            if not selected_sub:
-                for k, v in auto_subtitles.items():
-                    if not _is_machine_translated(v):
-                        selected_sub = v
-                        break
-
-            # Tier 3: Machine-translated auto captions fallback
-            if not selected_sub:
-                selected_sub = _find_lang(auto_subtitles, "vi")
-            if not selected_sub:
-                selected_sub = _find_lang(auto_subtitles, "en")
-            if not selected_sub and auto_subtitles:
-                selected_sub = next(iter(auto_subtitles.values()))
-
+            selected_sub = _select_subtitle_stream(subtitles, auto_subtitles)
             if not selected_sub:
                 return None
 
-            # Prefer JSON3 format for precise timestamps, fallback to vtt / srv3
-            json3_url = None
-            vtt_url = None
-            for fmt in selected_sub:
-                ext = fmt.get("ext")
-                if ext == "json3":
-                    json3_url = fmt.get("url")
-                    break
-                elif ext == "vtt":
-                    vtt_url = fmt.get("url")
-
-            target_url = json3_url or vtt_url or selected_sub[0].get("url")
+            target_url = _find_target_sub_url(selected_sub)
             if not target_url:
                 return None
 
-            # Fetch subtitle content via yt-dlp's internal downloader (handles headers & cookies)
             sub_content = ydl.urlopen(target_url).read().decode("utf-8")
-
-            # Guard against HTML or client-side bootstrapping scripts being served instead of captions
-            sub_content_strip = sub_content.strip()
-            if sub_content_strip.lower().startswith(("<!doctype html", "<html", "<?xml", "var ytcfg", "window.yt")):
+            if sub_content.strip().lower().startswith(("<!doctype html", "<html", "<?xml", "var ytcfg", "window.yt")):
                 _logger.warning(f"Phát hiện nội dung phụ đề là mã HTML/JS rác thay vì captions: {url}")
                 return None
 
-            # Parse JSON3 format
             if "json3" in target_url or sub_content.strip().startswith("{"):
-                try:
-                    data = json.loads(sub_content)
-                    events = data.get("events", [])
-                    formatted_lines = []
-                    curr_start = None
-                    curr_texts = []
+                json3_res = _parse_json3_subtitles(sub_content)
+                if json3_res:
+                    return json3_res
 
-                    for event in events:
-                        segs = event.get("segs")
-                        if not segs:
-                            continue
-                        t_offset = event.get("tStartMs", 0) / 1000.0
-                        text_part = "".join(s.get("utf8", "") for s in segs).strip()
-                        if not text_part or text_part == "\n":
-                            continue
-
-                        if curr_start is None:
-                            curr_start = t_offset
-                            curr_texts.append(text_part)
-                        elif t_offset - curr_start >= 30.0:
-                            m = int(curr_start // 60)
-                            s = int(curr_start % 60)
-                            formatted_lines.append(f"[{m:02d}:{s:02d}] " + " ".join(curr_texts))
-                            curr_start = t_offset
-                            curr_texts = [text_part]
-                        else:
-                            curr_texts.append(text_part)
-
-                    if curr_texts and curr_start is not None:
-                        m = int(curr_start // 60)
-                        s = int(curr_start % 60)
-                        formatted_lines.append(f"[{m:02d}:{s:02d}] " + " ".join(curr_texts))
-
-                    if formatted_lines:
-                        return "\n\n".join(formatted_lines)
-                except Exception as e:
-                    _logger.warning(f"Failed parsing JSON3 subtitles: {e}")
-
-            # Fallback simple text parser for other formats (vtt, srt, etc.)
-            lines = [
-                line.strip()
-                for line in sub_content.splitlines()
-                if line.strip() and not line.strip().isdigit() and "-->" not in line
-            ]
-            return "\n".join(lines) if lines else None
+            return _parse_fallback_text(sub_content)
 
     except Exception as e:
         _logger.warning(f"yt-dlp subtitle extraction failed: {e}")
@@ -258,22 +267,26 @@ def _download_audio_via_ytdlp(url: str, info_dict: dict | None = None) -> Path |
         return None
 
 
+def _extract_video_id(url: str) -> str | None:
+    """Extract YouTube video ID from standard or shortened URLs."""
+    parsed = urllib.parse.urlparse(url)
+    if parsed.hostname in ("youtu.be", "www.youtu.be"):
+        return parsed.path[1:]
+    if parsed.hostname in ("youtube.com", "www.youtube.com"):
+        if parsed.path == "/watch":
+            qs = urllib.parse.parse_qs(parsed.query)
+            return qs.get("v", [None])[0]
+        if parsed.path.startswith(("/embed/", "/v/", "/live/")):
+            return parsed.path.split("/")[2]
+    return None
+
+
 def _fetch_transcript_via_api(url: str) -> str:
     """Fetch transcript via youtube_transcript_api (secondary fallback)."""
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
 
-        parsed = urllib.parse.urlparse(url)
-        video_id = None
-        if parsed.hostname in ("youtu.be", "www.youtu.be"):
-            video_id = parsed.path[1:]
-        elif parsed.hostname in ("youtube.com", "www.youtube.com"):
-            if parsed.path == "/watch":
-                qs = urllib.parse.parse_qs(parsed.query)
-                video_id = qs.get("v", [None])[0]
-            elif parsed.path.startswith(("/embed/", "/v/", "/live/")):
-                video_id = parsed.path.split("/")[2]
-
+        video_id = _extract_video_id(url)
         if not video_id:
             return ""
 
@@ -289,38 +302,14 @@ def _fetch_transcript_via_api(url: str) -> str:
             transcript = transcript_list.find_transcript(codes)
 
         data = transcript.fetch()
-        formatted_lines = []
-        current_group_start = None
-        current_group_texts = []
-
-        for segment in data:
-            val_text = segment.text if hasattr(segment, "text") else segment.get("text", "")
-            val_text = val_text.strip()
-            if not val_text:
-                continue
-
-            start = segment.start if hasattr(segment, "start") else segment.get("start", 0.0)
-
-            if current_group_start is None:
-                current_group_start = start
-                current_group_texts.append(val_text)
-            elif start - current_group_start >= 30.0:
-                minutes = int(current_group_start // 60)
-                seconds = int(current_group_start % 60)
-                time_str = f"[{minutes:02d}:{seconds:02d}]"
-                formatted_lines.append(f"{time_str} " + " ".join(current_group_texts))
-                current_group_start = start
-                current_group_texts = [val_text]
-            else:
-                current_group_texts.append(val_text)
-
-        if current_group_texts and current_group_start is not None:
-            minutes = int(current_group_start // 60)
-            seconds = int(current_group_start % 60)
-            time_str = f"[{minutes:02d}:{seconds:02d}]"
-            formatted_lines.append(f"{time_str} " + " ".join(current_group_texts))
-
-        return "\n\n".join(formatted_lines)
+        segments = [
+            (
+                s.start if hasattr(s, "start") else s.get("start", 0.0),
+                s.text if hasattr(s, "text") else s.get("text", ""),
+            )
+            for s in data
+        ]
+        return _group_timed_segments(segments)
     except Exception as e:
         _logger.warning(f"youtube_transcript_api fetch failed: {e}")
         return ""
@@ -348,14 +337,10 @@ def fetch_youtube_transcript(url: str, info_dict: dict | None = None) -> str:
     if audio_path:
         try:
             text = call_audio(audio_path, model="audio-primary", language=None)
-            if audio_path.exists():
-                try:
-                    audio_path.unlink()
-                except OSError:
-                    pass
             return text or ""
         except Exception as e:
             _logger.error(f"Audio transcription failed: {e}")
+        finally:
             if audio_path.exists():
                 try:
                     audio_path.unlink()
