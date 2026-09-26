@@ -169,19 +169,9 @@ MODEL_PREFIX_MAP: dict[str, str] = {
 }
 
 
-def parse_style(query: str) -> tuple[str, str, bool, str]:
-    """Parse style prefix, speed override, and model override from query.
-
-    Args:
-        query: Raw query string possibly containing style/speed/model prefixes.
-
-    Returns:
-        tuple-like object (style_name, clean_query, is_fast, explicit_model).
-        Supports 2-item, 3-item, and 4-item unpacking for backward compatibility.
-    """
-    stripped = query.strip()
-    all_prefixes: list[tuple[str, str, str]] = []  # (prefix, type, value)
-
+def _build_all_prefixes() -> list[tuple[str, str, str]]:
+    """Build and sort all style and model prefixes descending by length."""
+    all_prefixes: list[tuple[str, str, str]] = []
     for name, style in WRITING_STYLES.items():
         prefixes = [style["prefix"]] if isinstance(style["prefix"], str) else list(style["prefix"])
         prefixes.extend(style.get("aliases", []))
@@ -192,9 +182,14 @@ def parse_style(query: str) -> tuple[str, str, bool, str]:
     for pfx, model_id in MODEL_PREFIX_MAP.items():
         all_prefixes.append((pfx, "model", model_id))
 
-    # Sort prefixes by length descending so longer prefixes match first (e.g. /hero-image before /hero)
     all_prefixes.sort(key=lambda x: len(x[0]), reverse=True)
+    return all_prefixes
 
+
+def _consume_prefixes(
+    stripped: str, all_prefixes: list[tuple[str, str, str]]
+) -> tuple[str, list[str], bool, str]:
+    """Iteratively match and strip prefixes from query."""
     matched_styles: list[str] = []
     is_fast = False
     explicit_model = ""
@@ -215,6 +210,21 @@ def parse_style(query: str) -> tuple[str, str, bool, str]:
                 break
         if not matched:
             break
+    return stripped, matched_styles, is_fast, explicit_model
+
+
+def parse_style(query: str) -> tuple[str, str, bool, str]:
+    """Parse style prefix, speed override, and model override from query.
+
+    Args:
+        query: Raw query string possibly containing style/speed/model prefixes.
+
+    Returns:
+        tuple-like object (style_name, clean_query, is_fast, explicit_model).
+        Supports 2-item, 3-item, and 4-item unpacking for backward compatibility.
+    """
+    all_prefixes = _build_all_prefixes()
+    stripped, matched_styles, is_fast, explicit_model = _consume_prefixes(query.strip(), all_prefixes)
 
     primary_styles = [s for s in matched_styles if s != "fast"]
     if primary_styles:

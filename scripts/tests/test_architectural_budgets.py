@@ -25,16 +25,9 @@ PROMPT_FILE_ALLOWLIST = {
 # 100% of production files comply with the 350-line standard.
 LEGACY_LINE_RATCHET: dict[str, int] = {}
 
-# Monotonic function count ratchets for legacy files with functions > 50 lines (26 files).
+# Monotonic function count ratchets for legacy files with functions > 50 lines (16 files).
 # Any new file not listed here defaults to budget 0 (Global Rule 5: no functions > 50 lines).
 LEGACY_FUNC_OVER_50_BUDGET: dict[str, int] = {
-    "services/brain_dump/inbox_io.py": 1,
-    "services/brain_dump/orchestrator.py": 1,
-    "services/brain_dump/url_registry.py": 1,
-    "services/command/citations.py": 1,
-    "services/command/inbox.py": 1,
-    "services/command/styles.py": 1,
-    "services/command/topic_saver.py": 1,
     "services/d2_worker.py": 2,
     "services/doc_worker.py": 1,
     "services/legal_sync_worker.py": 1,

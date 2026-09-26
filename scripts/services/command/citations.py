@@ -29,34 +29,39 @@ __all__ = [
 
 
 
-def reindex_citations(response: str, rag_refs: dict[int, tuple[str, str]]) -> str:
-    """Reindex numeric citations in response ([14] -> [1]) and append reference list.
-
-    Args:
-        response: LLM response containing citations like [14] or |[14]|.
-        rag_refs: Mapping of reference IDs to (filename, file_title).
-
-    Returns:
-        Response with reindexed citations and appended '## Tài liệu tham chiếu' section.
-    """
-    if not rag_refs:
-        return response
-
+def _collect_used_citation_ids(response: str, rag_refs: dict[int, tuple[str, str]]) -> list[int]:
+    """Extract ordered unique citation IDs present in response and existing in rag_refs."""
     used_ids: list[int] = []
     for match in re.finditer(r"\[(\d+)\]|\|\[?(\d+)\]?\]\]", response):
         val = match.group(1) or match.group(2)
         if val:
             try:
                 parsed_id = int(val)
-                if parsed_id not in used_ids:
+                if parsed_id not in used_ids and parsed_id in rag_refs:
                     used_ids.append(parsed_id)
             except ValueError:
                 pass
+    return used_ids
 
-    if not used_ids:
+
+def _build_reference_block(
+    valid_ids: list[int], id_map: dict[int, int], rag_refs: dict[int, tuple[str, str]]
+) -> str:
+    """Format the markdown references section at the bottom of the response."""
+    lines = ["\n\n---\n\n## Tài liệu tham chiếu\n"]
+    for old_id in valid_ids:
+        fname, ftitle = rag_refs[old_id]
+        lines.append(f"{id_map[old_id]}. [[{fname}|{ftitle}]]\n")
+    ref_block = "".join(lines)
+    return ref_block if ". [[" in ref_block else ""
+
+
+def reindex_citations(response: str, rag_refs: dict[int, tuple[str, str]]) -> str:
+    """Reindex numeric citations in response ([14] -> [1]) and append reference list."""
+    if not rag_refs:
         return response
 
-    valid_ids = [i for i in used_ids if i in rag_refs]
+    valid_ids = _collect_used_citation_ids(response, rag_refs)
     if not valid_ids:
         return response
 
@@ -65,27 +70,15 @@ def reindex_citations(response: str, rag_refs: dict[int, tuple[str, str]]) -> st
     def _replace_id(match: re.Match) -> str:
         if match.group(1):
             old_id = int(match.group(1))
-            if old_id in id_map:
-                return f"[{id_map[old_id]}]"
-        elif match.group(2):
+            return f"[{id_map[old_id]}]" if old_id in id_map else match.group(0)
+        if match.group(2):
             old_id = int(match.group(2))
             if old_id in id_map:
                 original = match.group(0)
                 if f"[{old_id}]" in original:
                     return original.replace(f"[{old_id}]", f"[{id_map[old_id]}]")
-                else:
-                    return original.replace(str(old_id), str(id_map[old_id]))
+                return original.replace(str(old_id), str(id_map[old_id]))
         return match.group(0)
 
     response = re.sub(r"\[(\d+)\]|\|\[?(\d+)\]?\]\]", _replace_id, response)
-
-    ref_block = "\n\n---\n\n## Tài liệu tham chiếu\n"
-    for old_id in valid_ids:
-        fname, ftitle = rag_refs[old_id]
-        new_id = id_map[old_id]
-        ref_block += f"{new_id}. [[{fname}|{ftitle}]]\n"
-
-    if "]. [[" in ref_block or ". [[" in ref_block:
-        response += ref_block
-
-    return response
+    return response + _build_reference_block(valid_ids, id_map, rag_refs)

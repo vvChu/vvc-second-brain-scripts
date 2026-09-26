@@ -27,6 +27,86 @@ def _get_active_cfg():
     return getattr(_pkg, "cfg", cfg)
 
 
+def _resolve_topic_title_and_slug(clean_query: str, response: str) -> tuple[str, str]:
+    """Resolve human title and unique normalized slug for topic note."""
+    title_match = re.search(r"^#\s+(.+)$", response, re.MULTILINE)
+    title = title_match.group(1).strip() if title_match else clean_query[:80].strip()
+    slug = normalize_stem(title)
+    if not slug or len(slug) < 3:
+        slug = normalize_stem(clean_query)[:50]
+    if not slug:
+        slug = f"topic_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    return title, slug
+
+
+def _extract_topic_summary(response: str) -> str:
+    """Extract opening 1-2 clean sentences from response body for frontmatter summary."""
+    candidate_text, in_code = "", False
+    for line in response.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("```"):
+            in_code = not in_code
+            continue
+        if in_code or not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("![[") or stripped.startswith("!["):
+            continue
+        if stripped in ("---", "***", "___") or re.match(r"^[-*_]{3,}$", stripped):
+            continue
+        if stripped.startswith("|") or stripped.startswith("<!--"):
+            continue
+
+        clean_line = re.sub(r"^>\s*", "", stripped)
+        if clean_line.startswith("[!"):
+            continue
+
+        clean_line = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", clean_line)
+        clean_line = re.sub(r"\[\[([^\]]+)\]\]", r"\1", clean_line)
+        clean_line = re.sub(r"[*_`]", "", clean_line)
+
+        candidate_text += (" " + clean_line if candidate_text else clean_line)
+        if len(candidate_text) >= 200:
+            break
+
+    if not candidate_text:
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", candidate_text)
+    first_two = " ".join(sentences[:2]).strip()
+    return first_two[:247] + "..." if len(first_two) > 250 else first_two
+
+
+def _extract_related_wikilinks(response: str, slug: str) -> list[str]:
+    """Extract up to 8 unique related wikilinks [[stem]] excluding media and self."""
+    text_without_code = re.sub(r"```.*?```", "", response, flags=re.DOTALL)
+    raw_links = re.findall(r"(?<!\!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]", text_without_code)
+    media_exts = (
+        ".webp", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp",
+        ".mp3", ".mp4", ".pdf", ".excalidraw.md", ".mermaid.md",
+        ".d2.svg", ".excalidraw", ".mermaid", ".d2",
+        ".m4a", ".wav", ".webm", ".mkv",
+    )
+    related_stems: list[str] = []
+    seen: set[str] = set()
+    for link in raw_links:
+        clean = link.strip()
+        stem_lower = clean.lower()
+        if any(stem_lower.endswith(ext) for ext in media_exts) or any(
+            diag in stem_lower for diag in (".excalidraw", ".mermaid", ".d2")
+        ):
+            continue
+        if stem_lower.endswith(".md"):
+            clean = clean[:-3]
+        if clean == slug or normalize_stem(clean) == slug:
+            continue
+        stem_norm = normalize_stem(clean)
+        if stem_norm and stem_norm not in seen:
+            seen.add(stem_norm)
+            related_stems.append(f"[[{clean}]]")
+            if len(related_stems) >= 8:
+                break
+    return related_stems
+
+
 def build_topic_content(clean_query: str, response: str) -> tuple[str, str, str] | None:
     """Build frontmatter and slug for topic note without disk I/O.
 
@@ -40,90 +120,9 @@ def build_topic_content(clean_query: str, response: str) -> tuple[str, str, str]
     if len(response) < TOPIC_AUTO_SAVE_THRESHOLD:
         return None
 
-    title_match = re.search(r"^#\s+(.+)$", response, re.MULTILINE)
-    if title_match:
-        title = title_match.group(1).strip()
-    else:
-        title = clean_query[:80].strip()
-
-    slug = normalize_stem(title)
-    if not slug or len(slug) < 3:
-        slug = normalize_stem(clean_query)[:50]
-    if not slug:
-        slug = f"topic_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-
-    # Extract opening 1-2 sentences for summary (skipping H1, images, fences, and blank lines, up to 250 chars)
-    summary = ""
-    candidate_text = ""
-    in_code_block = False
-    for line in response.splitlines():
-        stripped = line.strip()
-        if stripped.startswith("```"):
-            in_code_block = not in_code_block
-            continue
-        if in_code_block:
-            continue
-        if not stripped or stripped.startswith("#"):
-            continue
-        # Skip image embeds, horizontal rules, table rows, comments
-        if stripped.startswith("![[") or stripped.startswith("!["):
-            continue
-        if stripped in ("---", "***", "___") or re.match(r"^[-*_]{3,}$", stripped):
-            continue
-        if stripped.startswith("|") or stripped.startswith("<!--"):
-            continue
-
-        clean_line = re.sub(r"^>\s*", "", stripped)
-        if clean_line.startswith("[!"):
-            continue
-
-        # Strip bold/italic/link formatting for clean summary text
-        clean_line = re.sub(r"\[\[([^\]|]+)\|([^\]]+)\]\]", r"\2", clean_line)
-        clean_line = re.sub(r"\[\[([^\]]+)\]\]", r"\1", clean_line)
-        clean_line = re.sub(r"[*_`]", "", clean_line)
-
-        candidate_text += (" " + clean_line if candidate_text else clean_line)
-        if len(candidate_text) >= 200:
-            break
-
-    if candidate_text:
-        sentences = re.split(r"(?<=[.!?])\s+", candidate_text)
-        first_two = " ".join(sentences[:2]).strip()
-        if len(first_two) > 250:
-            first_two = first_two[:247] + "..."
-        summary = first_two
-
-    # Extract up to 8 unique related wikilinks [[stem]] (excluding media, diagrams, and self)
-    # 1. Strip fenced code blocks to prevent code syntax from polluting graph links
-    text_without_code = re.sub(r"```.*?```", "", response, flags=re.DOTALL)
-    # 2. Extract only real wikilinks (using negative lookbehind to ignore ![[embeds]])
-    raw_links = re.findall(r"(?<!\!)\[\[([^\]|#]+)(?:#[^\]|]+)?(?:\|[^\]]+)?\]\]", text_without_code)
-    media_exts = (
-        ".webp", ".png", ".jpg", ".jpeg", ".gif", ".svg", ".bmp",
-        ".mp3", ".mp4", ".pdf", ".excalidraw.md", ".mermaid.md",
-        ".d2.svg", ".excalidraw", ".mermaid", ".d2",
-        ".m4a", ".wav", ".webm", ".mkv",
-    )
-    related_stems: list[str] = []
-    seen_stems: set[str] = set()
-    for link in raw_links:
-        clean_stem = link.strip()
-        stem_lower = clean_stem.lower()
-        if any(stem_lower.endswith(ext) for ext in media_exts):
-            continue
-        if any(diag in stem_lower for diag in (".excalidraw", ".mermaid", ".d2")):
-            continue
-        if stem_lower.endswith(".md"):
-            clean_stem = clean_stem[:-3]
-        # Filter self-reference robustly across all case, diacritics, and slug formats
-        if clean_stem == slug or normalize_stem(clean_stem) == slug:
-            continue
-        stem_norm = normalize_stem(clean_stem)
-        if stem_norm and stem_norm not in seen_stems:
-            seen_stems.add(stem_norm)
-            related_stems.append(f"[[{clean_stem}]]")
-            if len(related_stems) >= 8:
-                break
+    title, slug = _resolve_topic_title_and_slug(clean_query, response)
+    summary = _extract_topic_summary(response)
+    related_stems = _extract_related_wikilinks(response, slug)
 
     today = date.today().isoformat()
     fm_data = {

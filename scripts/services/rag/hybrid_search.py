@@ -128,6 +128,56 @@ def _rrf_fuse(
 
 # --- Public API ---
 
+def _run_hybrid_bm25(
+    query: str, sources: list[str], texts: list[str], valid_indices: set[int] | None, top_k: int
+) -> list[tuple[int, float]]:
+    """Execute BM25 search over unified or book-filtered corpus."""
+    if valid_indices:
+        filtered_corpus = [(sources[i], texts[i]) for i in range(len(sources)) if i in valid_indices]
+        bm25_res = _bm25_search(query, filtered_corpus, top_k=top_k * 2)
+        filtered_to_orig = [i for i in range(len(sources)) if i in valid_indices]
+        return [(filtered_to_orig[i], s) for i, s in bm25_res]
+    corpus = list(zip(sources, texts))
+    return _bm25_search(query, corpus, top_k=top_k * 2)
+
+
+def _run_hybrid_embedding(
+    query: str, embeddings: np.ndarray, sources: list[str], valid_indices: set[int] | None, top_k: int
+) -> list[tuple[int, float]]:
+    """Execute embedding search with optional book-level filtering."""
+    query_emb = _get_query_embedding(query)
+    emb_results_raw = _embedding_search(
+        query_emb, embeddings, top_k=top_k * 2 if not valid_indices else len(sources)
+    )
+    if not valid_indices:
+        return emb_results_raw
+    filtered: list[tuple[int, float]] = []
+    for i, s in emb_results_raw:
+        if i in valid_indices:
+            filtered.append((i, s))
+            if len(filtered) >= top_k * 2:
+                break
+    return filtered
+
+
+def _assemble_search_results(
+    fused: list[tuple[int, float]], sources: list[str], texts: list[str], method: str, top_k: int
+) -> list[SearchResult]:
+    """Hydrate search results with disk concept content if available."""
+    results = []
+    for idx, score in fused[:top_k]:
+        stem = sources[idx]
+        file_path = cfg.concepts_dir / f"{stem}.md"
+        full_text = texts[idx]
+        if file_path.exists():
+            try:
+                full_text = file_path.read_text(encoding="utf-8")
+            except OSError:
+                pass
+        results.append(SearchResult(text=full_text, source_file=stem, score=score, method=method))
+    return results
+
+
 def search(
     query: str,
     *,
@@ -145,80 +195,47 @@ def search(
         List of SearchResult ordered by relevance.
     """
     index = _load_embedding_index()
-
     if index is None:
-        # Fallback: BM25 over vault concepts
         return _search_bm25_only(query, book_name=book_name, top_k=top_k)
 
-    # Build unified corpus from index
-    texts = index["texts"]
-    sources = index["sources"]
-    embeddings = index["embeddings"]
-    corpus = list(zip(sources, texts))
-
-    # Identify filtered indices if book_name is provided
+    texts, sources, embeddings = index["texts"], index["sources"], index["embeddings"]
+    valid_indices = None
     if book_name:
         book_lower = book_name.lower()
         valid_indices = {i for i, s in enumerate(sources) if book_lower in s.lower()}
         if not valid_indices:
             return []
-    else:
-        valid_indices = None
 
-    # Stage 1: BM25
-    if valid_indices:
-        filtered_corpus = [(sources[i], texts[i]) for i in range(len(sources)) if i in valid_indices]
-        bm25_res = _bm25_search(query, filtered_corpus, top_k=top_k * 2)
-        # Remap indices back to original positions
-        filtered_to_orig = [i for i in range(len(sources)) if i in valid_indices]
-        bm25_results = [(filtered_to_orig[i], s) for i, s in bm25_res]
-    else:
-        bm25_results = _bm25_search(query, corpus, top_k=top_k * 2)
-
-    # Stage 2: Embedding
-    query_emb = _get_query_embedding(query)
-    emb_results_raw = _embedding_search(query_emb, embeddings, top_k=top_k * 2 if not valid_indices else len(sources))
-    
-    # Filter embedding results if needed and re-sort
-    if valid_indices:
-        emb_results = []
-        for i, s in emb_results_raw:
-            if i in valid_indices:
-                emb_results.append((i, s))
-                if len(emb_results) >= top_k * 2:
-                    break
-    else:
-        emb_results = emb_results_raw
+    bm25_results = _run_hybrid_bm25(query, sources, texts, valid_indices, top_k)
+    emb_results = _run_hybrid_embedding(query, embeddings, sources, valid_indices, top_k)
 
     if emb_results:
-        # Hybrid: RRF fusion
         fused = _rrf_fuse(bm25_results, emb_results)
         method = "hybrid"
     else:
-        # Graceful degradation to BM25
         fused = [(i, s) for i, s in bm25_results]
         method = "bm25"
 
-    results = []
-    for idx, score in fused[:top_k]:
-        stem = sources[idx]
-        file_path = cfg.concepts_dir / f"{stem}.md"
-        full_text = texts[idx]
-        if file_path.exists():
-            try:
-                full_text = file_path.read_text(encoding="utf-8")
-            except OSError:
-                pass
-                
-        results.append(SearchResult(
-            text=full_text,
-            source_file=stem,
-            score=score,
-            method=method,
-        ))
-
+    results = _assemble_search_results(fused, sources, texts, method, top_k)
     _logger.info(f"RAG search: {len(results)} results ({method}) for '{query[:50]}...'")
     return results
+
+
+def _ensure_bm25_corpus_cache() -> list[tuple[str, str]]:
+    """Initialize BM25 corpus and pre-built model cache from vault concept notes."""
+    global _bm25_corpus_cache, _bm25_model_cache
+    if _bm25_corpus_cache is None:
+        corpus: list[tuple[str, str]] = []
+        for fm in scan_all_concepts():
+            try:
+                corpus.append((fm["_stem"], fm["_path"].read_text(encoding="utf-8")))
+            except OSError:
+                continue
+        _bm25_corpus_cache = corpus
+        if BM25Okapi is not None and corpus:
+            tokenized = [text.lower().split() for _, text in corpus]
+            _bm25_model_cache = BM25Okapi(tokenized)
+    return _bm25_corpus_cache
 
 
 def _search_bm25_only(
@@ -228,38 +245,16 @@ def _search_bm25_only(
     top_k: int = 5,
 ) -> list[SearchResult]:
     """BM25-only fallback searching concept notes directly."""
-    global _bm25_corpus_cache, _bm25_model_cache
-    
-    if _bm25_corpus_cache is None:
-        corpus: list[tuple[str, str]] = []
-        concepts = scan_all_concepts()
-        
-        for fm in concepts:
-            f = fm["_path"]
-            try:
-                text = f.read_text(encoding="utf-8")
-                corpus.append((fm["_stem"], text))
-            except OSError:
-                continue
-                
-        _bm25_corpus_cache = corpus
-        # Pre-build BM25 model for the entire corpus
-        if BM25Okapi is not None and corpus:
-            tokenized = [text.lower().split() for _, text in corpus]
-            _bm25_model_cache = BM25Okapi(tokenized)
-
-    corpus = _bm25_corpus_cache
+    corpus = _ensure_bm25_corpus_cache()
     if not corpus:
         return []
 
     if book_name:
         book_lower = book_name.lower()
-        valid_indices = {i for i, (s, _) in enumerate(corpus) if book_lower in s.lower()}
-        filtered_corpus = [corpus[i] for i in range(len(corpus)) if i in valid_indices]
-        bm25_res = _bm25_search(query, filtered_corpus, top_k=top_k)
-        # Remap indices
-        filtered_to_orig = [i for i in range(len(corpus)) if i in valid_indices]
-        bm25_results = [(filtered_to_orig[i], s) for i, s in bm25_res]
+        valid = [i for i, (s, _) in enumerate(corpus) if book_lower in s.lower()]
+        filtered = [corpus[i] for i in valid]
+        res = _bm25_search(query, filtered, top_k=top_k)
+        bm25_results = [(valid[i], s) for i, s in res]
     else:
         bm25_results = _bm25_search(query, corpus, top_k=top_k, bm25_model=_bm25_model_cache)
 
