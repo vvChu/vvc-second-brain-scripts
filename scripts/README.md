@@ -64,7 +64,9 @@ scripts/
 │   ├── prompts/               ← Prompt registry (pipeline.py, services.py, system.py)
 │   ├── text_chunker.py        ← Heading-aware Map-Reduce document chunker (>200k chars)
 │   ├── vault.py               ← Vault directory resolver & relative path utilities
-│   └── vector_store.py        ← Fast NumPy/TF-IDF vector store & cosine indexing
+│   ├── vector_io.py           ← Low-level NPZ storage reading & atomic saving
+│   ├── vector_store.py        ← Fast NumPy vector store & cosine indexing
+│   └── vector_sync.py         ← Full embedding synchronization & circuit breaker engine
 │
 ├── pipeline/                  ← 5-Stage Ingestion Pipeline
 │   ├── image_processor.py     ← 5-stage pipeline orchestrator (single image mode)

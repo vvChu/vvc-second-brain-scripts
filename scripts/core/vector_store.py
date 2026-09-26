@@ -12,8 +12,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import os
-import shutil
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -25,6 +23,7 @@ import numpy as np
 from core.config import cfg
 from core.file_lock import CrossProcessFileLock
 from core.llm.embedding_client import get_embedding
+from core.vector_io import atomic_save_index, merge_pending_updates, read_index_file
 
 _logger = logging.getLogger("vvc.vector_store")
 
@@ -83,7 +82,6 @@ class VectorStore:
             except OSError:
                 pass
 
-        # Nếu tệp trên đĩa mới hơn bản ghi nhớ trong RAM, nạp lại
         if current_mtime > store._mtime:
             store.load()
 
@@ -95,48 +93,7 @@ class VectorStore:
     @staticmethod
     def _read_index_data(path: Path) -> tuple[list[np.ndarray], list[str], list[str]]:
         """Read index data from modern or legacy .npz schema safely."""
-        try:
-            with np.load(path, allow_pickle=True) as data:
-                if "embeddings" in data and "sources" in data:
-                    raw_embs = data["embeddings"]
-                    raw_sources = data["sources"].tolist()
-                    raw_texts = data["texts"].tolist() if "texts" in data else [""] * len(raw_sources)
-                elif "vectors" in data and "stems" in data:
-                    _logger.info(f"Migrating legacy embedding index format from {path.name}...")
-                    raw_embs = data["vectors"]
-                    raw_sources = data["stems"].tolist()
-                    raw_texts = []
-                    for stem in raw_sources:
-                        fpath = cfg.concepts_dir / f"{stem}.md"
-                        if fpath.exists():
-                            try:
-                                raw_texts.append(fpath.read_text(encoding="utf-8")[:2000])
-                            except Exception:
-                                raw_texts.append("")
-                        else:
-                            raw_texts.append("")
-                else:
-                    _logger.warning(f"Unrecognized index structure in {path}")
-                    return [], [], []
-
-                sources = [str(s) for s in raw_sources]
-                texts = [str(t) for t in raw_texts]
-
-                if raw_embs.size > 0:
-                    embs_arr = np.array(raw_embs, dtype=np.float32)
-                    if embs_arr.ndim == 1:
-                        embs_arr = embs_arr.reshape(1, -1)
-                    norms = np.linalg.norm(embs_arr, axis=1, keepdims=True)
-                    norms = np.where(norms == 0, 1.0, norms)
-                    embs_arr = embs_arr / norms
-                    embeddings = list(embs_arr)
-                else:
-                    embeddings = []
-
-                return embeddings, texts, sources
-        except Exception as e:
-            _logger.warning(f"Failed to read index data from {path}: {e}")
-            return [], [], []
+        return read_index_file(path)
 
     def _reset_empty(self) -> None:
         self.embeddings = np.empty((0, 0), dtype=np.float32)
@@ -213,14 +170,12 @@ class VectorStore:
         if norm > 0:
             q = q / norm
 
-        # Tính dot product cực nhanh trên L2-normalized vectors
         try:
             similarities = np.dot(self.embeddings, q)
         except ValueError as e:
             _logger.error(f"Dimension mismatch in vector search: {e}")
             return []
 
-        # Lọc theo ngưỡng và sắp xếp
         results: list[tuple[str, float]] = []
         if top_k == 1:
             best_idx = int(np.argmax(similarities))
@@ -268,38 +223,7 @@ class VectorStore:
 
     def _atomic_save(self, embeddings: np.ndarray | list[np.ndarray], texts: list[str], sources: list[str]) -> bool:
         """Atomic write to index_path with temporary file and backup synchronization."""
-        self.index_path.parent.mkdir(parents=True, exist_ok=True)
-        tmp_path = self.index_path.parent / f"{self.index_path.stem}_tmp.npz"
-        bak_tmp = self.bak_path.with_suffix(".npz.bak.tmp")
-        try:
-            arr_embs = np.array(embeddings, dtype=np.float32)
-            if arr_embs.ndim == 1 and arr_embs.size > 0:
-                arr_embs = arr_embs.reshape(1, -1)
-            elif arr_embs.size == 0:
-                arr_embs = np.empty((0, 0), dtype=np.float32)
-            np.savez_compressed(
-                tmp_path,
-                embeddings=arr_embs,
-                texts=np.array(texts, dtype=object),
-                sources=np.array(sources, dtype=object),
-            )
-            os.replace(tmp_path, self.index_path)
-            try:
-                shutil.copy2(self.index_path, bak_tmp)
-                os.replace(bak_tmp, self.bak_path)
-            except Exception as bak_err:
-                _logger.warning(f"Failed to sync backup index: {bak_err}")
-            return True
-        except Exception as e:
-            _logger.error(f"Failed to atomic save vector store: {e}")
-            return False
-        finally:
-            for p in (tmp_path, bak_tmp):
-                if p.exists():
-                    try:
-                        p.unlink()
-                    except OSError:
-                        pass
+        return atomic_save_index(self.index_path, self.bak_path, embeddings, texts, sources)
 
     def flush(self) -> bool:
         """Ghi các cập nhật đang chờ trong RAM xuống tệp chỉ mục trên đĩa."""
@@ -315,19 +239,9 @@ class VectorStore:
                     if not sources and self.sources:
                         save_embs, save_texts, save_sources = self.embeddings, self.texts, self.sources
                     else:
-                        idx_map = {src: i for i, src in enumerate(sources)}
-                        for stem, (c_hash, emb_vec) in self._pending_updates.items():
-                            if stem in idx_map:
-                                i = idx_map[stem]
-                                embs_list[i] = emb_vec
-                                texts[i] = c_hash
-                            else:
-                                sources.append(stem)
-                                texts.append(c_hash)
-                                embs_list.append(emb_vec)
-                                idx_map[stem] = len(sources) - 1
-                        save_embs = np.array(embs_list, dtype=np.float32) if embs_list else np.empty((0, 0), dtype=np.float32)
-                        save_texts, save_sources = texts, sources
+                        save_embs, save_texts, save_sources = merge_pending_updates(
+                            sources, texts, embs_list, self._pending_updates
+                        )
                 else:
                     save_embs, save_texts, save_sources = self.embeddings, self.texts, self.sources
 
@@ -412,136 +326,6 @@ class VectorStore:
 
     def sync_all(self, concepts: list[dict] | None = None) -> dict[str, int]:
         """Đồng bộ hóa toàn bộ danh mục concept notes vào tệp chỉ mục vector."""
-        from core.vault import scan_all_concepts
+        from core.vector_sync import sync_vector_index
 
-        _logger.info("Starting full embedding synchronization...")
-        if not cfg.gateway_url or not cfg.gateway_api_key:
-            _logger.error("AI Gateway config not found. Cannot sync embeddings.")
-            return {"new": 0, "updated": 0, "deleted": 0, "total": 0}
-
-        try:
-            with CrossProcessFileLock(self.lock_path):
-                self.load()
-                existing_sources = list(self.sources)
-                existing_texts = list(self.texts)
-                existing_embeddings = list(self.embeddings)
-                index_map = {src: i for i, src in enumerate(existing_sources)}
-
-                new_sources: list[str] = []
-                new_texts: list[str] = []
-                new_embeddings: list[np.ndarray] = []
-                valid_sources: set[str] = set()
-
-                updated_count = 0
-                new_count = 0
-
-                if concepts is None:
-                    concepts = scan_all_concepts()
-
-                circuit_breaker_tripped = False
-                consecutive_errors = 0
-                max_consecutive_errors = 5
-
-                for fm in concepts:
-                    raw_path = fm.get("_path") or fm.get("path")
-                    if raw_path is None:
-                        continue
-                    fpath = Path(raw_path)
-                    stem = str(fm.get("_stem") or fm.get("stem") or fpath.stem)
-                    valid_sources.add(stem)
-
-                    try:
-                        full_content = fpath.read_text(encoding="utf-8")
-                        current_hash = f"hash:{hashlib.md5(full_content.encode('utf-8')).hexdigest()}"
-                        current_text_for_embedding = full_content[:2000]
-                    except Exception:
-                        continue
-
-                    needs_embedding = False
-                    if stem in index_map:
-                        idx = index_map[stem]
-                        old_text = existing_texts[idx]
-                        if isinstance(old_text, str) and old_text.startswith("hash:"):
-                            if current_hash != old_text:
-                                if not circuit_breaker_tripped:
-                                    needs_embedding = True
-                                    updated_count += 1
-                        else:
-                            pass
-                    else:
-                        if not circuit_breaker_tripped:
-                            needs_embedding = True
-                            new_count += 1
-                        else:
-                            continue
-
-                    if needs_embedding:
-                        _logger.info(f"Embedding: {stem}")
-                        emb = get_embedding(current_text_for_embedding)
-                        if emb is not None:
-                            new_sources.append(stem)
-                            new_texts.append(current_hash)
-                            new_embeddings.append(emb)
-                            consecutive_errors = 0
-                        else:
-                            consecutive_errors += 1
-                            backoff_delay = min(3.0 * (2 ** (consecutive_errors - 1)), 30.0)
-                            _logger.warning(
-                                f"Embedding error {consecutive_errors}/{max_consecutive_errors}. "
-                                f"Backing off {backoff_delay:.0f}s..."
-                            )
-                            time.sleep(backoff_delay)
-                            if consecutive_errors >= max_consecutive_errors:
-                                _logger.error(
-                                    f"Consecutive embedding errors reached {max_consecutive_errors}. "
-                                    "Tripping circuit breaker."
-                                )
-                                circuit_breaker_tripped = True
-
-                            if stem in index_map:
-                                idx = index_map[stem]
-                                new_sources.append(stem)
-                                new_texts.append(existing_texts[idx])
-                                new_embeddings.append(existing_embeddings[idx])
-
-                        time.sleep(0.2)
-                    else:
-                        idx = index_map[stem]
-                        new_sources.append(stem)
-                        old_text = existing_texts[idx]
-                        if isinstance(old_text, str) and old_text.startswith("hash:"):
-                            new_texts.append(old_text)
-                        else:
-                            new_texts.append(current_hash)
-                        new_embeddings.append(existing_embeddings[idx])
-
-                deleted_count = len(existing_sources) - len(valid_sources)
-                if updated_count == 0 and new_count == 0 and deleted_count == 0:
-                    _logger.info("Embedding index is already up to date.")
-                    return {"new": 0, "updated": 0, "deleted": 0, "total": len(new_sources)}
-
-                _logger.info(f"Processed {new_count} new, {updated_count} updated, {deleted_count} deleted.")
-                if not new_embeddings:
-                    _logger.warning("No valid embeddings to save.")
-                    return {"new": 0, "updated": 0, "deleted": deleted_count, "total": 0}
-
-                if not self._atomic_save(new_embeddings, new_texts, new_sources):
-                    _logger.error("Failed to save embedding index.")
-                    return {"new": new_count, "updated": updated_count, "deleted": deleted_count, "total": 0}
-
-                self.sources = new_sources
-                self.texts = new_texts
-                self.embeddings = np.array(new_embeddings, dtype=np.float32)
-                self._index_map = {src: i for i, src in enumerate(self.sources)}
-                try:
-                    self._mtime = self.index_path.stat().st_mtime
-                except OSError:
-                    self._mtime = time.time()
-                self._dirty = False
-                self._pending_updates.clear()
-                _logger.info(f"Embedding index saved successfully: {len(new_sources)} concepts.")
-                return {"new": new_count, "updated": updated_count, "deleted": deleted_count, "total": len(new_sources)}
-
-        except Exception as e:
-            _logger.error(f"Failed in sync_all: {e}")
-            return {"new": 0, "updated": 0, "deleted": 0, "total": 0}
+        return sync_vector_index(self, concepts=concepts)
