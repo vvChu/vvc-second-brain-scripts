@@ -45,6 +45,6 @@ The system operates as an Autonomous Knowledge Operating System ("Zero-Touch" LL
    - Small diagrams ($\le 8$ nodes) use Mermaid Academic Grayscale with pipe syntax `===>|"label"|` and Unicode operators (`≥`, `≤`).
 4. **Clean Wikilinks & Zero-Code-Pill**: Never wrap wikilinks with backticks (`[[link]]`). In Markdown tables, escape the pipe (`[[slug\|alias]]`).
 5. **Strict HTML Entity Context Isolation**: `#40;` và `#41;` are ONLY allowed inside ````mermaid` blocks. Outside mermaid, standard parentheses `()` must be used.
-6. **Architectural Budgets & Zero-Slack Ratchets (v8.15.13)**: All production Python files must be $\le 350$ lines (0 legacy files — 100% vault-wide compliance); new functions must be $\le 50$ lines (AST analysis, 55 legacy function files locked with zero-slack ratchets in `test_architectural_budgets.py`).
+6. **Architectural Budgets & Zero-Slack Ratchets (v8.15.13)**: All production Python files must be $\le 350$ lines and 100% functions must be $\le 50$ lines via AST analysis (0 legacy ratchets on both axes: `LEGACY_LINE_RATCHET = {}`, `LEGACY_FUNC_OVER_50_BUDGET = {}`). Proactively decompose functions reaching $\ge 40$ lines (anti-locality bias); never compromise function modularity to fit file length; decompose into deep packages instead.
 7. **Session Artifact Buffer (.md/scratch/)**: All transient agent artifacts (plans, tasks, walkthroughs, claim notices) MUST be stored in `.md/scratch/` to avoid dirtying git working tree.
 

@@ -6,115 +6,109 @@ from services.diagram_base import (
     sync_bound_text_translation,
 )
 
-def apply_cycle_layout(elements: list[dict]) -> bool:
-    shapes = {}
-    arrows = []
-    
-    for el in elements:
-        t = el.get("type")
-        if t in ("rectangle", "ellipse", "diamond"):
-            shapes[el["id"]] = el
-        elif t == "arrow":
-            arrows.append(el)
-            
-    if not shapes:
-        return False
-        
+def _extract_shapes_and_edges(
+    elements: list[dict],
+) -> tuple[dict[str, dict], list[tuple[dict, str, str]], nx.DiGraph]:
+    """Extract shapes, arrows and build NetworkX directed graph."""
+    shapes = {
+        el["id"]: el
+        for el in elements
+        if el.get("type") in ("rectangle", "ellipse", "diamond")
+    }
+    arrows = [el for el in elements if el.get("type") == "arrow"]
     G = nx.DiGraph()
     for sid in shapes:
         G.add_node(sid)
-        
+
     edges = []
     for arr in arrows:
         sb = arr.get("startBinding", {})
         eb = arr.get("endBinding", {})
-        
-        start_id = sb.get("elementId") if isinstance(sb, dict) else (sb if isinstance(sb, str) else None)
-        end_id = eb.get("elementId") if isinstance(eb, dict) else (eb if isinstance(eb, str) else None)
-        
-        if start_id in shapes and end_id in shapes:
-            G.add_edge(start_id, end_id)
-            edges.append((arr, start_id, end_id))
-            
-    if not G.nodes:
-        return False
-        
-    # Attempt to order nodes by cycle path (e.g. A->B->C->A)
-    # Use simple topological sort if DAG, or cycle finding if cyclic
+        sid = (
+            sb.get("elementId")
+            if isinstance(sb, dict)
+            else (sb if isinstance(sb, str) else None)
+        )
+        eid = (
+            eb.get("elementId")
+            if isinstance(eb, dict)
+            else (eb if isinstance(eb, str) else None)
+        )
+        if sid in shapes and eid in shapes:
+            G.add_edge(sid, eid)
+            edges.append((arr, sid, eid))
+    return shapes, edges, G
+
+
+def _order_cycle_nodes(G: nx.DiGraph) -> list[str]:
+    """Order nodes along the largest directed cycle if available."""
     try:
         cycles = list(nx.simple_cycles(G))
         if cycles:
-            # Use the largest cycle for ordering
-            ordered_nodes = max(cycles, key=len)
-            # Add remaining nodes
+            ordered_nodes = list(max(cycles, key=len))
             for n in G.nodes:
                 if n not in ordered_nodes:
                     ordered_nodes.append(n)
-        else:
-            ordered_nodes = list(G.nodes)
+            return ordered_nodes
     except Exception:
-        ordered_nodes = list(G.nodes)
-    
-    # Calculate positions
-    pos = {}
-    center_x, center_y = 600, 400
+        pass
+    return list(G.nodes)
+
+
+def _compute_cycle_positions(
+    ordered_nodes: list[str], center_x: float, center_y: float
+) -> dict[str, tuple[float, float]]:
+    """Compute circular positions around center point."""
+    pos: dict[str, tuple[float, float]] = {}
     n = len(ordered_nodes)
-    
     if n > 0:
         radius = max(250, n * 60)
         angle_step = 2 * math.pi / n
         for i, nid in enumerate(ordered_nodes):
-            angle = i * angle_step - math.pi / 2 # Start at 12 o'clock
+            angle = i * angle_step - math.pi / 2
             pos[nid] = (
                 center_x + radius * math.cos(angle),
-                center_y + radius * math.sin(angle)
+                center_y + radius * math.sin(angle),
             )
-            
-    # 1. Update shape positions and Academic Grayscale Aesthetics
+    return pos
+
+
+def _apply_shape_geometry(
+    shapes: dict[str, dict],
+    pos: dict[str, tuple[float, float]],
+    elements: list[dict],
+) -> None:
+    """Update shape bounds and apply academic grayscale theme."""
     for sid, (x, y) in pos.items():
         shape = shapes[sid]
-        
-        old_x = shape.get("x", 0)
-        old_y = shape.get("y", 0)
-        
-        shape_w = shape.get("width", 150)
-        shape_h = shape.get("height", 100)
-        
-        new_x = x - shape_w / 2
-        new_y = y - shape_h / 2
-        
-        dx = new_x - old_x
-        dy = new_y - old_y
-        
+        old_x, old_y = shape.get("x", 0), shape.get("y", 0)
+        sw, sh = shape.get("width", 150), shape.get("height", 100)
+        new_x, new_y = x - sw / 2, y - sh / 2
+
         shape["x"] = float(new_x)
         shape["y"] = float(new_y)
-        
-        # --- Academic Book Aesthetics ---
         shape["roughness"] = 0
         shape["backgroundColor"] = cfg.excalidraw_background_color
         shape["strokeColor"] = cfg.excalidraw_stroke_color
         shape["strokeWidth"] = cfg.excalidraw_stroke_width
         shape["fillStyle"] = "solid"
-        
-        # Ellipse preferred for cycles
-        if "shape" not in shape and shape.get("type") == "rectangle":
-            # Just keeping what LLM said for now unless explicitly forcing ellipse
-            pass
-            
-        sync_bound_text_translation(shape, elements, dx, dy)
-                        
-    # 2. Update arrows geometrically with curved path
+
+        sync_bound_text_translation(shape, elements, new_x - old_x, new_y - old_y)
+
+
+def _apply_curved_arrows(
+    edges: list[tuple[dict, str, str]],
+    shapes: dict[str, dict],
+    center_x: float,
+    center_y: float,
+) -> None:
+    """Update arrows geometrically with outward-curving midpoint."""
     for arr, sid, eid in edges:
-        s_shape = shapes[sid]
-        e_shape = shapes[eid]
-        
+        s_shape, e_shape = shapes[sid], shapes[eid]
         start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s_shape, e_shape)
-        
-        # Calculate mid point, pushed outwards slightly to form a curve
         mx = (start_x + end_x) / 2
         my = (start_y + end_y) / 2
-        
-        # Vector from center to mid point
+
         v_cx = mx - center_x
         v_cy = my - center_y
         v_dist = math.hypot(v_cx, v_cy)
@@ -125,18 +119,29 @@ def apply_cycle_layout(elements: list[dict]) -> bool:
 
         arr["x"] = start_x
         arr["y"] = start_y
-        
         arr["points"] = [
             [0.0, 0.0],
             [float(mx - start_x), float(my - start_y)],
-            [float(end_x - start_x), float(end_y - start_y)]
+            [float(end_x - start_x), float(end_y - start_y)],
         ]
-        
         arr["roughness"] = 0
         arr["strokeColor"] = cfg.excalidraw_stroke_color
         arr["strokeWidth"] = cfg.excalidraw_stroke_width
-        arr["roundness"] = {"type": 2} # Curved line
+        arr["roundness"] = {"type": 2}
         if arr.get("strokeStyle") != "dashed":
             arr["strokeStyle"] = "solid"
-            
+
+
+def apply_cycle_layout(elements: list[dict]) -> bool:
+    """Applies Cyclic Layout to Excalidraw elements."""
+    shapes, edges, G = _extract_shapes_and_edges(elements)
+    if not shapes or not G.nodes:
+        return False
+
+    center_x, center_y = 600, 400
+    ordered_nodes = _order_cycle_nodes(G)
+    pos = _compute_cycle_positions(ordered_nodes, center_x, center_y)
+
+    _apply_shape_geometry(shapes, pos, elements)
+    _apply_curved_arrows(edges, shapes, center_x, center_y)
     return True

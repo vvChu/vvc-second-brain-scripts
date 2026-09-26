@@ -32,11 +32,9 @@ CHAPTER_SLUGS = [
     "chuong_12_lo_trinh_chuyen_doi_90_ngay_va_bo_bieu_mau_khung_thuc_chien",
 ]
 
-def audit():
-    print("=== AUDIT START ===")
-    issues = []
 
-    # 1. Check Images in Attachments
+def _check_attachments_images(issues: list[str]) -> None:
+    """Audit hero images in attachments directory."""
     print("\n--- 1. Hero Images in Attachments ---")
     for i, slug in enumerate(CHAPTER_SLUGS, 1):
         img_name = f"{slug}_hero.jpg"
@@ -57,175 +55,144 @@ def audit():
             issues.append(f"Ch{i:02d} image error: {e}")
             print(f"[-] Error opening {img_name}: {e}")
 
-    # 2. Check 12 Chapters in Topics
+
+def _check_single_chapter(slug: str, i: int, issues: list[str]) -> None:
+    """Audit single chapter file for frontmatter, H1, hero embed, and leaks."""
+    ch_path = TOPICS_DIR / f"{slug}.md"
+    if not ch_path.exists():
+        issues.append(f"Chapter file missing: {slug}.md")
+        print(f"[-] Missing: {slug}.md")
+        return
+    text = ch_path.read_text(encoding="utf-8")
+
+    fm_match = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n", text, re.DOTALL)
+    if not fm_match:
+        issues.append(f"{slug}.md missing frontmatter")
+    else:
+        try:
+            yaml.safe_load(fm_match.group(1))
+        except Exception as e:
+            issues.append(f"{slug}.md frontmatter parse error: {e}")
+
+    h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
+    if not h1_match:
+        issues.append(f"{slug}.md missing H1")
+    else:
+        after_h1 = text[h1_match.end():h1_match.end() + 300]
+        embed_match = re.search(r"!\[\[(.*?)\]\]", after_h1)
+        if not embed_match:
+            issues.append(f"{slug}.md missing hero image embed after H1")
+        elif embed_match.group(1) == f"{slug}_hero.jpg|100%":
+            print(f"[+] {slug}.md embed OK: {embed_match.group(1)}")
+
+    non_mermaid_parts = re.split(r"```mermaid.*?```", text, flags=re.DOTALL)
+    for part_idx, part in enumerate(non_mermaid_parts):
+        if "#40;" in part or "#41;" in part:
+            issues.append(f"{slug}.md has leaked #40; or #41; outside mermaid in section {part_idx}!")
+
+    code_pills = re.findall(r"`\[\[.*?\]\]`", text)
+    if code_pills:
+        issues.append(f"{slug}.md has {len(code_pills)} code-pill wikilinks: {code_pills[:3]}")
+
+
+def _check_chapters_markdown(issues: list[str]) -> None:
+    """Audit all 12 chapters markdown files in topics directory."""
     print("\n--- 2. Chapters Markdown Files ---")
     for i, slug in enumerate(CHAPTER_SLUGS, 1):
-        ch_path = TOPICS_DIR / f"{slug}.md"
-        if not ch_path.exists():
-            issues.append(f"Chapter file missing: {slug}.md")
-            print(f"[-] Missing: {slug}.md")
-            continue
-        text = ch_path.read_text(encoding="utf-8")
-        
-        # Check frontmatter
-        fm_match = re.match(r"^---\s*\r?\n(.*?)\r?\n---\s*\r?\n", text, re.DOTALL)
-        if not fm_match:
-            issues.append(f"{slug}.md missing frontmatter")
-            print(f"[-] {slug}.md missing frontmatter")
-        else:
-            try:
-                fm = yaml.safe_load(fm_match.group(1))
-            except Exception as e:
-                issues.append(f"{slug}.md frontmatter parse error: {e}")
-                print(f"[-] {slug}.md frontmatter error: {e}")
+        _check_single_chapter(slug, i, issues)
 
-        # Check H1
-        h1_match = re.search(r"^#\s+(.+)$", text, re.MULTILINE)
-        if not h1_match:
-            issues.append(f"{slug}.md missing H1")
-            print(f"[-] {slug}.md missing H1")
-        else:
-            h1 = h1_match.group(1).strip()
-            # Check hero embed right after H1
-            after_h1 = text[h1_match.end():h1_match.end()+300]
-            embed_match = re.search(r"!\[\[(.*?)\]\]", after_h1)
-            if not embed_match:
-                issues.append(f"{slug}.md missing hero image embed after H1")
-                print(f"[-] {slug}.md missing hero embed after H1: {h1[:40]}")
-            else:
-                embed_target = embed_match.group(1)
-                expected_target = f"{slug}_hero.jpg|100%"
-                if embed_target != expected_target:
-                    print(f"[?] {slug}.md embed target is '{embed_target}', expected '{expected_target}'")
-                else:
-                    print(f"[+] {slug}.md embed OK: {embed_target}")
 
-        # Check for HTML entity leakage outside mermaid: #40; or #41;
-        non_mermaid_parts = re.split(r"```mermaid.*?```", text, flags=re.DOTALL)
-        for part_idx, part in enumerate(non_mermaid_parts):
-            if "#40;" in part or "#41;" in part:
-                issues.append(f"{slug}.md has leaked #40; or #41; outside mermaid!")
-                print(f"[-] {slug}.md has leaked #40; or #41; outside mermaid in section {part_idx}!")
+def _check_manuscript_syntax(m_text: str, issues: list[str]) -> None:
+    """Audit Mermaid blocks, HTML entity leakage, and code pills in manuscript."""
+    mermaid_blocks = re.findall(r"```mermaid(.*?)```", m_text, re.DOTALL)
+    print(f"[+] Manuscript contains {len(mermaid_blocks)} Mermaid blocks")
+    for idx, block in enumerate(mermaid_blocks, 1):
+        chimeric_edges = re.findall(r"(?:={3,}|-\.{1,}-)<*\"[^\"]+\">*(?:={3,}|-\.{1,}-)>", block)
+        if chimeric_edges:
+            issues.append(f"Manuscript Mermaid block {idx} has chimeric edge: {chimeric_edges}")
+        if re.search(r"(?<![<=-])>=|(?<![<=-])<=(?![=>-])", block):
+            issues.append(f"Manuscript Mermaid block {idx} has raw >= or <= operators")
 
-        # Check for backticks around wikilinks
-        code_pill_links = re.findall(r"`\[\[.*?\]\]`", text)
-        if code_pill_links:
-            issues.append(f"{slug}.md has {len(code_pill_links)} code-pill wikilinks: {code_pill_links[:3]}")
-            print(f"[-] {slug}.md code-pill wikilinks found: {code_pill_links[:3]}")
+    non_mermaid_m = re.split(r"```mermaid.*?```", m_text, flags=re.DOTALL)
+    for part_idx, part in enumerate(non_mermaid_m):
+        if "#40;" in part or "#41;" in part:
+            issues.append(f"Manuscript has leaked #40; or #41; outside mermaid in section {part_idx}!")
 
-    # 3. Check Master Manuscript
+    m_code_pills = re.findall(r"`\[\[.*?\]\]`", m_text)
+    if m_code_pills:
+        issues.append(f"Manuscript has {len(m_code_pills)} code-pill wikilinks: {m_code_pills[:3]}")
+
+
+def _check_master_manuscript(issues: list[str]) -> None:
+    """Audit master manuscript file content, structure, and embeds."""
     print("\n--- 3. Master Manuscript File ---")
     if not MANUSCRIPT_FILE.exists():
         issues.append("Master manuscript missing!")
         print("[-] Master manuscript missing!")
-    else:
-        m_text = MANUSCRIPT_FILE.read_text(encoding="utf-8")
-        print(f"[+] Manuscript size: {len(m_text):,} chars, {len(m_text.split()):,} words")
-        
-        # Frontmatter
-        fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", m_text, re.DOTALL)
-        if not fm_match:
-            issues.append("Manuscript missing frontmatter")
-        else:
-            try:
-                fm = yaml.safe_load(fm_match.group(1))
-                print(f"[+] Manuscript frontmatter valid: title='{fm.get('title')}'")
-            except Exception as e:
-                issues.append(f"Manuscript frontmatter error: {e}")
+        return
 
-        # Check all 12 chapters are present
-        for i, slug in enumerate(CHAPTER_SLUGS, 1):
-            if f"<!-- CHAPTER {i} START -->" not in m_text:
-                issues.append(f"Manuscript missing CHAPTER {i} START comment")
-            expected_img = f"{slug}_hero.jpg"
-            if expected_img not in m_text:
-                issues.append(f"Manuscript missing hero image for Ch{i}: {expected_img}")
-            else:
-                print(f"[+] Manuscript contains Ch{i} hero image: {expected_img}")
+    m_text = MANUSCRIPT_FILE.read_text(encoding="utf-8")
+    print(f"[+] Manuscript size: {len(m_text):,} chars, {len(m_text.split()):,} words")
 
-        # Check Mermaid blocks in manuscript
-        mermaid_blocks = re.findall(r"```mermaid(.*?)```", m_text, re.DOTALL)
-        print(f"[+] Manuscript contains {len(mermaid_blocks)} Mermaid blocks")
-        for idx, block in enumerate(mermaid_blocks, 1):
-            # Check edge label syntax
-            chimeric_edges = re.findall(r"(?:={3,}|-\.{1,}-)<*\"[^\"]+\">*(?:={3,}|-\.{1,}-)>", block)
-            if chimeric_edges:
-                issues.append(f"Manuscript Mermaid block {idx} has chimeric edge: {chimeric_edges}")
-            if re.search(r"(?<![<=-])>=|(?<![<=-])<=(?![=>-])", block):
-                issues.append(f"Manuscript Mermaid block {idx} has raw >= or <= operators")
+    fm_match = re.match(r"^---\s*\n(.*?)\n---\s*\n", m_text, re.DOTALL)
+    if not fm_match:
+        issues.append("Manuscript missing frontmatter")
 
-        # Check HTML entity leakage outside mermaid
-        non_mermaid_m = re.split(r"```mermaid.*?```", m_text, flags=re.DOTALL)
-        for part_idx, part in enumerate(non_mermaid_m):
-            if "#40;" in part or "#41;" in part:
-                issues.append(f"Manuscript has leaked #40; or #41; outside mermaid in section {part_idx}!")
-                print(f"[-] Manuscript has leaked #40; or #41; outside mermaid!")
+    for i, slug in enumerate(CHAPTER_SLUGS, 1):
+        if f"<!-- CHAPTER {i} START -->" not in m_text:
+            issues.append(f"Manuscript missing CHAPTER {i} START comment")
+        expected_img = f"{slug}_hero.jpg"
+        if expected_img not in m_text:
+            issues.append(f"Manuscript missing hero image for Ch{i}: {expected_img}")
 
-        # Check code pills
-        m_code_pills = re.findall(r"`\[\[.*?\]\]`", m_text)
-        if m_code_pills:
-            issues.append(f"Manuscript has {len(m_code_pills)} code-pill wikilinks: {m_code_pills[:3]}")
+    _check_manuscript_syntax(m_text, issues)
 
-        # Check Excalidraw embeds
-        excalidraw_embeds = re.findall(r"!\[\[(.*?.excalidraw\.md)(?:\|.*?)?\]\]", m_text)
-        print(f"[+] Manuscript contains {len(excalidraw_embeds)} Excalidraw embeds: {excalidraw_embeds}")
-        for exc in excalidraw_embeds:
-            exc_path = ATTACHMENTS_DIR / exc
-            if not exc_path.exists():
-                exc_path_top = TOPICS_DIR / exc
-                if not exc_path_top.exists():
-                    issues.append(f"Excalidraw file missing: {exc}")
-                    print(f"[-] Missing Excalidraw: {exc}")
-                else:
-                    print(f"[+] Excalidraw in topics: {exc}")
-            else:
-                print(f"[+] Excalidraw in attachments: {exc}")
+    excalidraw_embeds = re.findall(r"!\[\[(.*?.excalidraw\.md)(?:\|.*?)?\]\]", m_text)
+    for exc in excalidraw_embeds:
+        if not (ATTACHMENTS_DIR / exc).exists() and not (TOPICS_DIR / exc).exists():
+            issues.append(f"Excalidraw file missing: {exc}")
 
-        # Check TOC links in manuscript
-        print("\n--- Checking Manuscript TOC Navigation ---")
-        toc_match = re.search(r"## 🗺️ Mục Lục Toàn Văn.*?(?=\n---|\n<!-- CHAPTER 1 START -->)", m_text, re.DOTALL)
-        if toc_match:
-            toc_content = toc_match.group(0)
-            print("[+] Found TOC content")
-            links = re.findall(r"\[\[(.*?)\]\]", toc_content)
-            print(f"[+] TOC links ({len(links)}): {links}")
 
-    # 4. Check index.md & wiki_maintain.py
+def _check_master_index_and_maintenance(issues: list[str]) -> None:
+    """Audit index.md and wiki_maintain.py preservation of Flagship Playbooks."""
     print("\n--- 4. Master Index & Maintenance ---")
     if not INDEX_FILE.exists():
         issues.append("index.md missing!")
     else:
         idx_text = INDEX_FILE.read_text(encoding="utf-8")
-        if "Kiệt Tác Chuyên Luận (Flagship Playbooks)" in idx_text:
-            print("[+] index.md has Flagship Playbooks showcase")
-        else:
+        if "Kiệt Tác Chuyên Luận (Flagship Playbooks)" not in idx_text:
             issues.append("index.md MISSING Flagship Playbooks showcase!")
-            print("[-] index.md MISSING Flagship Playbooks showcase!")
 
-    # Check wiki_maintain.py
     wm_path = VAULT_ROOT / "scripts" / "wiki_maintain.py"
-    wm_text = wm_path.read_text(encoding="utf-8")
-    if "Kiệt Tác Chuyên Luận" in wm_text:
-        print("[+] wiki_maintain.py preserves Flagship Playbooks showcase")
-    else:
-        issues.append("wiki_maintain.py does NOT generate/preserve Flagship Playbooks showcase! Running wiki_maintain will destroy it!")
-        print("[-] wiki_maintain.py will overwrite and destroy the Flagship Playbooks showcase!")
+    if "Kiệt Tác Chuyên Luận" not in wm_path.read_text(encoding="utf-8"):
+        issues.append("wiki_maintain.py does NOT generate/preserve Flagship Playbooks showcase!")
 
-    # 5. Check Master file
+
+def _check_master_file(issues: list[str]) -> None:
+    """Audit ai_eos_playbook_master.md links."""
     print("\n--- 5. Master Playbook File ---")
     if not MASTER_FILE.exists():
         issues.append("ai_eos_playbook_master.md missing!")
-    else:
-        mf_text = MASTER_FILE.read_text(encoding="utf-8")
-        if "ai_eos_playbook_full_manuscript" in mf_text:
-            print("[+] Master file links to full manuscript")
-        else:
-            issues.append("Master file does NOT link to full manuscript")
+    elif "ai_eos_playbook_full_manuscript" not in MASTER_FILE.read_text(encoding="utf-8"):
+        issues.append("Master file does NOT link to full manuscript")
+
+
+def audit() -> None:
+    """Run all audit checks on the AI EOS Playbook."""
+    print("=== AUDIT START ===")
+    issues: list[str] = []
+
+    _check_attachments_images(issues)
+    _check_chapters_markdown(issues)
+    _check_master_manuscript(issues)
+    _check_master_index_and_maintenance(issues)
+    _check_master_file(issues)
 
     print("\n=== AUDIT SUMMARY ===")
     print(f"Total issues found: {len(issues)}")
     for issue in issues:
         print(f" - {issue}")
+
 
 if __name__ == "__main__":
     audit()

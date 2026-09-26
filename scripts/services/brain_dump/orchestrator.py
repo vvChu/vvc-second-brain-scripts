@@ -93,6 +93,154 @@ def _is_meaningful_dump(text: str) -> bool:
     result = call_llm(prompt, task="correction")
     return bool(result and result.strip().upper().startswith("YES"))
 
+def _build_duplicate_feedback(entry: dict, url: str) -> list[str]:
+    """Generate formatted feedback links for a duplicate URL entry."""
+    src = entry.get("source_note", "")
+    fb = [f"- [[{src}|Ghi chép gốc (Đã xử lý trước đó)]]"] if src else [f"- URL gốc: [{url}]({url}) (Đã xử lý trước đó)"]
+    for c in entry.get("concepts", []):
+        c_stem, c_title = c.get("stem", ""), c.get("title", "")
+        if c_stem and c_title:
+            fb.append(f"  - [[{c_stem}|{c_title}]] (Đã tồn tại)")
+    return fb
+
+
+def _strip_duplicate_url_from_line(stripped: str, url: str) -> str | None:
+    """Return preserved handwritten notes if any, or None if line was purely URL/controls."""
+    temp = stripped.replace(url, "")
+    for kw in ["xử lý lại", "tải lại", "nạp lại", "chạy lại", "cập nhật", "reprocess", "/force", "force", "override"]:
+        temp = temp.replace(kw, "")
+    clean = re.sub(r"[#\*\-\s\(\)\[\]]+", "", temp)
+    if len(clean) >= 3:
+        _logger.info(f"[Deduplication] URL {url} trùng nhưng dòng có ghi chép viết tay. Giữ lại chữ.")
+        return stripped.replace(url, f"*(URL đã xử lý: {url})*")
+    _logger.info(f"[Deduplication] Chặn URL trùng: {url}. Đã tạo Auto-Feedback.")
+    return None
+
+
+def _deduplicate_dump_urls(
+    dump_text: str,
+) -> tuple[str, list[str], list[str], set[str], dict[str, str], bool]:
+    """Inspect URLs in dump lines, deduplicate against registry, and generate auto-feedback."""
+    registry = _load_url_registry()
+    remaining_lines: list[str] = []
+    auto_feedback: list[str] = []
+    urls_to_scrape: list[str] = []
+    visual_urls: set[str] = set()
+    url_normalization_map: dict[str, str] = {}
+    inbox_updated_directly = False
+
+    for line in dump_text.splitlines():
+        stripped = line.strip()
+        found_urls = _URL_PATTERN.findall(stripped) if stripped else []
+        if not found_urls:
+            remaining_lines.append(line)
+            continue
+
+        url = found_urls[0]
+        norm = _normalize_url(url)
+        url_normalization_map[url] = norm
+        if "youtube.com" in url or "youtu.be" in url or "/visual" in stripped.lower():
+            visual_urls.add(url)
+            line = re.sub(r"/visual\s*", "", line, flags=re.IGNORECASE)
+            stripped = re.sub(r"/visual\s*", "", stripped, flags=re.IGNORECASE).strip()
+
+        if norm in registry and not _check_override(stripped):
+            inbox_updated_directly = True
+            auto_feedback.extend(_build_duplicate_feedback(registry[norm], url))
+            line_rem = _strip_duplicate_url_from_line(stripped, url)
+            if line_rem:
+                remaining_lines.append(line_rem)
+        else:
+            remaining_lines.append(line)
+            urls_to_scrape.append(url)
+
+    return "\n".join(remaining_lines), auto_feedback, urls_to_scrape, visual_urls, url_normalization_map, inbox_updated_directly
+
+
+def _isolate_image_metadata(url_content: str) -> tuple[str, str]:
+    """Split and isolate image/visual metadata markers from URL content."""
+    for marker in ("\n\n## 🖼️ Hình ảnh bài viết", "\n\n## 🎞️", "\n\n## 🎬"):
+        if marker in url_content:
+            idx = url_content.index(marker)
+            return url_content[:idx], url_content[idx:]
+    return url_content, ""
+
+
+def _preprocess_and_save_transcripts(
+    new_dump_text: str, url_content: str, urls_to_scrape: list[str]
+) -> tuple[str, str, str]:
+    """Apply orthographic preprocessing and save transcript source note."""
+    orig_url = urls_to_scrape[0] if urls_to_scrape else ""
+    source_ref = "brain_dump"
+    if url_content:
+        clean_url_content, img_meta = _isolate_image_metadata(url_content)
+        url_content = f"{orthographic_preprocess(clean_url_content)}{img_meta}"
+        saved = _save_transcript(url_content, orig_url)
+        if saved:
+            source_ref = saved
+        return new_dump_text, url_content, source_ref
+
+    processed = orthographic_preprocess(new_dump_text)
+    saved = _save_transcript(processed, orig_url)
+    if saved:
+        source_ref = saved
+    return processed, "", source_ref
+
+
+def _update_processed_registry(
+    urls_to_scrape: list[str],
+    url_norm_map: dict[str, str],
+    source_ref: str,
+    saved_stems: list[tuple[str, str]],
+) -> None:
+    """Record newly scraped URLs into URL registry."""
+    if not urls_to_scrape:
+        return
+    registry = _load_url_registry()
+    for u in urls_to_scrape:
+        norm = url_norm_map.get(u)
+        if norm:
+            registry[norm] = {
+                "source_note": source_ref,
+                "concepts": [{"stem": stem, "title": title} for stem, title in saved_stems],
+                "processed_at": datetime.now().isoformat(),
+            }
+    _save_url_registry(registry)
+
+
+def _finalize_brain_dump(
+    dump_text: str,
+    content_hash: str,
+    saved_stems: list[tuple[str, str]],
+    auto_feedback: list[str],
+    source_ref: str,
+    urls_to_scrape: list[str],
+    url_norm_map: dict[str, str],
+) -> None:
+    """Commit inbox changes, register hash, update registry and rebuild MOCs."""
+    all_links = [f"- [[{s}|{t}]]" for s, t in saved_stems]
+    all_links.extend(auto_feedback)
+    if not all_links:
+        if source_ref and source_ref != "brain_dump":
+            all_links.append(f"- [[{source_ref}|Ghi chép gốc (Nội dung đã được hấp thụ vào kho tri thức)]]")
+        else:
+            all_links.append("- *(Nội dung đã được đối soát và hấp thụ vào các khái niệm hiện có)*")
+
+    _commit_inbox_changes(dump_text, "", all_links)
+    _register_processed_hash(content_hash)
+    _update_processed_registry(urls_to_scrape, url_norm_map, source_ref, saved_stems)
+
+    if saved_stems:
+        try:
+            from wiki_maintain import rebuild_incremental
+            for stem, _ in saved_stems:
+                c_file = cfg.concepts_dir / f"{stem}.md"
+                if c_file.exists():
+                    rebuild_incremental(c_file)
+        except Exception as e:
+            _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
+
+
 def handle_brain_dump() -> None:
     """Process pending content in Brain_Dump.md."""
     if not cfg.dump_file.exists():
@@ -106,7 +254,7 @@ def handle_brain_dump() -> None:
     if not dump_text:
         return
 
-    content_hash = hashlib.md5(dump_text.encode('utf-8')).hexdigest()
+    content_hash = hashlib.md5(dump_text.encode("utf-8")).hexdigest()
     if _is_recently_processed(content_hash):
         _logger.warning("Resurrection bug detected. Re-clearing inbox.")
         log("dump", "Resurrection bug self-healed.")
@@ -116,203 +264,30 @@ def handle_brain_dump() -> None:
     _logger.info(f"Processing Brain Dump ({len(dump_text)} chars)")
     log("dump", f"Brain Dump detected ({len(dump_text)} chars)")
 
-    # Phân tích và chặn trùng lặp JIT từng dòng chứa URL
-    lines = dump_text.splitlines()
-    registry = _load_url_registry()
-    
-    remaining_lines = []
-    auto_feedback_links = []
-    urls_to_scrape = []
-    url_normalization_map = {}
-    visual_urls = set()
-    
-    inbox_updated_directly = False
-    
-    for line in lines:
-        stripped_line = line.strip()
-        if not stripped_line:
-            remaining_lines.append(line)
-            continue
-            
-        found_urls = _URL_PATTERN.findall(stripped_line)
-        if not found_urls:
-            remaining_lines.append(line)
-            continue
-            
-        # Có URL trên dòng này!
-        has_override = _check_override(stripped_line)
-        url = found_urls[0]
-        norm_url = _normalize_url(url)
-        url_normalization_map[url] = norm_url
-        
-        # Tự động kích hoạt visual cho mọi URL YouTube (hoặc nếu dòng chứa /visual)
-        is_youtube = "youtube.com" in url or "youtu.be" in url
-        if is_youtube or "/visual" in stripped_line.lower():
-            visual_urls.add(url)
-            # Dọn dẹp từ khóa điều khiển /visual khỏi dòng ghi chép nếu có
-            line = re.sub(r"/visual\s*", "", line, flags=re.IGNORECASE)
-            stripped_line = re.sub(r"/visual\s*", "", stripped_line, flags=re.IGNORECASE).strip()
-            
-        # Nếu URL đã xử lý và KHÔNG có từ khóa override
-        if norm_url in registry and not has_override:
-            entry = registry[norm_url]
-            source_note = entry.get("source_note", "")
-            concepts = entry.get("concepts", [])
-            
-            feedback_lines = []
-            if source_note:
-                feedback_lines.append(f"- [[{source_note}|Ghi chép gốc (Đã xử lý trước đó)]]")
-            else:
-                feedback_lines.append(f"- URL gốc: [{url}]({url}) (Đã xử lý trước đó)")
-                
-            for c in concepts:
-                c_stem = c.get("stem", "")
-                c_title = c.get("title", "")
-                if c_stem and c_title:
-                    feedback_lines.append(f"  - [[{c_stem}|{c_title}]] (Đã tồn tại)")
-                    
-            auto_feedback_links.extend(feedback_lines)
-            
-            # Kiểm tra xem dòng đó có chứa văn bản viết tay có nghĩa không
-            temp_line = stripped_line.replace(url, "")
-            for kw in ["xử lý lại", "tải lại", "nạp lại", "chạy lại", "cập nhật",
-                        "reprocess", "/force", "force", "override"]:
-                temp_line = temp_line.replace(kw, "")
-            temp_line_clean = re.sub(r"[#\*\-\s\(\)\[\]]+", "", temp_line)
-            
-            if len(temp_line_clean) < 3:
-                # Dòng chỉ chứa URL hoặc từ khóa điều khiển -> Xóa hẳn
-                inbox_updated_directly = True
-                _logger.info(f"[Deduplication] Chặn URL trùng: {url}. Đã tạo Auto-Feedback.")
-            else:
-                # Dòng chứa ghi chép viết tay quan trọng -> Giữ lại phần chữ, thay thế URL bằng ghi chú
-                line_without_url = stripped_line.replace(url, f"*(URL đã xử lý: {url})*")
-                remaining_lines.append(line_without_url)
-                inbox_updated_directly = True
-                _logger.info(f"[Deduplication] URL {url} trùng nhưng dòng có ghi chép viết tay. Giữ lại chữ.")
-        else:
-            # URL mới hoặc có override
-            remaining_lines.append(line)
-            urls_to_scrape.append(url)
-            
-    # Tái tạo dump_text cho phần còn lại
-    new_dump_text = "\n".join(remaining_lines)
-    
-    # Nếu tất cả các URL đều bị chặn trùng lặp và không còn nội dung nào mới cần xử lý
-    if inbox_updated_directly and not urls_to_scrape and not new_dump_text.strip():
-        if auto_feedback_links:
-            # Xóa inbox và append các feedback link vào Processed
-            _commit_inbox_changes(dump_text, "", auto_feedback_links)
-            _register_processed_hash(content_hash)
+    new_dump, auto_fb, urls_scrape, visual_urls, url_map, directly_updated = _deduplicate_dump_urls(dump_text)
+    if directly_updated and not urls_scrape and not new_dump.strip():
+        if auto_fb:
+            _commit_inbox_changes(dump_text, "", auto_fb)
             log("dump", "Deduplication: All URLs were duplicates. Auto-feedback links appended.")
-            _logger.info("Deduplication: All URLs were duplicates. Auto-feedback links appended.")
         else:
             _clear_inbox_only(dump_text)
-            _register_processed_hash(content_hash)
+        _register_processed_hash(content_hash)
         return
 
-    url_content = _process_urls(new_dump_text, urls_to_scrape, visual_urls)
-
-    # Semantic Arbitrator: Reject noise if no valid URL content was extracted
-    if not url_content and not _is_meaningful_dump(new_dump_text):
+    url_content = _process_urls(new_dump, urls_scrape, visual_urls)
+    if not url_content and not _is_meaningful_dump(new_dump):
         _logger.warning("Brain Dump rejected: Semantic Arbitrator deemed text not meaningful.")
         log("dump", "Rejected: Text not meaningful.")
-        # Cần ghi lại file nếu có auto_feedback_links trước đó!
-        if auto_feedback_links:
-            _commit_inbox_changes(dump_text, "", auto_feedback_links)
-            _register_processed_hash(content_hash)
+        if auto_fb:
+            _commit_inbox_changes(dump_text, "", auto_fb)
         else:
             _clear_inbox_only(dump_text)
-            _register_processed_hash(content_hash)
+        _register_processed_hash(content_hash)
         return
 
-    # Orthographic correction - use separate variable to preserve original dump_text
-    processed_text = new_dump_text
-    source_ref = "brain_dump"
-    
-    # Extract URL if present (chỉ lấy URL thực sự được cào)
-    original_url = ""
-    if urls_to_scrape:
-        original_url = urls_to_scrape[0]
-
-    # --- Preserve image metadata through orthographic correction ---
-    # Image metadata section ([IMG:...] markers) is appended by url_fetcher
-    # but would be destroyed by LLM correction. Strip it, correct text, re-append.
-    _IMG_SECTION_MARKER = "\n\n## 🖼️ Hình ảnh bài viết"
-    _VIDEO_VISUAL_MARKER = "\n\n## 🎞️"
-    _VIDEO_IMG_SECTION_MARKER = "\n\n## 🎬"
-    image_metadata_section = ""
-    
-    if url_content:
-        if _IMG_SECTION_MARKER in url_content:
-            split_idx = url_content.index(_IMG_SECTION_MARKER)
-            image_metadata_section = url_content[split_idx:]
-            url_content = url_content[:split_idx]
-        elif _VIDEO_VISUAL_MARKER in url_content:
-            split_idx = url_content.index(_VIDEO_VISUAL_MARKER)
-            image_metadata_section = url_content[split_idx:]
-            url_content = url_content[:split_idx]
-        elif _VIDEO_IMG_SECTION_MARKER in url_content:
-            split_idx = url_content.index(_VIDEO_IMG_SECTION_MARKER)
-            image_metadata_section = url_content[split_idx:]
-            url_content = url_content[:split_idx]
-
-    if url_content:
-        url_content = orthographic_preprocess(url_content)
-        # Re-append image metadata (preserved verbatim, never corrected)
-        if image_metadata_section:
-            url_content = f"{url_content}{image_metadata_section}"
-        saved_ref = _save_transcript(url_content, original_url)
-        if saved_ref:
-            source_ref = saved_ref
-    else:
-        processed_text = orthographic_preprocess(new_dump_text)
-        saved_ref = _save_transcript(processed_text, original_url)
-        if saved_ref:
-            source_ref = saved_ref
-
-    saved_stems = _synthesize_and_save_concepts(processed_text, url_content, source_ref)
-
-    all_links = []
-    if saved_stems:
-        all_links.extend(f"- [[{stem}|{title}]]" for stem, title in saved_stems)
-    if auto_feedback_links:
-        all_links.extend(auto_feedback_links)
-
-    # Nếu tất cả concepts đều bị subsumed (hấp thụ vào các note có sẵn),
-    # nhưng transcript đã được lưu trữ, ta vẫn ghi nhận hoàn tất và đưa vào Processed
-    if not all_links:
-        if source_ref and source_ref != "brain_dump":
-            all_links.append(f"- [[{source_ref}|Ghi chép gốc (Nội dung đã được hấp thụ vào kho tri thức)]]")
-        else:
-            all_links.append("- *(Nội dung đã được đối soát và hấp thụ vào các khái niệm hiện có)*")
-
-    _commit_inbox_changes(dump_text, "", all_links)
-    _register_processed_hash(content_hash)
-    
-    # Cập nhật registry cho các URL đã được xử lý thành công trong lượt này
-    if urls_to_scrape:
-        registry = _load_url_registry()
-        for url in urls_to_scrape:
-            norm_url = url_normalization_map.get(url)
-            if norm_url:
-                registry[norm_url] = {
-                    "source_note": source_ref,
-                    "concepts": [{"stem": stem, "title": title} for stem, title in saved_stems],
-                    "processed_at": datetime.now().isoformat()
-                }
-        _save_url_registry(registry)
-        
-    if saved_stems:
-        try:
-            from wiki_maintain import rebuild_incremental
-            for stem, _ in saved_stems:
-                c_file = cfg.concepts_dir / f"{stem}.md"
-                if c_file.exists():
-                    rebuild_incremental(c_file)
-        except Exception as e:
-            _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
-
+    proc_text, proc_url, source_ref = _preprocess_and_save_transcripts(new_dump, url_content, urls_scrape)
+    saved_stems = _synthesize_and_save_concepts(proc_text, proc_url, source_ref)
+    _finalize_brain_dump(dump_text, content_hash, saved_stems, auto_fb, source_ref, urls_scrape, url_map)
     log("dump", f"Completed: {len(saved_stems)} concepts created (transcript: {source_ref})")
     _logger.info(f"Brain Dump: {len(saved_stems)} concepts created (transcript: {source_ref})")
 

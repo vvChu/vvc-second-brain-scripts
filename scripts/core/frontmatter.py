@@ -98,30 +98,9 @@ def build_concept_frontmatter(
     related: list[str] | None = None,
     confidence: str = "high",
 ) -> str:
-    """Build standardized concept note frontmatter.
-
-    Args:
-        title: Concept title (Vietnamese).
-        aliases: Alternative names.
-        tags: Obsidian tags (should include domain/ prefix).
-        source: Source note reference.
-        source_type: image | pdf | epub | text | manual | compiled.
-        source_page: Page number from source.
-        source_chapter: Chapter reference.
-        ground_truth_page: Page number from English Ground Truth.
-        ground_truth_chapter: Chapter reference from English Ground Truth.
-        summary: 2-3 sentence summary.
-        people: Related humans (entities).
-        companies: Related organizations (entities).
-        status: seed | growing | evergreen.
-        related: Wiki-link references.
-        confidence: high | medium | low.
-
-    Returns:
-        Formatted frontmatter string.
-    """
+    """Build standardized concept note frontmatter (Canonical v8.3 schema)."""
     today = date.today().isoformat()
-    data = {
+    return build_frontmatter({
         "title": title,
         "aliases": aliases or [],
         "tags": ["knowledge", "type/concept"] + (tags or []),
@@ -140,8 +119,7 @@ def build_concept_frontmatter(
         "status": status,
         "related": related or [],
         "confidence": confidence,
-    }
-    return build_frontmatter(data)
+    })
 
 
 def update_field(content: str, field_name: str, value: Any) -> str:

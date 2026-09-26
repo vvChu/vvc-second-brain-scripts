@@ -26,6 +26,41 @@ _logger = logging.getLogger("vvc.clip")
 from services.url_fetcher import fetch_url_content, _is_garbage_fetch
 
 
+def _resolve_clip_slug_and_title(url: str, article_title: str | None) -> tuple[str, str]:
+    """Generate filename-safe slug and human-readable display title."""
+    if article_title:
+        slug = re.sub(r"[^a-zA-Z0-9_]", "_", article_title.lower())
+        slug = re.sub(r"_+", "_", slug).strip("_")
+        if len(slug) > 60:
+            slug = slug[:60].rsplit("_", 1)[0]
+        return slug, article_title
+    slug = _url_to_slug(url)
+    return slug, slug.replace("_", " ").title()
+
+
+def _save_clipped_markdown(url: str, title: str, slug: str, text: str) -> Path | None:
+    """Format frontmatter and write clipped markdown file to Fleeting dir."""
+    today = date.today().isoformat()
+    filename = f"{today}_{slug}.md"
+    content = (
+        f"---\n"
+        f"source_url: \"{url}\"\n"
+        f"date_clipped: {today}\n"
+        f"---\n\n"
+        f"# {title}\n\n"
+        f"> Clipped from: [{url}]({url})\n\n"
+        f"{text}\n"
+    )
+    output = cfg.fleeting_dir / filename
+    try:
+        output.write_text(content, encoding="utf-8")
+        _logger.info(f"Saved: {output.name} ({len(text)} chars)")
+        return output
+    except OSError as e:
+        _logger.error(f"Save failed: {e}")
+        return None
+
+
 def clip_url(url: str) -> Path | None:
     """Fetch article from URL and save as Fleeting markdown.
 
@@ -36,58 +71,20 @@ def clip_url(url: str) -> Path | None:
         Path to saved markdown file, or None on failure.
     """
     _logger.info(f"Clipping: {url}")
-
-    # Identify if YouTube
     is_youtube = "youtube.com/" in url or "youtu.be/" in url
     article_title = _get_youtube_title(url) if is_youtube else None
 
-    # Fetch content via centralized url_fetcher (handles YouTube, Podcasts, Articles, and JIT images)
     article_text = fetch_url_content(url)
-
     if not article_text:
         _logger.error(f"Failed to extract content from: {url}")
         return None
 
-    # Check for garbage
     if _is_garbage_fetch(article_text) or len(article_text.strip()) < 100:
         _logger.error("Garbage content detected")
         return None
 
-    # Generate filename
-    today = date.today().isoformat()
-    if article_title:
-        # Keep ascii and alphanumerics for slug
-        slug = re.sub(r"[^a-zA-Z0-9_]", "_", article_title.lower())
-        slug = re.sub(r"_+", "_", slug).strip("_")
-        if len(slug) > 60:
-            slug = slug[:60].rsplit("_", 1)[0]
-        title_display = article_title
-    else:
-        slug = _url_to_slug(url)
-        title_display = slug.replace('_', ' ').title()
-
-    filename = f"{today}_{slug}.md"
-
-    # Build markdown content
-    content = (
-        f"---\n"
-        f"source_url: \"{url}\"\n"
-        f"date_clipped: {today}\n"
-        f"---\n\n"
-        f"# {title_display}\n\n"
-        f"> Clipped from: [{url}]({url})\n\n"
-        f"{article_text}\n"
-    )
-
-    # Save to Fleeting
-    output = cfg.fleeting_dir / filename
-    try:
-        output.write_text(content, encoding="utf-8")
-        _logger.info(f"Saved: {output.name} ({len(article_text)} chars)")
-        return output
-    except OSError as e:
-        _logger.error(f"Save failed: {e}")
-        return None
+    slug, title_display = _resolve_clip_slug_and_title(url, article_title)
+    return _save_clipped_markdown(url, title_display, slug, article_text)
 
 
 def _get_youtube_title(url: str) -> str | None:

@@ -114,96 +114,92 @@ def _is_yaml_frontmatter(text: str) -> bool:
     return bool(re.match(r"^\s*---\r?\n[a-zA-Z0-9_-]+\s*:.*?\r?\n---\s*(\r?\n|$)", text, re.DOTALL))
 
 
+def _check_same_line_span(
+    search_text: str, ai_match_end: int, target_query: str | None
+) -> tuple[str, int] | None:
+    """Check if query is closed on the same line (e.g. '@AI: Query ---')."""
+    first_nl = search_text.find("\n")
+    same_line = search_text[:first_nl] if first_nl != -1 else search_text
+    same_line_dash = re.search(r"---", same_line)
+    if not same_line_dash:
+        return None
+    cand = same_line[:same_line_dash.start()].strip()
+    if cand and (target_query is None or cand.strip() == target_query.strip()):
+        return cand, ai_match_end + same_line_dash.end()
+    return None
+
+
+def _find_valid_closing_dashes(search_text: str) -> list[tuple[re.Match, str]]:
+    """Collect candidate closing --- markers, filtering unclosed code fences and YAML."""
+    dash_matches = list(re.finditer(r"---", search_text))
+    valid: list[tuple[re.Match, str]] = []
+    for m in dash_matches:
+        cand = search_text[:m.start()].strip()
+        if not cand or cand.count("```") % 2 != 0:
+            continue
+        if cand.startswith("---") and cand.count("---") < 2:
+            continue
+        valid.append((m, cand))
+    return valid
+
+
+def _select_candidate_query(
+    candidates: list[tuple[re.Match, str]], search_text: str, target_query: str | None
+) -> tuple[str, re.Match] | None:
+    """Select appropriate candidate query matching target or default delimiter."""
+    if target_query is not None:
+        for m, cand in candidates:
+            if cand.strip() == target_query.strip():
+                return cand, m
+        return None
+
+    selected_match, selected_query = candidates[-1]
+    for m, cand in candidates:
+        rem = search_text[m.end():]
+        if not rem.strip() or re.match(r"^\r?\n\s*\r?\n", rem):
+            selected_match, selected_query = m, cand
+            break
+    return selected_query, selected_match
+
+
 def find_pending_query_span(inbox: str, target_query: str | None = None) -> tuple[str | None, int, int]:
     """Find unprocessed @AI: query and its [start, end) span in inbox.
 
     Handles internal horizontal rules (---) and YAML blocks (--- ... ---).
     Skips empty/answered queries (e.g. @AI:  ---) and supports targeting a specific query.
     Ignores false positives inside blockquotes (> @AI:) or code fences.
-
-    Args:
-        inbox: Content of the Inbox section.
-        target_query: Optional query string to match specifically.
-
-    Returns:
-        Tuple of (clean_query, start_idx, end_idx) or (None, -1, -1).
     """
     if not inbox:
         return None, -1, -1
 
     for ai_match in re.finditer(r"^[ \t]*(@AI:)", inbox, re.MULTILINE | re.IGNORECASE):
-        # Ignore matches inside code fences
         prefix_before = inbox[:ai_match.start(1)]
         if prefix_before.count("```") % 2 != 0:
             continue
 
         start_idx = ai_match.start(1)
         after_ai = inbox[ai_match.end(1):]
-
-        # Delimit search to next root-level @AI: if any
         next_ai = re.search(r"^[ \t]*@AI:", after_ai, re.MULTILINE | re.IGNORECASE)
         search_limit = next_ai.start() if next_ai else len(after_ai)
         search_text = after_ai[:search_limit]
 
-        # Check if closing --- is on the same line as @AI:
-        # e.g., "@AI: What is transformer? ---"
-        first_nl = search_text.find("\n")
-        same_line = search_text[:first_nl] if first_nl != -1 else search_text
-        same_line_dash = re.search(r"---", same_line)
-        if same_line_dash:
-            cand = same_line[:same_line_dash.start()].strip()
-            if cand:
-                if target_query is None or cand.strip() == target_query.strip():
-                    end_idx = ai_match.end(1) + same_line_dash.end()
-                    return cand, start_idx, end_idx
-            else:
-                # Empty query placeholder like "@AI:  ---" -> skip to next @AI:
-                continue
+        same_line_res = _check_same_line_span(search_text, ai_match.end(1), target_query)
+        if same_line_res:
+            cand, end_idx = same_line_res
+            return cand, start_idx, end_idx
 
-        # Check multiline empty placeholder: @AI:\n--- (not starting a YAML block)
         m_empty = re.match(r"^\s*---\s*(\r?\n|$)", search_text)
         if m_empty and not _is_yaml_frontmatter(search_text):
             continue
 
-        dash_matches = list(re.finditer(r"---", search_text))
-        if not dash_matches:
+        candidates = _find_valid_closing_dashes(search_text)
+        if not candidates:
             continue
 
-        # Filter candidate closing dashes
-        valid_candidates: list[tuple[re.Match, str]] = []
-        for m in dash_matches:
-            cand = search_text[:m.start()].strip()
-            if not cand:
-                continue
-            # Check unclosed code fences
-            if cand.count("```") % 2 != 0:
-                continue
-            # Check unclosed YAML frontmatter
-            if cand.startswith("---") and cand.count("---") < 2:
-                continue
-            valid_candidates.append((m, cand))
-
-        if not valid_candidates:
-            continue
-
-        # If matching a specific target query, find exact candidate
-        if target_query is not None:
-            for m, cand in valid_candidates:
-                if cand.strip() == target_query.strip():
-                    end_idx = ai_match.end(1) + m.end()
-                    return cand, start_idx, end_idx
-
-        # For discovering query: find candidate followed by end of text or blank line
-        selected_match, selected_query = valid_candidates[-1]
-        for m, cand in valid_candidates:
-            rem = search_text[m.end():]
-            if not rem.strip() or re.match(r"^\r?\n\s*\r?\n", rem):
-                selected_match, selected_query = m, cand
-                break
-
-        end_idx = ai_match.end(1) + selected_match.end()
-        if target_query is None or selected_query.strip() == target_query.strip():
-            return selected_query, start_idx, end_idx
+        selected = _select_candidate_query(candidates, search_text, target_query)
+        if selected:
+            query, match = selected
+            return query, start_idx, ai_match.end(1) + match.end()
 
     return None, -1, -1
 

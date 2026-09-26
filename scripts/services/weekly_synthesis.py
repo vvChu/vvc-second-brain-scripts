@@ -52,6 +52,221 @@ def _render_bridge_candidates(candidates: list[dict]) -> list[str]:
     return lines
 
 
+def _parse_weekly_log_events(week_ago: str) -> dict[str, int]:
+    """Extract weekly event counters from vault log.md."""
+    events = {"merges": 0, "quality": 0, "subsumes": 0, "dumps": 0}
+    if not cfg.log_file.exists():
+        return events
+    try:
+        for line in cfg.log_file.read_text(encoding="utf-8").splitlines():
+            if len(line) >= 13 and line[3:13] < week_ago:
+                continue
+            if "**merge**" in line:
+                events["merges"] += 1
+            elif "**quality**" in line:
+                events["quality"] += 1
+            elif "**subsume**" in line:
+                events["subsumes"] += 1
+            elif "**dump**" in line and "detected" in line:
+                events["dumps"] += 1
+    except Exception:
+        pass
+    return events
+
+
+def _extract_broken_link_counts(
+    report: LintReport,
+) -> tuple[list[tuple[str, list[str]]], list[tuple[str, list[str]]], int]:
+    """Classify and group broken links and prospective seeds."""
+    broken_body = list(report.get("broken_body_links", []))
+    prospective_seeds = list(report.get("prospective_related_seeds", []))
+    if not broken_body and not prospective_seeds and report.get("broken_links"):
+        for b in report["broken_links"]:
+            (broken_body if b.get("origin") == "body" else prospective_seeds).append(b)
+
+    concept_body = [
+        e for e in broken_body
+        if not re.search(r"(chuong|chương|\d+_ch\d+|p\d+_ch\d+)", e.get("to", ""), re.IGNORECASE)
+    ]
+
+    def _group(entries: list[dict]) -> list[tuple[str, list[str]]]:
+        counts: dict[str, list[str]] = defaultdict(list)
+        for e in entries:
+            counts[e["to"]].append(e["from"])
+        return sorted(counts.items(), key=lambda item: len(item[1]), reverse=True)
+
+    return _group(concept_body), _group(prospective_seeds), len(concept_body)
+
+
+def _render_header_kpis(
+    today_str: str,
+    concepts: list[dict],
+    sources: list[dict],
+    recent_count: int,
+    events: dict[str, int],
+    total_orphans: int,
+    broken_body_count: int,
+    healed_links: int,
+    healed_typos: int,
+) -> list[str]:
+    """Render markdown frontmatter and summary KPI abstract callout."""
+    total_src_mocs = len(list(cfg.moc_dir.rglob("MOC_*.md")))
+    total_dom_mocs = len(list(cfg.moc_dir.rglob("Domain_*.md")))
+    return [
+        "---\n",
+        f'title: "🌙 Weekly Synthesis — {today_str}"\n',
+        "tags: [meta/synthesis, meta/lint]\n",
+        "type: topic\n",
+        f"date_created: {today_str}\n",
+        f"date_modified: {today_str}\n",
+        'summary: "Báo cáo tổng hợp đóng phiên và củng cố tri thức tự động."\n',
+        "---\n\n",
+        f"# 🌙 Weekly Synthesis — {today_str}\n\n",
+        "> [!abstract] **📊 Chỉ Số Sức Khỏe Vault & Hoạt Động Tuần**\n",
+        f"> - 🧠 **Tổng Khái Niệm (Concepts):** `{len(concepts)}` | 📖 **Tổng Nguồn (Sources):** `{len(sources)}`\n",
+        f"> - 📚 **Source MOCs:** `{total_src_mocs}` | 🏷️ **Domain MOCs:** `{total_dom_mocs}`\n",
+        f"> - ⚡ **Mới trong tuần:** `{recent_count}` concepts | 🔀 **Merges:** `{events['merges']}` | 🗑️ **Subsumes:** `{events['subsumes']}`\n",
+        f"> - 🔗 **True Orphans:** `{total_orphans}` | 💔 **Broken Citations in Body:** `{broken_body_count}`\n",
+        f"> - 🩹 **Đã tự động vá:** `{healed_links}` stubs | ✏️ **Sửa chính tả:** `{healed_typos}`\n\n",
+        "---\n\n",
+        "## 🔍 Sức Khỏe Liên Kết (Link Integrity)\n\n",
+    ]
+
+
+def _render_orphans(orphans: list[str], concepts: list[dict]) -> list[str]:
+    """Render graph-safe orphan notes section."""
+    if not orphans:
+        return ["### 🔗 Ghi Chú Mồ Côi (Orphans)\n\n_Không phát hiện ghi chú mồ côi nào trong Vault._ ✅\n\n"]
+    lines = [
+        f"### 🔗 Ghi Chú Mồ Côi Thực Tế ({len(orphans)})\n\n",
+        "Các khái niệm chưa có liên kết từ MOCs, Sources hoặc bài viết khác:\n\n",
+    ]
+    by_source: dict[str, list[str]] = defaultdict(list)
+    concept_map = {c.get("_stem"): c for c in concepts if "_stem" in c}
+    for stem in orphans:
+        c = concept_map.get(stem, {})
+        src_val = c.get("source") or c.get("sources", "unknown")
+        if isinstance(src_val, list):
+            src_val = src_val[0] if src_val else "unknown"
+        if isinstance(src_val, dict):
+            src = src_val.get("title") or src_val.get("name") or "unknown"
+        else:
+            src = str(src_val) if src_val else "unknown"
+        if src.endswith(".md"):
+            src = src[:-3]
+        by_source[src].append(stem)
+    for src, stems in sorted(by_source.items()):
+        lines.append(f"- **Nguồn `{src}`:** " + ", ".join(f"`{st}`" for st in stems) + "\n")
+    lines.append("\n")
+    return lines
+
+
+def _render_broken_tables(
+    body_concepts: list[tuple[str, list[str]]],
+    seeds: list[tuple[str, list[str]]],
+    broken_body_count: int,
+) -> list[str]:
+    """Render broken citations table and prospective seed callout."""
+    lines = [f"### 💔 Trích Dẫn Gãy trong Bài Viết ({broken_body_count})\n\n"]
+    if not body_concepts:
+        lines.append("_Nội dung các bài viết không có trích dẫn nào bị hỏng._ ✅\n\n")
+    else:
+        lines.extend([
+            "Các liên kết cần rà soát và bổ sung alias hoặc sửa cú pháp trích dẫn:\n\n",
+            "| Trạng thái | Liên kết cần kiểm tra | Xuất hiện tại | Số lần |\n|:---:|---|---|:---:|\n",
+        ])
+        for target, src_list in body_concepts[:15]:
+            ref_by = ", ".join(f"[[{s}]]" for s in src_list[:3])
+            if len(src_list) > 3:
+                ref_by += f" *(+{len(src_list) - 3})*"
+            lines.append(f"| ❌ | `{target}` | {ref_by} | {len(src_list)} |\n")
+        lines.append("\n")
+
+    if seeds:
+        lines.append(
+            f"### 🧠 Khái Niệm Hạt Giống trong Frontmatter ({len(seeds)})\n\n"
+            f"> [!tip]- 💡 Xem Top 15/{len(seeds)} Khái niệm Hạt giống Tiềm năng (Gợi mở tương lai)\n"
+            "> Các liên kết này nằm trong trường YAML `related:` do AI đề xuất khi tổng hợp, không phải liên kết hỏng trong bài viết.\n>\n"
+            "> | Hạt giống gợi mở | Được gợi ý bởi | Số lần |\n> |---|---|:---:|\n"
+        )
+        for seed, src_list in seeds[:15]:
+            ref_by = ", ".join(f"[[{s}]]" for s in src_list[:2])
+            if len(src_list) > 2:
+                ref_by += f" *(+{len(src_list) - 2})*"
+            lines.append(f"> | `{seed}` | {ref_by} | {len(src_list)} |\n")
+        lines.append("\n")
+    return lines
+
+
+def _render_subsume_journal() -> list[str]:
+    """Read and format SUBSUME review table from state journal."""
+    sub_file = cfg.state_dir / ".subsume_journal.jsonl"
+    if not sub_file.exists():
+        return []
+    try:
+        entries = [json.loads(line) for line in sub_file.read_text(encoding="utf-8").splitlines() if line.strip()]
+        if not entries:
+            return []
+        lines = [
+            "## 🔄 SUBSUME Review (Concepts trùng lặp đã được gộp)\n\n",
+            "> Các concept dưới đây đã bị Arbitrator đánh giá là **tập con hoàn toàn** của concept hiện có. "
+            "Chúng không được tạo mới để giữ Zettelkasten tinh gọn.\n\n",
+            "| Ngày | Concept mới (bị bỏ) | Đã có trong | Score |\n|:---:|---|---|:---:|\n",
+        ]
+        for e in entries:
+            target = str(e.get("existing_concept", "?")).replace(".md", "")
+            lines.append(
+                f"| {e.get('timestamp', '')[:10]} | `{e.get('new_title', '?')}` | "
+                f"[[{target}]] | {e.get('similarity_score', 0):.3f} |\n"
+            )
+        lines.append("\n")
+        sub_file.unlink(missing_ok=True)
+        return lines
+    except Exception:
+        return []
+
+
+def _render_state_sections() -> list[str]:
+    """Read and format state persistence files: suggestions, subsumes, stubs."""
+    lines: list[str] = []
+    sug_file = cfg.state_dir / ".domain_suggestions.json"
+    if sug_file.exists():
+        try:
+            sugs = json.loads(sug_file.read_text(encoding="utf-8"))
+            if sugs:
+                lines.append("## 💡 Đề Xuất Mở Rộng Lĩnh Vực (Domain Suggestions)\n\n")
+                for s in sugs:
+                    stem, title, domain = s.get("concept_stem"), s.get("concept_title") or s.get("concept_stem"), s.get("suggested_domain")
+                    summary = f" — *{s['summary']}*" if s.get("summary") else ""
+                    lines.append(f"- **domain/{domain}**: Gợi ý từ [[{stem}|{title}]]{summary}\n")
+                lines.append("\n")
+                sug_file.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    lines.extend(_render_subsume_journal())
+
+    stale_file = cfg.state_dir / ".stale_stubs.json"
+    if stale_file.exists():
+        try:
+            stales = json.loads(stale_file.read_text(encoding="utf-8"))
+            if stales:
+                top = sorted(stales, key=lambda x: x.get("age_days", 0) if isinstance(x.get("age_days"), (int, float)) else 0, reverse=True)[:15]
+                lines.extend([
+                    f"## ⚠️ Ghi Chú Stub Quá Hạn ({len(stales)})\n\n",
+                    f"> [!warning]- ⚠️ Xem Top {len(top)}/{len(stales)} Ghi Chú Stub Quá Hạn (>30 ngày chưa mở rộng)\n",
+                    "> Các ghi chú stub dưới đây cần được ưu tiên bồi đắp tri thức hoặc dọn dẹp:\n>\n",
+                    "> | Tên Stub | Ngày tạo | Tuổi (ngày) | Liên kết từ |\n> |---|---|---|---|\n",
+                ])
+                for s in top:
+                    ref = ", ".join(f"[[{r}]]" for r in s.get("referrers", [])[:2])
+                    lines.append(f"> | `{s.get('stem', '?')}` | {s.get('created', '?')} | {s.get('age_days', '?')} | {ref} |\n")
+                lines.append("\n")
+        except Exception:
+            pass
+    return lines
+
+
 def generate_weekly_synthesis(
     report: LintReport | None = None,
     healed_links: int = 0,
@@ -65,255 +280,34 @@ def generate_weekly_synthesis(
     today_str = today.isoformat()
     week_ago = (today - timedelta(days=7)).isoformat()
 
-    if concepts is None:
-        concepts = scan_all_concepts()
-    if sources is None:
-        sources = scan_all_sources()
+    concepts = scan_all_concepts() if concepts is None else concepts
+    sources = scan_all_sources() if sources is None else sources
     if report is None:
         from services.wiki_health import lint_vault
         report = lint_vault()
 
-    report_path = cfg.moc_dir / "Weekly_Synthesis.md"
+    recent_count = sum(
+        1 for fm in concepts
+        if str(fm.get("date_created", "") if not isinstance(fm.get("date_created"), (date, datetime)) else fm["date_created"].isoformat()) >= week_ago
+    )
+    events = _parse_weekly_log_events(week_ago)
+    body_concepts, seeds, broken_body_count = _extract_broken_link_counts(report)
 
-    # Count recent concepts created in the last 7 days
-    recent = []
-    for fm in concepts:
-        created = fm.get("date_created", "")
-        if isinstance(created, (date, datetime)):
-            created = created.isoformat()
-        else:
-            created = str(created)
-        if created >= week_ago:
-            recent.append(fm.get("title") or fm["_stem"])
+    lines = _render_header_kpis(
+        today_str, concepts, sources, recent_count, events,
+        len(report.get("orphans", [])), broken_body_count, healed_links, healed_typos,
+    )
+    lines.extend(_render_orphans(report.get("orphans", []), concepts))
+    lines.extend(_render_broken_tables(body_concepts, seeds, broken_body_count))
 
-    # Count weekly events from log.md
-    merges = quality_rejects = subsumes = dumps = 0
-    if cfg.log_file.exists():
-        try:
-            for line in cfg.log_file.read_text(encoding="utf-8").splitlines():
-                if len(line) >= 13 and line[3:13] < week_ago:
-                    continue
-                if "**merge**" in line:
-                    merges += 1
-                elif "**quality**" in line:
-                    quality_rejects += 1
-                elif "**subsume**" in line:
-                    subsumes += 1
-                elif "**dump**" in line and "detected" in line:
-                    dumps += 1
-        except Exception:
-            pass
-
-    total_concepts = len(concepts)
-    total_sources = len(sources)
-    total_source_mocs = len(list(cfg.moc_dir.rglob("MOC_*.md")))
-    total_domain_mocs = len(list(cfg.moc_dir.rglob("Domain_*.md")))
-    total_orphans = len(report.get("orphans", []))
-
-    broken_body = report.get("broken_body_links", [])
-    prospective_seeds = report.get("prospective_related_seeds", [])
-
-    if not broken_body and not prospective_seeds and report.get("broken_links"):
-        for b in report["broken_links"]:
-            if b.get("origin") == "body":
-                broken_body.append(b)
-            else:
-                prospective_seeds.append(b)
-
-    # Classify broken body links
-    chapter_refs = []
-    concept_body_refs = []
-    for entry in broken_body:
-        to_link = entry["to"]
-        if re.search(r"(chuong|chương|\d+_ch\d+|p\d+_ch\d+)", to_link, re.IGNORECASE):
-            chapter_refs.append(entry)
-        else:
-            concept_body_refs.append(entry)
-
-    # Group concept references for display
-    concept_counts: dict[str, list[str]] = defaultdict(list)
-    for entry in concept_body_refs:
-        concept_counts[entry["to"]].append(entry["from"])
-
-    sorted_body_concepts = sorted(concept_counts.items(), key=lambda item: len(item[1]), reverse=True)
-
-    # Group prospective seeds for top display
-    seed_counts: dict[str, list[str]] = defaultdict(list)
-    for entry in prospective_seeds:
-        seed_counts[entry["to"]].append(entry["from"])
-    sorted_seeds = sorted(seed_counts.items(), key=lambda item: len(item[1]), reverse=True)
-
-    # Assemble lines
-    lines = [
-        "---\n",
-        f'title: "🌙 Weekly Synthesis — {today_str}"\n',
-        "tags: [meta/synthesis, meta/lint]\n",
-        "type: topic\n",
-        f"date_created: {today_str}\n",
-        f"date_modified: {today_str}\n",
-        'summary: "Báo cáo tổng hợp đóng phiên và củng cố tri thức tự động."\n',
-        "---\n\n",
-        f"# 🌙 Weekly Synthesis — {today_str}\n\n",
-        "> [!abstract] **📊 Chỉ Số Sức Khỏe Vault & Hoạt Động Tuần**\n",
-        f"> - 🧠 **Tổng Khái Niệm (Concepts):** `{total_concepts}` | 📖 **Tổng Nguồn (Sources):** `{total_sources}`\n",
-        f"> - 📚 **Source MOCs:** `{total_source_mocs}` | 🏷️ **Domain MOCs:** `{total_domain_mocs}`\n",
-        f"> - ⚡ **Mới trong tuần:** `{len(recent)}` concepts | 🔀 **Merges:** `{merges}` | 🗑️ **Subsumes:** `{subsumes}`\n",
-        f"> - 🔗 **True Orphans:** `{total_orphans}` | 💔 **Broken Citations in Body:** `{len(concept_body_refs)}`\n",
-        f"> - 🩹 **Đã tự động vá:** `{healed_links}` stubs | ✏️ **Sửa chính tả:** `{healed_typos}`\n\n",
-        "---\n\n",
-        "## 🔍 Sức Khỏe Liên Kết (Link Integrity)\n\n",
-    ]
-
-    # Orphans section (Graph-safe: backtick instead of [[...]])
-    if not report.get("orphans"):
-        lines.append("### 🔗 Ghi Chú Mồ Côi (Orphans)\n\n")
-        lines.append("_Không phát hiện ghi chú mồ côi nào trong Vault._ ✅\n\n")
-    else:
-        lines.append(f"### 🔗 Ghi Chú Mồ Côi Thực Tế ({total_orphans})\n\n")
-        lines.append("Các khái niệm chưa có liên kết từ MOCs, Sources hoặc bài viết khác:\n\n")
-
-        orphans_by_source = defaultdict(list)
-        for stem in report["orphans"]:
-            c = next((x for x in concepts if x["_stem"] == stem), None)
-            src_val = c.get("source") or c.get("sources", "unknown") if c else "unknown"
-            if isinstance(src_val, list):
-                src_elem = src_val[0] if src_val else "unknown"
-            else:
-                src_elem = src_val
-            if isinstance(src_elem, dict):
-                src = src_elem.get("title") or src_elem.get("name") or "unknown"
-            else:
-                src = str(src_elem) if src_elem else "unknown"
-            if isinstance(src, str) and src.endswith(".md"):
-                src = src[:-3]
-            orphans_by_source[src].append(stem)
-
-        for src, stems in sorted(orphans_by_source.items()):
-            lines.append(f"- **Nguồn `{src}`:** " + ", ".join(f"`{stem}`" for stem in stems) + "\n")
-        lines.append("\n")
-
-    # Broken Citations in Body section
-    lines.append(f"### 💔 Trích Dẫn Gãy trong Bài Viết ({len(concept_body_refs)})\n\n")
-    if not concept_body_refs:
-        lines.append("_Nội dung các bài viết không có trích dẫn nào bị hỏng._ ✅\n\n")
-    else:
-        lines.append("Các liên kết cần rà soát và bổ sung alias hoặc sửa cú pháp trích dẫn:\n\n")
-        lines.append("| Trạng thái | Liên kết cần kiểm tra | Xuất hiện tại | Số lần |\n")
-        lines.append("|:---:|---|---|:---:|\n")
-        for target, src_list in sorted_body_concepts[:15]:
-            ref_by = ", ".join(f"[[{s}]]" for s in src_list[:3])
-            if len(src_list) > 3:
-                ref_by += f" *(+{len(src_list) - 3})*"
-            lines.append(f"| ❌ | `{target}` | {ref_by} | {len(src_list)} |\n")
-        lines.append("\n")
-
-    # Prospective seeds in frontmatter callout
-    if sorted_seeds:
-        lines.append(f"### 🧠 Khái Niệm Hạt Giống trong Frontmatter ({len(sorted_seeds)})\n\n")
-        lines.append(
-            f"> [!tip]- 💡 Xem Top 15/{len(sorted_seeds)} Khái niệm Hạt giống Tiềm năng (Gợi mở tương lai)\n"
-            "> Các liên kết này nằm trong trường YAML `related:` do AI đề xuất khi tổng hợp, không phải liên kết hỏng trong bài viết.\n"
-            ">\n"
-            "> | Hạt giống gợi mở | Được gợi ý bởi | Số lần |\n"
-            "> |---|---|:---:|\n"
-        )
-        for seed, src_list in sorted_seeds[:15]:
-            ref_by = ", ".join(f"[[{s}]]" for s in src_list[:2])
-            if len(src_list) > 2:
-                ref_by += f" *(+{len(src_list) - 2})*"
-            lines.append(f"> | `{seed}` | {ref_by} | {len(src_list)} |\n")
-        lines.append("\n")
-
-    # Healing results
     if healed_links > 0:
         lines.append(f"> [!success] **Wiki Healer:** Đã tự động tạo thành công **{healed_links}** ghi chú stub cho các liên kết hợp lệ.\n\n")
-
-    # Knowledge Gaps & Advice
     if academic_advice and academic_advice.strip():
         lines.append(academic_advice.strip() + "\n\n")
 
-    # Bridge Candidates for Cross-Domain Synthesis
-    bridge_candidates = report.get("bridge_candidates", [])
-    if bridge_candidates:
-        lines.extend(_render_bridge_candidates(bridge_candidates))
+    lines.extend(_render_bridge_candidates(report.get("bridge_candidates", [])))
+    lines.extend(_render_state_sections())
 
-    # Check for domain suggestions from sleep
-    suggestion_file = cfg.state_dir / ".domain_suggestions.json"
-    if suggestion_file.exists():
-        try:
-            suggestions = json.loads(suggestion_file.read_text(encoding="utf-8"))
-            if suggestions:
-                lines.append("## 💡 Đề Xuất Mở Rộng Lĩnh Vực (Domain Suggestions)\n\n")
-                for s in suggestions:
-                    stem = s.get("concept_stem")
-                    title = s.get("concept_title", stem)
-                    domain = s.get("suggested_domain")
-                    summary = s.get("summary", "")
-                    summary_part = f" — *{summary}*" if summary else ""
-                    lines.append(f"- **domain/{domain}**: Gợi ý từ [[{stem}|{title}]]{summary_part}\n")
-                lines.append("\n")
-                suggestion_file.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-    # Read and append SUBSUME journal for weekly review
-    subsume_journal = cfg.state_dir / ".subsume_journal.jsonl"
-    if subsume_journal.exists():
-        try:
-            entries = []
-            for raw_line in subsume_journal.read_text(encoding="utf-8").splitlines():
-                raw_line = raw_line.strip()
-                if raw_line:
-                    entries.append(json.loads(raw_line))
-            if entries:
-                lines.append("## 🔄 SUBSUME Review (Concepts trùng lặp đã được gộp)\n\n")
-                lines.append(
-                    "> Các concept dưới đây đã bị Arbitrator đánh giá là **tập con hoàn toàn** của concept hiện có. "
-                    "Chúng không được tạo mới để giữ Zettelkasten tinh gọn.\n\n"
-                )
-                lines.append("| Ngày | Concept mới (bị bỏ) | Đã có trong | Score |\n")
-                lines.append("|:---:|---|---|:---:|\n")
-                for e in entries:
-                    ts = e.get("timestamp", "")[:10]
-                    new_title = e.get("new_title", "?")
-                    existing = e.get("existing_concept", "?").replace(".md", "")
-                    score = e.get("similarity_score", 0)
-                    lines.append(f"| {ts} | `{new_title}` | [[{existing}]] | {score:.3f} |\n")
-                lines.append("\n")
-                subsume_journal.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-    # Read and append stale stubs warning if any
-    stale_file = cfg.state_dir / ".stale_stubs.json"
-    if stale_file.exists():
-        try:
-            stale_entries = json.loads(stale_file.read_text(encoding="utf-8"))
-            if stale_entries:
-                total_stale = len(stale_entries)
-                sorted_stale = sorted(
-                    stale_entries,
-                    key=lambda x: x.get("age_days", 0) if isinstance(x.get("age_days"), (int, float)) else 0,
-                    reverse=True,
-                )
-                top_stale = sorted_stale[:15]
-                lines.append(f"## ⚠️ Ghi Chú Stub Quá Hạn ({total_stale})\n\n")
-                lines.append(
-                    f"> [!warning]- ⚠️ Xem Top {len(top_stale)}/{total_stale} Ghi Chú Stub Quá Hạn (>30 ngày chưa mở rộng)\n"
-                    "> Các ghi chú stub dưới đây cần được ưu tiên bồi đắp tri thức hoặc dọn dẹp:\n"
-                    ">\n"
-                    "> | Tên Stub | Ngày tạo | Tuổi (ngày) | Liên kết từ |\n"
-                    "> |---|---|---|---|\n"
-                )
-                for s in top_stale:
-                    stem = s.get("stem", "?")
-                    created = s.get("created", "?")
-                    age = s.get("age_days", "?")
-                    referrers = ", ".join(f"[[{r}]]" for r in s.get("referrers", [])[:2])
-                    lines.append(f"> | `{stem}` | {created} | {age} | {referrers} |\n")
-                lines.append("\n")
-        except Exception:
-            pass
-
+    report_path = cfg.moc_dir / "Weekly_Synthesis.md"
     report_path.write_text("".join(lines), encoding="utf-8")
     return report_path

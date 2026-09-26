@@ -118,34 +118,53 @@ _CONTENT_DOMAIN_PATTERNS = re.compile(
 )
 
 
+def _fetch_html_soup(original_url: str):
+    """Fetch HTML page and return parsed BeautifulSoup object."""
+    try:
+        import requests
+        from bs4 import BeautifulSoup
+
+        resp = requests.get(original_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        return BeautifulSoup(resp.text, "html.parser")
+    except Exception as e:
+        _logger.warning(f"[SourceEnrich] Failed to fetch HTML for link extraction: {e}")
+        return None
+
+
+def _is_valid_related_link(href: str, original_url: str, source_host: str, seen: set[str]) -> bool:
+    """Validate and filter candidate out-links against noise and allowed domains."""
+    from urllib.parse import urlparse
+
+    if _NOISE_LINK_RE.search(href) or not href.startswith("http"):
+        return False
+
+    norm = href.rstrip("/")
+    if norm in seen or norm == original_url.rstrip("/"):
+        return False
+
+    parsed = urlparse(href)
+    link_host = parsed.hostname or ""
+    path = parsed.path
+    if "github.com" in link_host:
+        parts = [p for p in path.strip("/").split("/") if p]
+        if len(parts) >= 3:
+            return False
+
+    same_domain = bool(source_host and link_host.endswith(source_host.lstrip("www.")))
+    return same_domain or bool(_CONTENT_DOMAIN_PATTERNS.search(href))
+
+
 def _extract_related_links(original_url: str) -> list[str]:
     """Extract and filter meaningful out-links from an article page.
 
     Returns a deduplicated list of up to 10 clean, readable URLs
     excluding noise (social share intents, assets, fragment anchors).
-    Only called for non-YouTube article URLs.
-
-    Args:
-        original_url: The URL of the article already fetched.
-
-    Returns:
-        List of filtered URLs (strings), at most 10 items.
     """
-    try:
-        import requests
-        from bs4 import BeautifulSoup
-        from urllib.parse import urlparse, urljoin
-    except ImportError:
-        return []
+    from urllib.parse import urljoin, urlparse
 
-    try:
-        resp = requests.get(
-            original_url, timeout=15, headers={"User-Agent": "Mozilla/5.0"}
-        )
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-    except Exception as e:
-        _logger.warning(f"[SourceEnrich] Failed to fetch HTML for link extraction: {e}")
+    soup = _fetch_html_soup(original_url)
+    if not soup:
         return []
 
     source_host = urlparse(original_url).hostname or ""
@@ -153,38 +172,9 @@ def _extract_related_links(original_url: str) -> list[str]:
     result: list[str] = []
 
     for tag in soup.find_all("a", href=True):
-        href = tag["href"].strip()
-        # Resolve relative URLs
-        href = urljoin(original_url, href)
-
-        # Skip noise patterns
-        if _NOISE_LINK_RE.search(href):
-            continue
-        if not href.startswith("http"):
-            continue
-
-        # Deduplicate
-        norm = href.rstrip("/")
-        if norm in seen or norm == original_url.rstrip("/"):
-            continue
-        seen.add(norm)
-
-        parsed = urlparse(href)
-        link_host = parsed.hostname or ""
-        path = parsed.path
-
-        # Skip GitHub sub-paths (tree/blob/commit...) — only keep repo roots
-        if "github.com" in link_host:
-            parts = [p for p in path.strip("/").split("/") if p]
-            # Keep only repo root (owner/repo) — skip tree/blob/etc.
-            if len(parts) >= 3:
-                continue
-
-        # Accept: same domain OR content domains
-        same_domain = source_host and link_host.endswith(source_host.lstrip("www."))
-        is_content = bool(_CONTENT_DOMAIN_PATTERNS.search(href))
-
-        if same_domain or is_content:
+        href = urljoin(original_url, tag["href"].strip())
+        if _is_valid_related_link(href, original_url, source_host, seen):
+            seen.add(href.rstrip("/"))
             result.append(href)
             if len(result) >= 10:
                 break

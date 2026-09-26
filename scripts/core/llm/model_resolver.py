@@ -127,19 +127,47 @@ def find_highest_gemini_flash(models: list[str]) -> tuple[tuple[int, ...], str, 
     return highest_v, v_str, matched_models
 
 
-def fetch_available_models(force_refresh: bool = False, cache_path: Path | None = None) -> list[str]:
-    """Fetch available models from Gateway or Gemini API, utilizing 24h cache.
+def _fetch_models_from_gateway(gateway_url: str, api_key: str) -> list[str]:
+    """Query AI Gateway for list of available models."""
+    endpoint = f"{gateway_url.rstrip('/')}/models"
+    headers: dict[str, str] = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    models: list[str] = []
+    try:
+        resp = http_session.get(endpoint, headers=headers, timeout=2.5)
+        if resp.status_code == 200:
+            data = resp.json()
+            items = data.get("data") or data.get("models") or []
+            for item in items:
+                mid = (item.get("id") or item.get("name")) if isinstance(item, dict) else item
+                if mid:
+                    models.append(str(mid))
+    except Exception as e:
+        _logger.debug(f"[model_resolver] Gateway query failed: {e}")
+    return models
 
-    Args:
-        force_refresh: Bypass cache if True.
-        cache_path: Optional custom path to cache file.
 
-    Returns:
-        List of discovered model identifiers.
-    """
+def _fetch_models_from_gemini_api(gemini_key: str) -> list[str]:
+    """Query Gemini API directly for available models."""
+    endpoint = f"https://generativelanguage.googleapis.com/v1beta/models?key={gemini_key}"
+    models: list[str] = []
+    try:
+        resp = http_session.get(endpoint, timeout=2.5)
+        if resp.status_code == 200:
+            items = resp.json().get("models") or []
+            for item in items:
+                mid = (item.get("name") or item.get("id")) if isinstance(item, dict) else item
+                if mid:
+                    models.append(str(mid).removeprefix("models/"))
+    except Exception as e:
+        _logger.debug(f"[model_resolver] Gemini API query failed: {e}")
+    return models
+
+
+def fetch_available_models(
+    force_refresh: bool = False, cache_path: Path | None = None
+) -> list[str]:
+    """Fetch available models from Gateway or Gemini API, utilizing 24h cache."""
     path = cache_path or _get_cache_path()
-
-    # 1. Check cache if not force_refresh
     cached = load_models_cache(path)
     if not force_refresh and cached:
         cache_age = time.time() - cached.get("timestamp", 0)
@@ -147,60 +175,22 @@ def fetch_available_models(force_refresh: bool = False, cache_path: Path | None 
             _logger.debug(f"Using cached model list (age: {cache_age:.0f}s)")
             return cached["models"]
 
-    models: list[str] = []
-
-    # 2. Try Gateway /models endpoint
     gateway_url = getattr(cfg, "gateway_url", "")
     if gateway_url:
-        endpoint = f"{gateway_url.rstrip('/')}/models"
-        headers: dict[str, str] = {}
-        api_key = getattr(cfg, "gateway_api_key", "")
-        if api_key:
-            headers["Authorization"] = f"Bearer {api_key}"
-        try:
-            resp = http_session.get(endpoint, headers=headers, timeout=2.5)
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get("data") or data.get("models") or []
-                for item in items:
-                    if isinstance(item, dict):
-                        mid = item.get("id") or item.get("name")
-                        if mid:
-                            models.append(str(mid))
-                    elif isinstance(item, str):
-                        models.append(item)
-                if models:
-                    _logger.info(f"[model_resolver] Discovered {len(models)} models from Gateway")
-                    save_models_cache(models, path)
-                    return models
-        except Exception as e:
-            _logger.debug(f"[model_resolver] Gateway query failed: {e}")
+        models = _fetch_models_from_gateway(gateway_url, getattr(cfg, "gateway_api_key", ""))
+        if models:
+            _logger.info(f"[model_resolver] Discovered {len(models)} models from Gateway")
+            save_models_cache(models, path)
+            return models
 
-    # 3. Try Direct Gemini API models endpoint as secondary source
     gemini_key = getattr(cfg, "gemini_api_key", "")
     if gemini_key:
-        endpoint = f"https://generativelanguage.googleapis.com/v1beta/models?key={gemini_key}"
-        try:
-            resp = http_session.get(endpoint, timeout=2.5)
-            if resp.status_code == 200:
-                data = resp.json()
-                items = data.get("models") or []
-                for item in items:
-                    if isinstance(item, dict):
-                        mid = item.get("name") or item.get("id")
-                        if mid:
-                            clean_id = str(mid).removeprefix("models/")
-                            models.append(clean_id)
-                    elif isinstance(item, str):
-                        models.append(item.removeprefix("models/"))
-                if models:
-                    _logger.info(f"[model_resolver] Discovered {len(models)} models from Gemini API")
-                    save_models_cache(models, path)
-                    return models
-        except Exception as e:
-            _logger.debug(f"[model_resolver] Gemini API query failed: {e}")
+        models = _fetch_models_from_gemini_api(gemini_key)
+        if models:
+            _logger.info(f"[model_resolver] Discovered {len(models)} models from Gemini API")
+            save_models_cache(models, path)
+            return models
 
-    # 4. Fall back to stale cache if available
     if cached and cached.get("models"):
         _logger.warning("[model_resolver] Network unreachable; using stale models cache")
         return cached["models"]
@@ -209,17 +199,21 @@ def fetch_available_models(force_refresh: bool = False, cache_path: Path | None 
 
 
 def is_dynamic_model(model_name: str) -> bool:
-    """Check if model_name is an alias for latest/auto resolution.
-
-    Args:
-        model_name: Model identifier or alias.
-
-    Returns:
-        True if the name matches dynamic aliases, False otherwise.
-    """
+    """Check if model_name is an alias for latest/auto resolution."""
     if not model_name:
         return False
     return bool(DYNAMIC_MODEL_PATTERN.match(model_name.strip()))
+
+
+def _determine_target_tier(specified_tier: str | None, task: str, default_tier: str) -> str:
+    """Determine target tier suffix based on explicit specification or task category."""
+    if specified_tier:
+        return specified_tier.lower()
+    if task in ("synthesis", "reasoning"):
+        return "high"
+    if task in ("vision", "fast", "ocr", "correction"):
+        return "low"
+    return default_tier or "high"
 
 
 def resolve_model(
@@ -230,51 +224,20 @@ def resolve_model(
     force_refresh: bool = False,
     cache_path: Path | None = None,
 ) -> str:
-    """Dynamically resolve model name to latest version when aliases are used.
-
-    If model_name is explicit (e.g. 'gemini-3.8-flash-high', 'claude-opus-4-6-thinking'),
-    it passes through untouched.
-
-    If model_name is 'latest', 'auto', 'gemini-latest', 'gemini-flash-latest',
-    'gemini-latest-low', etc., it queries cached/live models to find the highest
-    Gemini Flash version and applies the requested or task-appropriate tier.
-
-    Args:
-        model_name: Name or alias of the model.
-        task: Task category ('synthesis', 'reasoning', 'vision', 'fast', 'correction', 'general').
-        default_tier: Fallback tier ('high', 'medium', 'low') if not specified in model_name or task.
-        force_refresh: Whether to bypass the 24h cache.
-        cache_path: Optional custom cache file path (used in testing).
-
-    Returns:
-        Resolved model identifier string.
-    """
+    """Dynamically resolve model name to latest version when aliases are used."""
     if not model_name:
         return ""
-
     model_clean = model_name.strip()
     match = DYNAMIC_MODEL_PATTERN.match(model_clean)
     if not match:
         return model_clean
 
-    specified_tier = match.group(1)
-    if specified_tier:
-        target_tier = specified_tier.lower()
-    else:
-        if task in ("synthesis", "reasoning"):
-            target_tier = "high"
-        elif task in ("vision", "fast", "ocr", "correction"):
-            target_tier = "low"
-        else:
-            target_tier = default_tier or "high"
-
+    target_tier = _determine_target_tier(match.group(1), task, default_tier)
     models = fetch_available_models(force_refresh=force_refresh, cache_path=cache_path)
     highest_result = find_highest_gemini_flash(models) if models else None
 
     if highest_result:
-        _, v_str, _ = highest_result
-        return f"gemini-{v_str}-flash-{target_tier}"
-
+        return f"gemini-{highest_result[1]}-flash-{target_tier}"
     if target_tier and target_tier != "high":
         return f"gemini-3.8-flash-{target_tier}"
     return STATIC_LATEST_GEMINI_FLASH

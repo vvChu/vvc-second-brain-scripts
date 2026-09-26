@@ -6,7 +6,7 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 > - **Full Constitution & Rules**: [`AGENTS.md`](../AGENTS.md) (Authoritative Source of Truth)
 > - **Pipeline Mode Override**: [`scripts/GEMINI.md`](GEMINI.md) (Automated daemon JIT prompt instructions)
 > - **Complete Version History**: [`CHANGELOG.md`](../CHANGELOG.md) (All releases and architectural seam milestones)
-> - **Current Milestone**: `v8.15.13 — Deep Module Seams: Diagram Base & YouTube Graduation (0 Legacy Line Ratchets, 100% Line Budget Compliance)` (100% tests passed, 0 regressions).
+> - **Current Milestone**: `v8.15.13 — Zero-Slack Architectural Ratchets Graduation (0 Legacy Line Ratchets, 0 Legacy Function Ratchets, 100% Compliance)` (100% tests passed, 0 regressions).
 
 ---
 

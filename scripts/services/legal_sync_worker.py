@@ -46,54 +46,52 @@ def trigger_legal_sync() -> None:
     )
 
 
+def _clean_markdown_fence(content: str) -> str:
+    """Strip markdown code fence wrapper if present."""
+    text = content.strip()
+    if text.startswith("```markdown"):
+        text = text[11:]
+    elif text.startswith("```"):
+        text = text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
+def _save_legal_concept(note_content: str) -> None:
+    """Save concept note and trigger incremental MOC rebuild."""
+    cleaned = _clean_markdown_fence(note_content)
+    saved_path = save_concept(cleaned, book_name="CCBA Legal Registry")
+    if saved_path:
+        try:
+            from wiki_maintain import rebuild_incremental
+            rebuild_incremental(saved_path)
+        except Exception as moc_err:
+            _logger.warning(f"Failed incremental MOC rebuild: {moc_err}")
+        _logger.info(f"Legal Update saved: {saved_path.name}")
+        log("lifecycle", f"Legal Sync completed: {saved_path.name}")
+    else:
+        _logger.info("Legal Update subsumed or skipped by Quality Gate / Semantic Merger.")
+
+
 def _generate_legal_sync() -> None:
     """Worker function: fetch and save legal updates via standard Quality Gate."""
     _logger.info("Generating Legal Update Concept")
     log("lifecycle", "Legal Sync started")
-
     try:
         registry_path = _find_legal_registry()
         if not registry_path:
             _logger.warning("No CCBA Legal Registry found. Skipping legal sync.")
             log("warning", "Legal Sync skipped: registry not found")
             return
-
         registry_data = registry_path.read_text(encoding="utf-8")
         today = datetime.now().strftime("%Y-%m-%d")
         prompt = _LEGAL_PROMPT.format(date=today, registry_data=registry_data)
-
-        note_content = call_llm(
-            prompt,
-            task="synthesis",
-        )
-
+        note_content = call_llm(prompt, task="synthesis")
         if not note_content:
             log("error", "Legal Sync generation failed: empty response")
             return
-
-        note_content = note_content.strip()
-        if note_content.startswith("```markdown"):
-            note_content = note_content[11:]
-        elif note_content.startswith("```"):
-            note_content = note_content[3:]
-        if note_content.endswith("```"):
-            note_content = note_content[:-3]
-        note_content = note_content.strip()
-
-        # Save via pipeline.post_process to enforce Quality Gate, Snake_Case title & VectorStore hot-insert
-        saved_path = save_concept(note_content, book_name="CCBA Legal Registry")
-        if saved_path:
-            try:
-                from wiki_maintain import rebuild_incremental
-                rebuild_incremental(saved_path)
-            except Exception as moc_err:
-                _logger.warning(f"Failed incremental MOC rebuild: {moc_err}")
-
-            _logger.info(f"Legal Update saved: {saved_path.name}")
-            log("lifecycle", f"Legal Sync completed: {saved_path.name}")
-        else:
-            _logger.info("Legal Update subsumed or skipped by Quality Gate / Semantic Merger.")
-
+        _save_legal_concept(note_content)
     except Exception as e:
         _logger.error(f"Legal Sync failed: {e}")
         log("error", f"Legal Sync failed: {e}")

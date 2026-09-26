@@ -126,10 +126,124 @@ def _smart_chunking(pages_text: list[str], target_size: int = 15) -> list[dict]:
         
     return chapters
 
+def _extract_pdf_pages_and_images(pdf_path: Path, output_dir: Path) -> list[str]:
+    """Run pymupdf4llm in isolated temp directory, copy images and return page text."""
+    import os
+    import pymupdf4llm
+
+    temp_dir = cfg.vault_root / "scripts/scratch/temp_pdf_convert"
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        temp_pdf = temp_dir / pdf_path.name
+        shutil.copy2(pdf_path, temp_pdf)
+        old_cwd = os.getcwd()
+        os.chdir(str(temp_dir))
+        try:
+            chunks = pymupdf4llm.to_markdown(
+                str(temp_pdf.name), page_chunks=True, write_images=True, image_path="."
+            )
+        finally:
+            os.chdir(old_cwd)
+        for img in temp_dir.glob("*.*"):
+            if img.suffix.lower() in {".png", ".jpg", ".jpeg"}:
+                shutil.copy2(img, output_dir / img.name)
+        _optimize_images(output_dir)
+        return [c.get("text", "") for c in chunks]
+    finally:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+def _resolve_pdf_chapters(
+    workspace_dir: Path | None, pdf_path: Path, pages_text: list[str]
+) -> list[dict]:
+    """Determine chapter structure via custom TOC, embedded TOC, or smart chunking."""
+    if workspace_dir and (toc_file := workspace_dir / "_toc.json").exists():
+        chapters = _load_custom_toc(toc_file)
+        if chapters:
+            _logger.info("Using custom _toc.json for chunking")
+            return chapters
+    chapters = _get_embedded_toc(pdf_path)
+    if chapters:
+        _logger.info("Using embedded PDF TOC for chunking")
+        return chapters
+    _logger.info("No TOC found. Using smart chunking (approx 15 pages).")
+    return _smart_chunking(pages_text, target_size=15)
+
+
+def _write_single_chapter(
+    idx: int, chapter: dict, pages_text: list[str], output_dir: Path
+) -> tuple[dict, str] | None:
+    """Format and write a single chapter markdown file, returning chapter metadata and sample text."""
+    start_p = max(0, chapter.get("page_start", 1) - 1)
+    end_p = min(len(pages_text), chapter.get("page_end", start_p + 1))
+    if start_p >= len(pages_text):
+        return None
+    text = "\n\n".join(pages_text[start_p:end_p])
+    sample = text[:2000]
+    text = re.sub(r'!\[(.*?)\]\([^)]*[/\\]([^/\\)]+\.(png|jpg|jpeg))\)', r'![\1](\2)', text)
+    title = chapter.get("title_vi", f"Chapter {idx+1}")
+    if not text.strip().startswith("# "):
+        text = f"# {title}\n\n{text}"
+    file_name = f"{idx+1:02d}_{re.sub(r'[^a-zA-Z0-9À-ỹ]+', '_', title.lower()).strip('_')[:50]}.md"
+    (output_dir / file_name).write_text(text, encoding="utf-8")
+    meta = {
+        "chapter_num": idx + 1,
+        "title_vi": title,
+        "title_original": title,
+        "description_vi": None,
+        "epub_file": file_name,
+        "page_start": chapter.get("page_start", start_p + 1),
+        "page_end": chapter.get("page_end", end_p),
+    }
+    return meta, sample
+
+
+def _save_toc_original(
+    output_dir: Path, pdf_stem: str, text_samples: list[str], toc_chapters: list[dict]
+) -> None:
+    """Detect language and save canonical _toc_original.json in output directory."""
+    clean_title = pdf_stem.replace("_", " ")
+    sample_text = "\n".join(text_samples)
+    lang = "vi" if _is_vietnamese(sample_text) else "en"
+    _logger.info(f"Auto-detected language for PDF: {lang}")
+    toc_data = {
+        "book_title_vi": clean_title,
+        "book_title_original": clean_title,
+        "language": lang,
+        "chapters": toc_chapters,
+    }
+    try:
+        (output_dir / "_toc_original.json").write_text(
+            json.dumps(toc_data, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+        _logger.info("Original TOC template saved for PDF: _toc_original.json")
+    except OSError as e:
+        _logger.warning(f"Failed to write _toc_original.json: {e}")
+
+
+def _write_all_chapters(
+    chapters: list[dict], pages_text: list[str], output_dir: Path, pdf_stem: str
+) -> None:
+    """Write markdown chapters and save the original TOC template."""
+    toc_chapters: list[dict] = []
+    text_samples: list[str] = []
+    for idx, chapter in enumerate(chapters):
+        res = _write_single_chapter(idx, chapter, pages_text, output_dir)
+        if res:
+            meta, sample = res
+            toc_chapters.append(meta)
+            if len(text_samples) < 5:
+                text_samples.append(sample)
+    if chapters:
+        _save_toc_original(output_dir, pdf_stem, text_samples, toc_chapters)
+
+
 def convert_pdf(pdf_path: Path, output_dir: Path | None = None, workspace_dir: Path | None = None) -> bool:
     """Convert PDF to chunked markdown files with images."""
     try:
-        import pymupdf4llm
+        import pymupdf4llm  # noqa: F401
     except ImportError:
         _logger.error("pymupdf4llm not installed: pip install pymupdf4llm")
         return False
@@ -138,7 +252,6 @@ def convert_pdf(pdf_path: Path, output_dir: Path | None = None, workspace_dir: P
         _logger.error(f"PDF not found: {pdf_path}")
         return False
 
-    # Setup output directory
     if output_dir is None:
         stem = re.sub(r"[^a-zA-Z0-9À-ỹ]+", "_", pdf_path.stem).strip("_")
         output_dir = pdf_path.parent / f"{stem}_MD"
@@ -147,127 +260,13 @@ def convert_pdf(pdf_path: Path, output_dir: Path | None = None, workspace_dir: P
         shutil.rmtree(output_dir, ignore_errors=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Use a temporary directory without spaces to run pymupdf4llm.to_markdown
-    # to avoid errors when the vault path contains spaces/symlinks.
-    temp_dir = cfg.vault_root / "scripts/scratch/temp_pdf_convert"
-    if temp_dir.exists():
-        shutil.rmtree(temp_dir, ignore_errors=True)
-    temp_dir.mkdir(parents=True, exist_ok=True)
-
     _logger.info(f"Converting PDF: {pdf_path.name}")
-    
     try:
-        # Copy PDF to temp directory
-        temp_pdf_path = temp_dir / pdf_path.name
-        shutil.copy2(pdf_path, temp_pdf_path)
-
-        # Change CWD to temp_dir
-        import os
-        old_cwd = os.getcwd()
-        os.chdir(str(temp_dir))
-        
-        # 1. Extract markdown and images page by page
-        try:
-            chunks = pymupdf4llm.to_markdown(
-                str(temp_pdf_path.name), 
-                page_chunks=True, 
-                write_images=True, 
-                image_path="."
-            )
-        finally:
-            os.chdir(old_cwd)
-        
-        # Copy all extracted image files to output_dir
-        for img_file in temp_dir.glob("*.*"):
-            if img_file.suffix.lower() in {".png", ".jpg", ".jpeg"}:
-                shutil.copy2(img_file, output_dir / img_file.name)
-        
-        # Clean up temp directory
-        shutil.rmtree(temp_dir, ignore_errors=True)
-        
-        # 2. Optimize extracted images
-        _optimize_images(output_dir)
-        
-        # 3. Determine chapters/chunking
-        chapters = None
-        if workspace_dir and (toc_file := workspace_dir / "_toc.json").exists():
-            chapters = _load_custom_toc(toc_file)
-            if chapters:
-                _logger.info("Using custom _toc.json for chunking")
-                
-        if not chapters:
-            chapters = _get_embedded_toc(pdf_path)
-            if chapters:
-                _logger.info("Using embedded PDF TOC for chunking")
-                
-        pages_text = [chunk.get('text', '') for chunk in chunks]
-        
-        if not chapters:
-            _logger.info("No TOC found. Using smart chunking (approx 15 pages).")
-            chapters = _smart_chunking(pages_text, target_size=15)
-            
-        # 4. Write markdown chunks
-        toc_chapters = []
-        text_samples = []
-        for idx, chapter in enumerate(chapters):
-            start_p = max(0, chapter.get("page_start", 1) - 1)
-            end_p = min(len(pages_text), chapter.get("page_end", start_p + 1))
-            
-            if start_p >= len(pages_text):
-                continue
-                
-            chapter_text = "\n\n".join(pages_text[start_p:end_p])
-            if len(text_samples) < 5:
-                text_samples.append(chapter_text[:2000])
-            
-            # Clean up image paths (pymupdf4llm generates absolute paths or full paths, we want relative)
-            # Find ![img](path/to/image.jpg) -> ![img](image.jpg)
-            chapter_text = re.sub(r'!\[(.*?)\]\([^)]*[/\\]([^/\\)]+\.(png|jpg|jpeg))\)', r'![\1](\2)', chapter_text)
-            
-            # Add chapter title as H1 if not already there
-            title = chapter.get("title_vi", f"Chapter {idx+1}")
-            if not chapter_text.strip().startswith("# "):
-                chapter_text = f"# {title}\n\n{chapter_text}"
-                
-            file_name = f"{idx+1:02d}_{re.sub(r'[^a-zA-Z0-9À-ỹ]+', '_', title.lower()).strip('_')[:50]}.md"
-            out_file = output_dir / file_name
-            
-            out_file.write_text(chapter_text, encoding="utf-8")
-            
-            # Store chapter in original TOC (canonical schema v8.0)
-            toc_chapters.append({
-                "chapter_num": idx + 1,
-                "title_vi": title,
-                "title_original": title,
-                "description_vi": None,
-                "epub_file": file_name,
-                "page_start": chapter.get("page_start", start_p + 1),
-                "page_end": chapter.get("page_end", end_p)
-            })
-            
-        # Write _toc_original.json (canonical schema v8.0)
-        if chapters:
-            clean_title = pdf_path.stem.replace("_", " ")
-            sample_text = "\n".join(text_samples)
-            lang = "vi" if _is_vietnamese(sample_text) else "en"
-            _logger.info(f"Auto-detected language for PDF: {lang}")
-            original_toc_data = {
-                "book_title_vi": clean_title,
-                "book_title_original": clean_title,
-                "language": lang,
-                "chapters": toc_chapters
-            }
-            try:
-                toc_original_path = output_dir / "_toc_original.json"
-                with open(toc_original_path, "w", encoding="utf-8") as f:
-                    json.dump(original_toc_data, f, ensure_ascii=False, indent=2)
-                _logger.info(f"Original TOC template saved for PDF: {toc_original_path.name}")
-            except OSError as e:
-                _logger.warning(f"Failed to write _toc_original.json: {e}")
-            
+        pages_text = _extract_pdf_pages_and_images(pdf_path, output_dir)
+        chapters = _resolve_pdf_chapters(workspace_dir, pdf_path, pages_text)
+        _write_all_chapters(chapters, pages_text, output_dir, pdf_path.stem)
         _logger.info(f"Successfully converted PDF into {len(chapters)} markdown chunks.")
         return True
-        
     except Exception as e:
         _logger.error(f"Failed to convert PDF: {e}", exc_info=True)
         return False

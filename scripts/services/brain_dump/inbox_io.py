@@ -57,6 +57,28 @@ def _find_pending_dump(content: str) -> str | None:
     return None
 
 
+def _update_inbox_text(inbox: str, dump_text_to_replace: str, new_inbox_content: str) -> str:
+    """Filter out replaced lines and append new content to inbox section."""
+    replace_lines = {line.strip() for line in dump_text_to_replace.splitlines() if line.strip()}
+    remaining_lines = [line for line in inbox.splitlines() if line.strip() not in replace_lines]
+    if new_inbox_content.strip():
+        remaining_lines.append(new_inbox_content.strip())
+    new_inbox = "\n".join(remaining_lines).strip()
+    return f"\n{new_inbox}\n" if new_inbox else "\n\n"
+
+
+def _append_processed_links(after: str, links_to_append: list[str]) -> str:
+    """Append generated concept links under ## Processed heading."""
+    links_str = "\n".join(links_to_append)
+    if not after.startswith("\n"):
+        after = "\n" + after
+    if "## Processed" in after:
+        if not after.endswith("\n"):
+            after += "\n"
+        return re.sub(r"(##\s*Processed\s*\n)", f"\\1{links_str}\n", after, count=1, flags=re.IGNORECASE)
+    return f"{after}\n## Processed\n{links_str}\n"
+
+
 def _commit_inbox_changes(
     dump_text_to_replace: str,
     new_inbox_content: str,
@@ -68,44 +90,17 @@ def _commit_inbox_changes(
         current_content = cfg.dump_file.read_text(encoding="utf-8")
     except OSError:
         return
-        
+
     before, inbox, after = _extract_inbox_sections(current_content)
     if before and inbox:
-        # Nâng cấp v8.9: So khớp line-by-line linh hoạt chống lệch khoảng trắng và CRLF (\r\n) trên Windows
-        replace_lines = {line.strip() for line in dump_text_to_replace.splitlines() if line.strip()}
-        inbox_lines = inbox.splitlines()
-        
-        remaining_lines = []
-        for line in inbox_lines:
-            if line.strip() in replace_lines:
-                continue
-            remaining_lines.append(line)
-            
-        if new_inbox_content.strip():
-            remaining_lines.append(new_inbox_content.strip())
-            
-        new_inbox = "\n".join(remaining_lines).strip()
-        if new_inbox:
-            new_inbox = "\n" + new_inbox + "\n"
-        else:
-            new_inbox = "\n\n"
-            
-        links_str = "\n".join(links_to_append)
-        if not after.startswith("\n"):
-            after = "\n" + after
-        if "## Processed" in after:
-            if not after.endswith("\n"):
-                after += "\n"
-            after = re.sub(r"(##\s*Processed\s*\n)", f"\\1{links_str}\n", after, count=1, flags=re.IGNORECASE)
-        else:
-            after += f"\n## Processed\n{links_str}\n"
-            
-        new_content = before + new_inbox + after
+        new_inbox = _update_inbox_text(inbox, dump_text_to_replace, new_inbox_content)
+        new_after = _append_processed_links(after, links_to_append)
+        new_content = before + new_inbox + new_after
         try:
             cfg.dump_file.write_text(new_content, encoding="utf-8")
         except OSError as e:
             _logger.warning(f"Không thể ghi Brain_Dump.md: {e}")
-            
+
     if rebuild and _rebuild_all is not None:
         try:
             _rebuild_all()

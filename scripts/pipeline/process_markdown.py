@@ -22,6 +22,66 @@ _logger = logging.getLogger("vvc.md_process")
 
 from core.prompts.pipeline import MARKDOWN_SYNTHESIS as _MARKDOWN_PROMPT  # noqa: E402
 
+def _generate_markdown_concepts(file_path: Path, content: str) -> str | None:
+    """Format prompt and call LLM for markdown synthesis."""
+    today = date.today().isoformat()
+    source_name = file_path.stem.replace("_", " ").title()
+    prompt = _MARKDOWN_PROMPT.format(
+        content=content,
+        source_name=source_name,
+        source_ref=file_path.stem,
+        today=today,
+    )
+    result = call_llm(prompt, task="synthesis")
+    if not result:
+        log("error", "Markdown synthesis failed", source=file_path.name)
+        _logger.error("Synthesis failed for markdown file")
+        return None
+
+    try:
+        (Path(__file__).parent.parent / "scratch" / "raw_markdown_synth.md").write_text(result, encoding="utf-8")
+    except Exception:
+        pass
+    return result
+
+
+def _parse_and_save_concepts(result: str) -> tuple[int, list[Path]]:
+    """Split concepts from LLM output, sanitize, and save via VectorStore batch."""
+    concepts = result.split("===CONCEPT_SEPARATOR===")
+    saved_count = 0
+    saved_paths: list[Path] = []
+
+    with VectorStore.get_instance().batch():
+        for concept in concepts:
+            concept = concept.strip()
+            if len(concept) < 100:
+                continue
+
+            concept = re.sub(r"^```(?:markdown|md)?\s*\n", "", concept)
+            concept = re.sub(r"\n```\s*$", "", concept)
+
+            if not concept.startswith("---"):
+                continue
+
+            saved_path = save_concept(concept)
+            if saved_path:
+                saved_count += 1
+                saved_paths.append(saved_path)
+
+    return saved_count, saved_paths
+
+
+def _finalize_synthesis(file_path: Path, saved_paths: list[Path]) -> None:
+    """Archive processed file and trigger incremental MOC rebuild."""
+    _archive_file(file_path)
+    try:
+        from wiki_maintain import rebuild_incremental
+        for sp in saved_paths:
+            rebuild_incremental(sp)
+    except ImportError:
+        pass
+
+
 def process_markdown_file(file_path: Path) -> bool:
     """Read a raw markdown file, synthesize concepts, and archive the file."""
     _logger.info(f"Processing Markdown: {file_path.name}")
@@ -37,64 +97,16 @@ def process_markdown_file(file_path: Path) -> bool:
         _logger.warning("File too short, skipping.")
         return False
 
-    today = date.today().isoformat()
-    source_name = file_path.stem.replace("_", " ").title()
-
-    prompt = _MARKDOWN_PROMPT.format(
-        content=content,
-        source_name=source_name,
-        source_ref=file_path.stem,
-        today=today,
-    )
-
-    # Note: For large contexts, this might use gemini-3.1-pro-high if configured
-    result = call_llm(prompt, task="synthesis")
-    
+    result = _generate_markdown_concepts(file_path, content)
     if not result:
-        log("error", "Markdown synthesis failed", source=file_path.name)
-        _logger.error("Synthesis failed for markdown file")
         return False
 
-    # Debug: Save raw LLM output
-    try:
-        (Path(__file__).parent.parent / "scratch" / "raw_markdown_synth.md").write_text(result, encoding="utf-8")
-    except Exception:
-        pass
-
-    concepts = result.split("===CONCEPT_SEPARATOR===")
-    saved_count = 0
-    saved_paths: list[Path] = []
-
-    with VectorStore.get_instance().batch():
-        for concept in concepts:
-            concept = concept.strip()
-            if len(concept) < 100:
-                continue
-
-            # Strip markdown fences
-            concept = re.sub(r"^```(?:markdown|md)?\s*\n", "", concept)
-            concept = re.sub(r"\n```\s*$", "", concept)
-
-            if not concept.startswith("---"):
-                continue
-
-            saved_path = save_concept(concept)
-            if saved_path:
-                saved_count += 1
-                saved_paths.append(saved_path)
-
+    saved_count, saved_paths = _parse_and_save_concepts(result)
     log("synth", f"Created {saved_count} concepts from {file_path.name}")
     _logger.info(f"Created {saved_count} concepts from {file_path.name}")
 
     if saved_count > 0:
-        _archive_file(file_path)
-        # Trigger MOC rebuild incrementally
-        try:
-            from wiki_maintain import rebuild_incremental
-            for sp in saved_paths:
-                rebuild_incremental(sp)
-        except ImportError:
-            pass
+        _finalize_synthesis(file_path, saved_paths)
         return True
 
     return False

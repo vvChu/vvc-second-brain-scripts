@@ -78,41 +78,22 @@ def _assign_quadrants(
     return assigned
 
 
-def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
-    """Applies 2x2 Matrix / Quadrant Grid Layout to Excalidraw elements.
-
-    Positions nodes into actual 2x2 quadrant coordinates, translates bound
-    text synchronously, clips any interconnecting arrows safely, and draws
-    crosshair or axis background dividers.
-    """
-    shapes: dict[str, dict[str, Any]] = {}
-    arrows: list[dict[str, Any]] = []
-
-    for el in elements:
-        t = el.get("type")
-        if t in ("rectangle", "ellipse", "diamond"):
-            shapes[el["id"]] = el
-        elif t == "arrow":
-            arrows.append(el)
-
-    if not shapes:
-        return False
-
-    cx = 600.0
-    cy = 400.0
-    col_offset = 180.0
-    row_offset = 130.0
-
+def _position_matrix_shapes(
+    shapes: dict[str, dict[str, Any]],
+    elements: list[dict[str, Any]],
+    quad_assignments: dict[str, int],
+    cx: float,
+    cy: float,
+    col_offset: float,
+    row_offset: float,
+) -> None:
+    """Position matrix nodes into assigned quadrant slots."""
     slot_coords = {
-        0: (cx - col_offset, cy - row_offset),  # Top-Left
-        1: (cx + col_offset, cy - row_offset),  # Top-Right
-        2: (cx - col_offset, cy + row_offset),  # Bottom-Left
-        3: (cx + col_offset, cy + row_offset),  # Bottom-Right
+        0: (cx - col_offset, cy - row_offset),
+        1: (cx + col_offset, cy - row_offset),
+        2: (cx - col_offset, cy + row_offset),
+        3: (cx + col_offset, cy + row_offset),
     }
-
-    quad_assignments = _assign_quadrants(list(shapes.keys()), shapes, elements)
-
-    # 1. Update node positions and aesthetics
     for sid, q_idx in quad_assignments.items():
         shape = shapes[sid]
         target_cx, target_cy = slot_coords.get(
@@ -122,16 +103,9 @@ def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
                 cy + (1.0 if (q_idx // 2) % 2 else -1.0) * row_offset + (q_idx // 4) * 180.0,
             ),
         )
-
-        old_x = shape.get("x", 0.0)
-        old_y = shape.get("y", 0.0)
-        shape_w = shape.get("width", 150.0)
-        shape_h = shape.get("height", 100.0)
-
-        new_x = target_cx - shape_w / 2.0
-        new_y = target_cy - shape_h / 2.0
-        dx = new_x - old_x
-        dy = new_y - old_y
+        old_x, old_y = shape.get("x", 0.0), shape.get("y", 0.0)
+        sw, sh = shape.get("width", 150.0), shape.get("height", 100.0)
+        new_x, new_y = target_cx - sw / 2.0, target_cy - sh / 2.0
 
         shape["x"] = float(new_x)
         shape["y"] = float(new_y)
@@ -141,25 +115,15 @@ def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
         shape["strokeWidth"] = cfg.excalidraw_stroke_width
         shape["fillStyle"] = "solid"
 
-        sync_bound_text_translation(shape, elements, dx, dy)
+        sync_bound_text_translation(shape, elements, new_x - old_x, new_y - old_y)
 
-    # 2. Draw background dividers (crosshair or axis)
-    # Remove any existing matrix dividers to ensure idempotency when re-run
-    elements[:] = [
-        el for el in elements
-        if not (isinstance(el.get("id"), str) and (el["id"].startswith("matrix_") or el["id"].startswith("axis_")))
-    ]
 
-    min_x = cx - col_offset - 120.0
-    max_x = cx + col_offset + 120.0
-    min_y = cy - row_offset - 100.0
-    max_y = cy + row_offset + 100.0
-
-    background_elements: list[dict[str, Any]] = []
-
-    if style == "cross":
-        # Vertical line
-        v_line = {
+def _create_cross_dividers(
+    cx: float, cy: float, min_x: float, max_x: float, min_y: float, max_y: float
+) -> list[dict[str, Any]]:
+    """Create vertical and horizontal crosshair dividers."""
+    return [
+        {
             "id": f"matrix_v_{uuid.uuid4().hex[:8]}",
             "type": "arrow",
             "x": cx,
@@ -175,9 +139,8 @@ def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
             "points": [[0, 0], [0, float(max_y - min_y)]],
             "startArrowhead": None,
             "endArrowhead": None,
-        }
-        # Horizontal line
-        h_line = {
+        },
+        {
             "id": f"matrix_h_{uuid.uuid4().hex[:8]}",
             "type": "arrow",
             "x": min_x,
@@ -193,37 +156,40 @@ def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
             "points": [[0, 0], [float(max_x - min_x), 0]],
             "startArrowhead": None,
             "endArrowhead": None,
-        }
-        background_elements.extend([v_line, h_line])
+        },
+    ]
 
-    elif style == "axis":
-        axis_origin_x = min_x + 50.0
-        axis_origin_y = max_y - 30.0
-        # Y axis (left side, pointing upward)
-        y_axis = {
+
+def _create_axis_dividers(
+    min_x: float, max_x: float, min_y: float, max_y: float
+) -> list[dict[str, Any]]:
+    """Create X and Y coordinate axis dividers."""
+    origin_x = min_x + 50.0
+    origin_y = max_y - 30.0
+    return [
+        {
             "id": f"axis_y_{uuid.uuid4().hex[:8]}",
             "type": "arrow",
-            "x": axis_origin_x,
-            "y": axis_origin_y,
+            "x": origin_x,
+            "y": origin_y,
             "width": 0,
-            "height": axis_origin_y - min_y,
+            "height": origin_y - min_y,
             "strokeColor": cfg.excalidraw_stroke_color,
             "backgroundColor": "transparent",
             "fillStyle": "solid",
             "strokeWidth": 2,
             "strokeStyle": "solid",
             "roughness": 0,
-            "points": [[0, 0], [0, float(-(axis_origin_y - min_y))]],
+            "points": [[0, 0], [0, float(-(origin_y - min_y))]],
             "startArrowhead": None,
             "endArrowhead": "arrow",
-        }
-        # X axis (bottom side, pointing rightward)
-        x_axis = {
+        },
+        {
             "id": f"axis_x_{uuid.uuid4().hex[:8]}",
             "type": "arrow",
-            "x": axis_origin_x,
-            "y": axis_origin_y,
-            "width": max_x - axis_origin_x,
+            "x": origin_x,
+            "y": origin_y,
+            "width": max_x - origin_x,
             "height": 0,
             "strokeColor": cfg.excalidraw_stroke_color,
             "backgroundColor": "transparent",
@@ -231,32 +197,78 @@ def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
             "strokeWidth": 2,
             "strokeStyle": "solid",
             "roughness": 0,
-            "points": [[0, 0], [float(max_x - axis_origin_x), 0]],
+            "points": [[0, 0], [float(max_x - origin_x), 0]],
             "startArrowhead": None,
             "endArrowhead": "arrow",
-        }
-        background_elements.extend([y_axis, x_axis])
+        },
+    ]
 
-    elements[0:0] = background_elements
 
-    # 3. Update arrows (if any exist between matrix nodes)
+def _update_matrix_arrows(
+    arrows: list[dict[str, Any]], shapes: dict[str, dict[str, Any]]
+) -> None:
+    """Trim and style interconnecting arrows."""
     for arr in arrows:
         sb = arr.get("startBinding", {})
         eb = arr.get("endBinding", {})
-        start_id = sb.get("elementId") if isinstance(sb, dict) else (sb if isinstance(sb, str) else None)
-        end_id = eb.get("elementId") if isinstance(eb, dict) else (eb if isinstance(eb, str) else None)
-
-        if start_id in shapes and end_id in shapes:
-            s_shape = shapes[start_id]
-            e_shape = shapes[end_id]
-            start_x, start_y, end_x, end_y = compute_safe_arrow_endpoints(s_shape, e_shape)
-            arr["x"] = start_x
-            arr["y"] = start_y
-            arr["points"] = [[0.0, 0.0], [float(end_x - start_x), float(end_y - start_y)]]
-
+        sid = (
+            sb.get("elementId")
+            if isinstance(sb, dict)
+            else (sb if isinstance(sb, str) else None)
+        )
+        eid = (
+            eb.get("elementId")
+            if isinstance(eb, dict)
+            else (eb if isinstance(eb, str) else None)
+        )
+        if sid in shapes and eid in shapes:
+            sx, sy, ex, ey = compute_safe_arrow_endpoints(shapes[sid], shapes[eid])
+            arr["x"] = sx
+            arr["y"] = sy
+            arr["points"] = [[0.0, 0.0], [float(ex - sx), float(ey - sy)]]
         arr["roughness"] = 0
         arr["strokeColor"] = cfg.excalidraw_stroke_color
         if arr.get("strokeStyle") != "dashed":
             arr["strokeStyle"] = "solid"
 
+
+def apply_matrix_layout(elements: list[dict], style: str = "cross") -> bool:
+    """Applies 2x2 Matrix / Quadrant Grid Layout to Excalidraw elements."""
+    shapes = {
+        el["id"]: el
+        for el in elements
+        if el.get("type") in ("rectangle", "ellipse", "diamond")
+    }
+    arrows = [el for el in elements if el.get("type") == "arrow"]
+    if not shapes:
+        return False
+
+    cx, cy = 600.0, 400.0
+    col_offset, row_offset = 180.0, 130.0
+    quad_assignments = _assign_quadrants(list(shapes.keys()), shapes, elements)
+
+    _position_matrix_shapes(
+        shapes, elements, quad_assignments, cx, cy, col_offset, row_offset
+    )
+
+    elements[:] = [
+        el
+        for el in elements
+        if not (
+            isinstance(el.get("id"), str)
+            and (el["id"].startswith("matrix_") or el["id"].startswith("axis_"))
+        )
+    ]
+
+    min_x, max_x = cx - col_offset - 120.0, cx + col_offset + 120.0
+    min_y, max_y = cy - row_offset - 100.0, cy + row_offset + 100.0
+
+    dividers = (
+        _create_cross_dividers(cx, cy, min_x, max_x, min_y, max_y)
+        if style == "cross"
+        else _create_axis_dividers(min_x, max_x, min_y, max_y)
+    )
+    elements[0:0] = dividers
+
+    _update_matrix_arrows(arrows, shapes)
     return True

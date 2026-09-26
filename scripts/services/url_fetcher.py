@@ -99,6 +99,90 @@ def _extract_with_trafilatura(html: str) -> str:
     return ""
 
 
+def _fetch_youtube_content(url: str, visual: bool) -> str:
+    """Fetch YouTube transcript and optional visual slides."""
+    info_dict = None
+    if visual:
+        try:
+            import yt_dlp
+            from services.youtube.transcript import get_base_ydl_opts
+            _logger.info(f"Đang tải JIT metadata cho YouTube URL: {url}")
+            with yt_dlp.YoutubeDL(get_base_ydl_opts()) as ydl:
+                info_dict = ydl.extract_info(url, download=False)
+        except Exception as e:
+            _logger.warning(f"Lỗi khi tải JIT metadata qua yt_dlp (sẽ tự động fallback): {e}")
+
+    yt_text = fetch_youtube_transcript(url, info_dict=info_dict)
+    if visual and yt_text:
+        visual_text = extract_video_visuals(url, transcript_text=yt_text, info_dict=info_dict)
+        if visual_text:
+            yt_text = f"{yt_text}\n\n## 🎞️ Nội dung trực quan từ video (Visual Slide Summary)\n\n{visual_text}"
+    return yt_text or ""
+
+
+def _fetch_special_media(url: str, transcribe: bool) -> str | None:
+    """Check and fetch from specialized media providers (podcast, twitter)."""
+    try:
+        from services.podcast import is_podcast_url, fetch_podcast
+        if is_podcast_url(url):
+            return fetch_podcast(url) if transcribe else fetch_podcast(url, transcribe=False)
+    except Exception as e:
+        _logger.warning(f"Podcast fetch error for {url}: {e}")
+
+    try:
+        from services.twitter import is_twitter_url, fetch_twitter
+        if is_twitter_url(url):
+            return fetch_twitter(url, transcribe=transcribe)
+    except Exception as e:
+        _logger.warning(f"Twitter fetch error for {url}: {e}")
+    return None
+
+
+def _extract_html_text(raw_html: str, url: str) -> str:
+    """Extract readable text from HTML using trafilatura and fallback soup."""
+    text = ""
+    if trafilatura is not None:
+        executor = _get_trafilatura_executor()
+        future = executor.submit(_extract_with_trafilatura, raw_html)
+        try:
+            text = future.result(timeout=10)
+        except concurrent.futures.TimeoutError:
+            _logger.warning(f"Trafilatura parsing timed out: {url}")
+        except Exception:
+            pass
+
+    if not text or _is_garbage_fetch(text):
+        if BeautifulSoup is not None:
+            soup = BeautifulSoup(raw_html, "html.parser")
+            text = soup.get_text(separator="\n", strip=True)
+    return text
+
+
+def _fetch_html_article(url: str) -> str:
+    """Fetch and parse standard HTML article including images."""
+    try:
+        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
+        resp.raise_for_status()
+        raw_html = resp.text
+        text = _extract_html_text(raw_html, url)
+        if _is_garbage_fetch(text):
+            _logger.warning(f"Garbage fetch detected: {url}")
+            return ""
+
+        try:
+            images = extract_article_images(raw_html, url)
+            if images:
+                text = f"{text}{format_image_metadata(images)}"
+                _logger.info(f"Appended {len(images)} image metadata entries for {url}")
+        except Exception as img_exc:
+            _logger.warning(f"Article image extraction failed (non-fatal): {img_exc}")
+
+        return text
+    except Exception as e:
+        _logger.warning(f"URL fetch failed: {url}: {e}")
+        return ""
+
+
 def fetch_url(url: str, visual: bool = False, transcribe: bool = True) -> str:
     """Fetch and extract article text from a URL.
 
@@ -116,90 +200,12 @@ def fetch_url(url: str, visual: bool = False, transcribe: bool = True) -> str:
     """
     if requests is None:
         return ""
-    
-    url = url.rstrip('.,;:"\'')    
+    url = url.rstrip('.,;:"\'')
     if "youtube.com" in url or "youtu.be" in url:
-        info_dict = None
-        if visual:
-            try:
-                import yt_dlp
-                from services.youtube.transcript import get_base_ydl_opts
-                _logger.info(f"Đang tải JIT metadata cho YouTube URL: {url}")
-                with yt_dlp.YoutubeDL(get_base_ydl_opts()) as ydl:
-                    info_dict = ydl.extract_info(url, download=False)
-            except Exception as e:
-                _logger.warning(f"Lỗi khi tải JIT metadata qua yt_dlp (sẽ tự động fallback): {e}")
-        
-        yt_text = fetch_youtube_transcript(url, info_dict=info_dict)
-        if visual and yt_text:
-            visual_text = extract_video_visuals(url, transcript_text=yt_text, info_dict=info_dict)
-            if visual_text:
-                yt_text = f"{yt_text}\n\n## 🎞️ Nội dung trực quan từ video (Visual Slide Summary)\n\n{visual_text}"
-        # Never fallback to HTML scraping for YouTube URLs. 
-        # If transcript/audio fails, return empty string so Semantic Arbitrator rejects it.
-        return yt_text or ""
+        return _fetch_youtube_content(url, visual=visual)
 
-    # Route podcast URLs
-    try:
-        from services.podcast import is_podcast_url, fetch_podcast
-        if is_podcast_url(url):
-            if transcribe:
-                podcast_text = fetch_podcast(url)
-            else:
-                podcast_text = fetch_podcast(url, transcribe=False)
-            if podcast_text:
-                return podcast_text
-    except Exception as e:
-        _logger.warning(f"Podcast fetch error for {url}: {e}")
+    media_text = _fetch_special_media(url, transcribe=transcribe)
+    if media_text:
+        return media_text
 
-    # Route Twitter/X URLs
-    try:
-        from services.twitter import is_twitter_url, fetch_twitter
-        if is_twitter_url(url):
-            tweet_text = fetch_twitter(url, transcribe=transcribe)
-            if tweet_text:
-                return tweet_text
-    except Exception as e:
-        _logger.warning(f"Twitter fetch error for {url}: {e}")
-
-    try:
-        resp = requests.get(url, timeout=15, headers={"User-Agent": "Mozilla/5.0"})
-        resp.raise_for_status()
-        raw_html = resp.text
-
-        # Try trafilatura first with a 10s timeout to prevent hanging
-        text = ""
-        if trafilatura is not None:
-            executor = _get_trafilatura_executor()
-            future = executor.submit(_extract_with_trafilatura, raw_html)
-            try:
-                text = future.result(timeout=10)
-            except concurrent.futures.TimeoutError:
-                _logger.warning(f"Trafilatura parsing timed out: {url}")
-            except Exception:
-                pass
-
-        if not text or _is_garbage_fetch(text):
-            # Fallback: basic HTML text
-            if BeautifulSoup is not None:
-                soup = BeautifulSoup(raw_html, "html.parser")
-                text = soup.get_text(separator="\n", strip=True)
-
-        if _is_garbage_fetch(text):
-            _logger.warning(f"Garbage fetch detected: {url}")
-            return ""
-
-        # --- Article Image Extraction (auto, zero-touch) ---
-        try:
-            images = extract_article_images(raw_html, url)
-            if images:
-                image_metadata = format_image_metadata(images)
-                text = f"{text}{image_metadata}"
-                _logger.info(f"Appended {len(images)} image metadata entries for {url}")
-        except Exception as img_exc:
-            _logger.warning(f"Article image extraction failed (non-fatal): {img_exc}")
-
-        return text
-    except Exception as e:
-        _logger.warning(f"URL fetch failed: {url}: {e}")
-        return ""
+    return _fetch_html_article(url)

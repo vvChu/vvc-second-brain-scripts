@@ -1,4 +1,5 @@
 import json
+from typing import Any
 from grandalf.graphs import Graph, Vertex, Edge
 from grandalf.layouts import SugiyamaLayout
 from core.config import cfg
@@ -43,29 +44,11 @@ def heuristic_bind_arrows(shapes, arrows):
             arr['endBinding'] = {'elementId': closest, 'focus': 0, 'gap': 15}
 
 
-def apply_sugiyama_layout(elements: list[dict]) -> bool:
-    """
-    Applies Sugiyama Hierarchical Layout to the given Excalidraw elements.
-    Mutates the elements list in place. Returns True if layout was applied.
-    """
-    shapes = {}
-    arrows = []
-    
-    # 1. Identify shapes and arrows
-    for el in elements:
-        t = el.get("type")
-        if t in ("rectangle", "ellipse", "diamond"):
-            shapes[el["id"]] = el
-        elif t == "arrow":
-            arrows.append(el)
-            
-    if not shapes:
-        return False
-        
+def _build_sugiyama_graph(shapes: dict, arrows: list) -> Graph:
+    """Build grandalf Graph from shapes and arrows with heuristic bindings."""
     heuristic_bind_arrows(shapes, arrows)
     vertices = []
     vertex_map = {}
-    
     for sid, shape in shapes.items():
         v = Vertex(sid)
         v.view = View()
@@ -73,125 +56,149 @@ def apply_sugiyama_layout(elements: list[dict]) -> bool:
         v.view.h = shape.get("height", 100)
         vertices.append(v)
         vertex_map[sid] = v
-        
+
     edges = []
     for arr in arrows:
         sb = arr.get("startBinding")
         eb = arr.get("endBinding")
-        
-        start_id = sb.get("elementId") if isinstance(sb, dict) else (sb if isinstance(sb, str) else None)
-        end_id = eb.get("elementId") if isinstance(eb, dict) else (eb if isinstance(eb, str) else None)
-        
+        start_id = (
+            sb.get("elementId")
+            if isinstance(sb, dict)
+            else (sb if isinstance(sb, str) else None)
+        )
+        end_id = (
+            eb.get("elementId")
+            if isinstance(eb, dict)
+            else (eb if isinstance(eb, str) else None)
+        )
         if start_id in shapes and end_id in shapes:
-            e = Edge(vertex_map[start_id], vertex_map[end_id])
-            edges.append(e)
-            
-            # Ensure proper bindings in Excalidraw JSON
+            edges.append(Edge(vertex_map[start_id], vertex_map[end_id]))
             if not isinstance(sb, dict):
                 arr["startBinding"] = {"elementId": start_id, "focus": 0, "gap": 15}
             if not isinstance(eb, dict):
                 arr["endBinding"] = {"elementId": end_id, "focus": 0, "gap": 15}
-                
-    g = Graph(vertices, edges)
-    
-    # Run Sugiyama for each connected component
-    current_y_offset = 100
-    for c in g.C:
-        sug = SugiyamaLayout(c)
-        sug.init_all()
-        # Wider spacing for readability
-        sug.xspace = 120
-        sug.yspace = 100
-        sug.draw()
-        
-        # Ensure all vertices have an 'xy' attribute (fallback for isolated nodes)
-        for v in c.sV:
-            if not hasattr(v.view, 'xy'):
-                v.view.xy = (0.0, 0.0)
-                
-        # Find the bounding box of this component to shift it properly
-        min_x = min(v.view.xy[0] - v.view.w/2 for v in c.sV)
-        min_y = min(v.view.xy[1] - v.view.h/2 for v in c.sV)
-        max_y = max(v.view.xy[1] + v.view.h/2 for v in c.sV)
-        
-        # Shift all vertices in this component
-        for v in c.sV:
-            # Shift X to start at 100
-            shifted_cx = v.view.xy[0] - min_x + 100
-            # Shift Y to start at current_y_offset
-            shifted_cy = v.view.xy[1] - min_y + current_y_offset
-            
-            shape = shapes[v.data]
-            old_x = shape.get("x", 0)
-            old_y = shape.get("y", 0)
-            
-            new_x = shifted_cx - v.view.w / 2
-            new_y = shifted_cy - v.view.h / 2
-            
-            dx = new_x - old_x
-            dy = new_y - old_y
-            
-            shape["x"] = float(new_x)
-            shape["y"] = float(new_y)
-            shape["roughness"] = 0
-            if shape.get("type") == "rectangle" and "roundness" not in shape:
-                shape["roundness"] = {"type": 3}
-            # Only override colors if they are default/placeholder values
-            cur_stroke = shape.get("strokeColor", "")
-            if cur_stroke in ("", "#000000", "#0f172a"):
-                shape["strokeColor"] = cfg.excalidraw_stroke_color
-            cur_bg = shape.get("backgroundColor", "")
-            if cur_bg in ("", "transparent"):
-                shape["backgroundColor"] = cfg.excalidraw_background_color
-            
-            # Move bound text
-            for bound in shape.get("boundElements", []):
-                if isinstance(bound, dict) and bound.get("type") == "text":
-                    tid = bound["id"]
-                    for el in elements:
-                        if el.get("id") == tid and el.get("type") == "text":
-                            el["x"] = float(el.get("x", 0) + dx)
-                            el["y"] = float(el.get("y", 0) + dy)
-                            
-        # Move offset for next component
-        current_y_offset += (max_y - min_y) + 100
-        
-    # Update arrows geometrically with Orthogonal (Elbow) routing
+
+    return Graph(vertices, edges)
+
+
+def _position_sugiyama_vertex(
+    v: Vertex,
+    shapes: dict,
+    elements: list[dict],
+    min_x: float,
+    min_y: float,
+    current_y_offset: float,
+) -> None:
+    """Position a single vertex and its bound text."""
+    shifted_cx = v.view.xy[0] - min_x + 100
+    shifted_cy = v.view.xy[1] - min_y + current_y_offset
+
+    shape = shapes[v.data]
+    old_x, old_y = shape.get("x", 0), shape.get("y", 0)
+    new_x = shifted_cx - v.view.w / 2
+    new_y = shifted_cy - v.view.h / 2
+    dx, dy = new_x - old_x, new_y - old_y
+
+    shape["x"] = float(new_x)
+    shape["y"] = float(new_y)
+    shape["roughness"] = 0
+    if shape.get("type") == "rectangle" and "roundness" not in shape:
+        shape["roundness"] = {"type": 3}
+    if shape.get("strokeColor", "") in ("", "#000000", "#0f172a"):
+        shape["strokeColor"] = cfg.excalidraw_stroke_color
+    if shape.get("backgroundColor", "") in ("", "transparent"):
+        shape["backgroundColor"] = cfg.excalidraw_background_color
+
+    for bound in shape.get("boundElements", []):
+        if isinstance(bound, dict) and bound.get("type") == "text":
+            tid = bound["id"]
+            for el in elements:
+                if el.get("id") == tid and el.get("type") == "text":
+                    el["x"] = float(el.get("x", 0) + dx)
+                    el["y"] = float(el.get("y", 0) + dy)
+
+
+def _layout_component(
+    c: Any, shapes: dict, elements: list[dict], current_y_offset: float
+) -> float:
+    """Layout a single connected component and return updated vertical offset."""
+    sug = SugiyamaLayout(c)
+    sug.init_all()
+    sug.xspace = 120
+    sug.yspace = 100
+    sug.draw()
+
+    for v in c.sV:
+        if not hasattr(v.view, "xy"):
+            v.view.xy = (0.0, 0.0)
+
+    min_x = min(v.view.xy[0] - v.view.w / 2 for v in c.sV)
+    min_y = min(v.view.xy[1] - v.view.h / 2 for v in c.sV)
+    max_y = max(v.view.xy[1] + v.view.h / 2 for v in c.sV)
+
+    for v in c.sV:
+        _position_sugiyama_vertex(
+            v, shapes, elements, min_x, min_y, current_y_offset
+        )
+
+    return current_y_offset + (max_y - min_y) + 100
+
+
+def _route_elbow_arrows(arrows: list, shapes: dict) -> None:
+    """Route arrows with orthogonal top-down elbow connectors."""
     for arr in arrows:
         sb = arr.get("startBinding")
         eb = arr.get("endBinding")
-        start_id = sb.get("elementId") if isinstance(sb, dict) else (sb if isinstance(sb, str) else None)
-        end_id = eb.get("elementId") if isinstance(eb, dict) else (eb if isinstance(eb, str) else None)
-        
+        start_id = (
+            sb.get("elementId")
+            if isinstance(sb, dict)
+            else (sb if isinstance(sb, str) else None)
+        )
+        end_id = (
+            eb.get("elementId")
+            if isinstance(eb, dict)
+            else (eb if isinstance(eb, str) else None)
+        )
         if start_id in shapes and end_id in shapes:
             s_shape = shapes[start_id]
             e_shape = shapes[end_id]
-            
-            # Since Sugiyama is Top-Down, arrows start at BOTTOM of source and end at TOP of target
             sx = float(s_shape["x"] + s_shape.get("width", 100) / 2)
-            sy = float(s_shape["y"] + s_shape.get("height", 100) + 5) # +5px gap
-            
+            sy = float(s_shape["y"] + s_shape.get("height", 100) + 5)
             ex = float(e_shape["x"] + e_shape.get("width", 100) / 2)
-            ey = float(e_shape["y"] - 5) # -5px gap
-            
-            arr["x"] = sx
-            arr["y"] = sy
-            
+            ey = float(e_shape["y"] - 5)
             dx = ex - sx
             dy = ey - sy
-            
-            # Elbow connector points
             mid_y = dy / 2
+            arr["x"] = sx
+            arr["y"] = sy
             arr["points"] = [
                 [0.0, 0.0],
                 [0.0, float(mid_y)],
                 [float(dx), float(mid_y)],
-                [float(dx), float(dy)]
+                [float(dx), float(dy)],
             ]
-            
-            # Apply aesthetics to Arrow (Technical/Light Mode)
             arr["roughness"] = 0
-            arr["strokeColor"] = "#0f172a" # slate-900 (Darker for Light Mode contrast)
-            arr["roundness"] = {"type": 3} # Sharp elbows (type 3) or use 2 for curved elbows
-            
+            arr["strokeColor"] = "#0f172a"
+            arr["roundness"] = {"type": 3}
+
+
+def apply_sugiyama_layout(elements: list[dict]) -> bool:
+    """Applies Sugiyama Hierarchical Layout to the given Excalidraw elements."""
+    shapes = {
+        el["id"]: el
+        for el in elements
+        if el.get("type") in ("rectangle", "ellipse", "diamond")
+    }
+    arrows = [el for el in elements if el.get("type") == "arrow"]
+    if not shapes:
+        return False
+
+    g = _build_sugiyama_graph(shapes, arrows)
+    current_y_offset = 100.0
+    for c in g.C:
+        current_y_offset = _layout_component(
+            c, shapes, elements, current_y_offset
+        )
+
+    _route_elbow_arrows(arrows, shapes)
     return True

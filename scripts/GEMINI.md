@@ -54,7 +54,7 @@ In this mode, enforce these rules with maximum strictness:
 - **Deterministic Governance Test Suites (v8.15.13)**: Codebase được bảo vệ bởi 3 chốt kiểm soát tự động:
   1. `test_agent_constitution.py`: Đồng bộ sâu phiên bản toàn bộ 10 bề mặt SSoT và kiểm tra cây thư mục README sống.
   2. `test_codebase_cleanliness.py`: Đảm bảo 100% không rò rỉ đường dẫn máy (Machine-State Clean) và độ sâu import Hub hợp lệ.
-  3. `test_architectural_budgets.py`: Giám sát ngân sách dòng tệp $\le 350$ dòng và ngân sách hàm AST $\le 50$ dòng qua bảng Bánh cóc (Zero-Slack Ratchets).
+  3. `test_architectural_budgets.py`: Giám sát trần dòng tệp $\le 350$ dòng và trần hàm AST $\le 50$ dòng (duy trì 0 legacy ratchets toàn diện: `LEGACY_LINE_RATCHET = {}`, `LEGACY_FUNC_OVER_50_BUDGET = {}`).
     - *Quy tắc thực thi kiểm thử*: Trên Server Linux Spark (hoặc môi trường đa repo), cấm chạy `pytest` trần do lệnh trong `$PATH` toàn cục trỏ sang venv dự án khác. BẮT BUỘC luôn chạy qua `scripts/.venv/bin/pytest` hoặc kích hoạt venv trước (`source scripts/.venv/bin/activate`).
 
 ### Model Assignments
