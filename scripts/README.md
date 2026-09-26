@@ -74,6 +74,7 @@ scripts/
 │   ├── self_correct.py        ← Stage 4: Verifiable blockquote accuracy verification
 │   ├── post_process.py        ← Stage 5A: Strict snake_case saving, stub hydration & quality gate
 │   ├── semantic_merger.py     ← Stage 5B: 3-Tier Merge Control, LLM Arbitrator & Consolidated Pruning
+│   ├── semantic_fallback.py   ← BM25 2-tier cache & LLM fallback semantic overlap matcher
 │   ├── image_archiver.py      ← WebP compression, collision suffixing & per-book archive manifest
 │   ├── book_assets.py         ← JIT illustration extraction & publisher diagram alignment
 │   ├── map_reduce.py          ← Multi-page batch ingestion Map-Reduce compiler

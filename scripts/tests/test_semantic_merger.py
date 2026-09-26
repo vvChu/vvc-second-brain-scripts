@@ -422,3 +422,47 @@ def test_get_embedding_no_gateway_returns_none():
     finally:
         object.__setattr__(cfg, "gateway_url", orig_url)
         object.__setattr__(cfg, "gateway_api_key", orig_key)
+
+
+# --- semantic_fallback subsystem ---
+
+def test_fallback_bm25_cache_sync():
+    """Should load, sync, and persist BM25 token cache properly."""
+    from pipeline.semantic_fallback import load_and_sync_bm25_cache, _tokenize
+    from core.config import cfg
+
+    assert _tokenize("Hello world! Zettelkasten AI") == ["hello", "world", "zettelkasten"]
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_path = Path(tmpdir)
+        orig_state = cfg.state_dir
+        object.__setattr__(cfg, "state_dir", tmp_path)
+        try:
+            note_a = tmp_path / "concept_a.md"
+            note_a.write_text('---\ndate_modified: "2026-09-26"\n---\nNội dung concept học thuật A', encoding="utf-8")
+            
+            cache = load_and_sync_bm25_cache([note_a])
+            assert "concept_a" in cache
+            assert cache["concept_a"]["is_valid"] is True
+            assert len(cache["concept_a"]["tokens"]) > 0
+
+            # Level 1 hit (same file stats)
+            cache2 = load_and_sync_bm25_cache([note_a])
+            assert "concept_a" in cache2
+        finally:
+            object.__setattr__(cfg, "state_dir", orig_state)
+
+
+def test_find_semantic_overlap_fallback_empty():
+    """Should return None if concepts dir has no markdown files."""
+    from pipeline.semantic_fallback import find_semantic_overlap_fallback
+    from core.config import cfg
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        orig_dir = cfg.concepts_dir
+        object.__setattr__(cfg, "concepts_dir", Path(tmpdir))
+        try:
+            assert find_semantic_overlap_fallback("some text") is None
+        finally:
+            object.__setattr__(cfg, "concepts_dir", orig_dir)
+
