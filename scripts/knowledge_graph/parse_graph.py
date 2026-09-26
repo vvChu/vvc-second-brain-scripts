@@ -128,32 +128,16 @@ def _split_frontmatter(text: str) -> tuple[dict[str, Any], str]:
 
 
 def _normalise_related_entry(entry: Any) -> str | None:
-    """Normalise a single entry from the `related` YAML list.
-
-    Returns the bare slug/stem, or None if unusable.
-    """
-    if not isinstance(entry, str):
+    """Normalise a single entry from the `related` YAML list."""
+    if not isinstance(entry, str) or not entry.strip():
         return None
-    entry = entry.strip()
-    if not entry:
-        return None
-
-    # Try wiki-link extraction
-    m = _RELATED_RE.match(entry)
-    if m:
-        target = m.group(1).strip()
-    else:
-        target = entry
-
-    # Strip path prefixes (e.g. concepts/foo → foo)
+    m = _RELATED_RE.match(entry.strip())
+    target = m.group(1).strip() if m else entry.strip()
     if '/' in target:
         target = target.rsplit('/', 1)[-1]
-
-    # Strip .md extension if present
     if target.endswith('.md'):
         target = target[:-3]
-
-    return target if target else None
+    return target or None
 
 
 def _extract_body_wikilinks(body: str) -> set[str]:
@@ -161,10 +145,8 @@ def _extract_body_wikilinks(body: str) -> set[str]:
     targets: set[str] = set()
     for m in _WIKILINK_RE.finditer(body):
         target = m.group(1).strip()
-        # Strip path prefixes
         if '/' in target:
             target = target.rsplit('/', 1)[-1]
-        # Strip .md extension if present
         if target.endswith('.md'):
             target = target[:-3]
         if target:
@@ -173,33 +155,21 @@ def _extract_body_wikilinks(body: str) -> set[str]:
 
 
 def _source_ref_target(source_val: Any) -> str | None:
-    """Extract a node-id from the YAML `source` field.
-
-    The field may be a filename like 'foo.md' or 'foo.epub' —
-    only .md files and bare slugs map to actual source notes.
-    """
-    if not isinstance(source_val, str):
+    """Extract a node-id from the YAML `source` field."""
+    if not isinstance(source_val, str) or not source_val.strip():
         return None
-    source_val = source_val.strip()
-    if not source_val:
-        return None
-    # Only treat .md references as edges to source nodes
-    if source_val.endswith('.md'):
-        return source_val[:-3]
-    # Some files reference without .md extension — accept as-is if they
-    # look like a plausible node id (no dots = no extension = slug)
-    if '.' not in source_val:
-        return source_val
-    # Skip .epub, .pdf, etc. — those are external files, not vault nodes
-    return None
+    val = source_val.strip()
+    if val.endswith('.md'):
+        return val[:-3]
+    return val if '.' not in val else None
 
 
 def _safe_str_list(val: Any) -> list[str]:
     """Coerce a YAML value to list[str], handling None / scalar / list."""
-    if val is None:
+    if not val:
         return []
     if isinstance(val, str):
-        return [val] if val else []
+        return [val]
     if isinstance(val, list):
         return [str(v) for v in val if v is not None]
     return []
@@ -208,6 +178,95 @@ def _safe_str_list(val: Any) -> list[str]:
 # ---------------------------------------------------------------------------
 # Core parse
 # ---------------------------------------------------------------------------
+
+def _extract_node_edges(node_id: str, fm: dict[str, Any], body: str) -> list[dict[str, Any]]:
+    """Extract related, source_ref, and body wiki_link edges for a node."""
+    edges: list[dict[str, Any]] = []
+    edge_targets_used: set[str] = set()
+
+    # 1. related edges
+    related_raw = fm.get('related')
+    if isinstance(related_raw, list):
+        for entry in related_raw:
+            target = _normalise_related_entry(entry)
+            if target and target != node_id:
+                edge_targets_used.add(target)
+                edges.append({'source': node_id, 'target': target, 'type': 'related'})
+
+    # 2. source_ref edge
+    source_target = _source_ref_target(fm.get('source'))
+    if source_target and source_target != node_id:
+        edge_targets_used.add(source_target)
+        edges.append({'source': node_id, 'target': source_target, 'type': 'source_ref'})
+
+    # 3. wiki_link edges (body only, excluding already-captured)
+    for target in sorted(_extract_body_wikilinks(body)):
+        if target not in edge_targets_used and target != node_id:
+            edges.append({'source': node_id, 'target': target, 'type': 'wiki_link'})
+
+    return edges
+
+
+def _parse_markdown_node(
+    md_file: Path, node_type: str
+) -> tuple[dict[str, Any], list[dict[str, Any]]] | None:
+    """Parse a single markdown file into (node_dict, edges_list)."""
+    try:
+        text = md_file.read_text(encoding='utf-8', errors='replace')
+    except OSError:
+        return None
+
+    node_id = md_file.stem
+    fm, body = _split_frontmatter(text) if text.strip() else ({}, '')
+
+    raw_title = fm.get('title', node_id)
+    title = str(raw_title).strip('"\'') if raw_title is not None else node_id
+
+    try:
+        rel_path = md_file.relative_to(VAULT_ROOT).as_posix()
+    except ValueError:
+        rel_path = str(md_file)
+
+    node: dict[str, Any] = {
+        'id': node_id,
+        'title': title,
+        'type': node_type,
+        'tags': _safe_str_list(fm.get('tags')),
+        'aliases': _safe_str_list(fm.get('aliases')),
+        'summary': fm.get('summary', '') or '',
+        'source': _source_ref_target(fm.get('source')) or '',
+        'file_path': rel_path,
+    }
+    return node, _extract_node_edges(node_id, fm, body)
+
+
+def _build_graph_output(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]], elapsed: float
+) -> dict[str, Any]:
+    """Assemble final graph JSON structure and print summary statistics."""
+    graph_data: dict[str, Any] = {
+        'metadata': {
+            'generated_at': datetime.now(timezone.utc).isoformat(),
+            'vault_root': str(VAULT_ROOT).replace('\\', '/') + '/',
+            'total_nodes': len(nodes),
+            'total_edges': len(edges),
+        },
+        'nodes': nodes,
+        'edges': edges,
+    }
+
+    type_counts: dict[str, int] = {}
+    for n in nodes:
+        t = n['type']
+        type_counts[t] = type_counts.get(t, 0) + 1
+
+    print(f"  Parsed {len(nodes)} nodes in {elapsed:.2f}s")
+    for t, c in sorted(type_counts.items()):
+        print(f"    {t}: {c}")
+    print(f"  Total edges: {len(edges)}")
+
+    return graph_data
+
 
 def parse_vault() -> dict[str, Any]:
     """Parse the entire vault and return the graph data structure."""
@@ -222,114 +281,19 @@ def parse_vault() -> dict[str, Any]:
             print(f"  [WARN] Directory not found: {dir_path}")
             continue
 
-        md_files = sorted(dir_path.glob('*.md'))
-        for md_file in md_files:
-            node_id = md_file.stem
-
-            # Avoid duplicates (shouldn't happen but guard)
-            if node_id in node_ids:
+        for md_file in sorted(dir_path.glob('*.md')):
+            if md_file.stem in node_ids:
                 continue
-            node_ids.add(node_id)
-
-            # Read file
-            try:
-                text = md_file.read_text(encoding='utf-8', errors='replace')
-            except OSError:
+            parsed = _parse_markdown_node(md_file, node_type)
+            if parsed is None:
                 continue
-
-            # Parse frontmatter + body (empty files get default node)
-            if text.strip():
-                fm, body = _split_frontmatter(text)
-            else:
-                fm, body = {}, ''
-
-            # Build node
-            title = fm.get('title', node_id)
-            if isinstance(title, str):
-                title = title.strip('"').strip("'")
-            else:
-                title = str(title) if title is not None else node_id
-
-            # Compute relative path for file_path field
-            try:
-                rel_path = md_file.relative_to(VAULT_ROOT).as_posix()
-            except ValueError:
-                rel_path = str(md_file)
-
-            node: dict[str, Any] = {
-                'id': node_id,
-                'title': title,
-                'type': node_type,
-                'tags': _safe_str_list(fm.get('tags')),
-                'aliases': _safe_str_list(fm.get('aliases')),
-                'summary': fm.get('summary', '') or '',
-                'source': _source_ref_target(fm.get('source')) or '',
-                'file_path': rel_path,
-            }
+            node_ids.add(md_file.stem)
+            node, node_edges = parsed
             nodes.append(node)
-
-            # ---- Edges ----
-            edge_targets_used: set[str] = set()
-
-            # 1. related edges
-            related_raw = fm.get('related')
-            if isinstance(related_raw, list):
-                for entry in related_raw:
-                    target = _normalise_related_entry(entry)
-                    if target and target != node_id:
-                        edge_targets_used.add(target)
-                        edges.append({
-                            'source': node_id,
-                            'target': target,
-                            'type': 'related',
-                        })
-
-            # 2. source_ref edge
-            source_target = _source_ref_target(fm.get('source'))
-            if source_target and source_target != node_id:
-                edge_targets_used.add(source_target)
-                edges.append({
-                    'source': node_id,
-                    'target': source_target,
-                    'type': 'source_ref',
-                })
-
-            # 3. wiki_link edges (body only, excluding already-captured)
-            body_links = _extract_body_wikilinks(body)
-            for target in sorted(body_links):
-                if target not in edge_targets_used and target != node_id:
-                    edges.append({
-                        'source': node_id,
-                        'target': target,
-                        'type': 'wiki_link',
-                    })
+            edges.extend(node_edges)
 
     elapsed = time.perf_counter() - t_start
-
-    # Build output
-    graph_data: dict[str, Any] = {
-        'metadata': {
-            'generated_at': datetime.now(timezone.utc).isoformat(),
-            'vault_root': str(VAULT_ROOT).replace('\\', '/') + '/',
-            'total_nodes': len(nodes),
-            'total_edges': len(edges),
-        },
-        'nodes': nodes,
-        'edges': edges,
-    }
-
-    # Stats
-    type_counts: dict[str, int] = {}
-    for n in nodes:
-        t = n['type']
-        type_counts[t] = type_counts.get(t, 0) + 1
-
-    print(f"  Parsed {len(nodes)} nodes in {elapsed:.2f}s")
-    for t, c in sorted(type_counts.items()):
-        print(f"    {t}: {c}")
-    print(f"  Total edges: {len(edges)}")
-
-    return graph_data
+    return _build_graph_output(nodes, edges, elapsed)
 
 
 def main() -> None:
