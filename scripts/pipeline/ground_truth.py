@@ -245,6 +245,8 @@ def _rerank_results(query: str, results: list[tuple[str, str, float]]) -> tuple[
     cand_vecs = np.array(embeddings[1:], dtype=np.float32)
     similarities = np.dot(cand_vecs, query_vec)
     best_idx = int(np.argmax(similarities))
+    if best_idx != 0 and (similarities[best_idx] - similarities[0]) < 0.03:
+        best_idx = 0
     ch, para, score = results[best_idx]
     _logger.info(
         f"Semantic re-ranking: best_idx={best_idx}, cosine={float(similarities[best_idx]):.4f}, "

@@ -131,6 +131,8 @@ class VectorStore:
             self.sources = sources
             self.texts = texts
             self.embeddings = np.array(embs_list, dtype=np.float32)
+            if self.embeddings.ndim == 2 and self.embeddings.shape[1] != 1024:
+                _logger.warning(f"VectorStore index dim={self.embeddings.shape[1]} != 1024 (expected BGE-M3)")
             self._index_map = {src: i for i, src in enumerate(self.sources)}
             try:
                 self._mtime = loaded_path.stat().st_mtime

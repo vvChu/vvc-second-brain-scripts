@@ -265,7 +265,10 @@ def save_concept(
         log("quality", f"Rejected: {stem} — {reason}")
         return None
 
-    overlap = find_semantic_overlap(content)
+    try:
+        overlap = find_semantic_overlap(content, current_stem=stem, new_title=title)
+    except TypeError:
+        overlap = find_semantic_overlap(content)
     if overlap:
         handled, merged_res = _handle_overlap_and_merge(content, overlap, image_path, book_name, title)
         if handled:

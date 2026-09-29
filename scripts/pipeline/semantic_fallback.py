@@ -9,12 +9,81 @@ from __future__ import annotations
 import json
 import logging
 import re
+from datetime import datetime
 from pathlib import Path
 
 from core.config import cfg
 from core.llm import call_llm
 
 _logger = logging.getLogger("vvc.merger.fallback")
+
+
+def is_stub_or_low_confidence(stem: str) -> bool:
+    """Check if concept file is a stub or has low confidence."""
+    concept_path = cfg.concepts_dir / f"{stem}.md"
+    if not concept_path.exists():
+        return True
+    try:
+        with open(concept_path, "r", encoding="utf-8", errors="ignore") as f:
+            header = f.read(500)
+            return "confidence: low" in header or "source_type: stub" in header
+    except OSError:
+        return True
+
+
+def log_merge_candidate(
+    matched_stem: str,
+    score: float,
+    category: str,
+    margin: float,
+    top2_score: float,
+    new_title: str,
+) -> None:
+    """Audit log candidate in [0.90, 0.95) or dense cluster into .merge_candidates.jsonl."""
+    candidates_path = cfg.state_dir / ".merge_candidates.jsonl"
+    entry = {
+        "timestamp": datetime.now().isoformat(timespec="seconds"),
+        "new_title": new_title,
+        "matched_stem": matched_stem,
+        "score": round(score, 4),
+        "category": category,
+        "margin": round(margin, 4),
+        "top2_score": round(top2_score, 4),
+    }
+    try:
+        with open(candidates_path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    except OSError as e:
+        _logger.warning(f"Failed to log merge candidate: {e}")
+
+
+MERGE_GATE: float = 0.95
+CANDIDATE_GATE_MIN: float = 0.90
+MARGIN_THRESHOLD: float = 0.03
+
+
+def evaluate_dual_gate(
+    valid_matches: list[tuple[str, float]],
+    new_title: str,
+) -> tuple[str, float] | None:
+    """Evaluate Top-1 and margin against BGE-M3 Dual-Condition Gate."""
+    top1_stem, top1_score = valid_matches[0]
+    top2_score = valid_matches[1][1] if len(valid_matches) > 1 else 0.0
+    margin = top1_score - top2_score
+
+    if top1_score >= MERGE_GATE:
+        if margin >= MARGIN_THRESHOLD:
+            _logger.info(
+                f"[Merger] Dual Gate passed: '{top1_stem}' (score={top1_score:.4f}, margin={margin:.4f}). Entering merge funnel."
+            )
+            return top1_stem, top1_score
+        _logger.info(f"[Merger] Cluster detected (margin={margin:.4f} < {MARGIN_THRESHOLD}). Queued for cluster review.")
+        log_merge_candidate(top1_stem, top1_score, "cluster", margin, top2_score, new_title)
+        return None
+
+    _logger.info(f"[Merger] Candidate logged in [0.90, 0.95): '{top1_stem}' (score={top1_score:.4f}). No online merge.")
+    log_merge_candidate(top1_stem, top1_score, "candidate", margin, top2_score, new_title)
+    return None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -160,7 +229,7 @@ def _consult_fallback_llm(
         f"GHI CHÚ MỚI CHUẨN BỊ LƯU:\n```markdown\n{new_text[:2000]}\n```\n\n"
         f"DANH SÁCH 3 ỨNG VIÊN CÓ THỂ TRÙNG LẶP (Được lọc sơ bộ bằng BM25):\n{candidates_str}\n\n"
         f"YÊU CẦU: Hãy phân tích xem ghi chú mới có trùng khớp ngữ nghĩa học thuật cốt lõi (Semantic Equivalence) "
-        f"với bất kỳ ứng viên nào trong danh sách trên hay không (độ tương đồng ngữ nghĩa >= 88%, bàn về cùng một khái niệm, cùng bản chất tri thức).\n\n"
+        f"với bất kỳ ứng viên nào trong danh sách trên hay không (độ tương đồng ngữ nghĩa >= 95%, là bản sao hoặc diễn giải lại của cùng một khái niệm, cùng bản chất tri thức).\n\n"
         f"- Nếu CÓ trùng khớp, hãy trả về CHÍNH XÁC tên ứng viên đó trong ngoặc vuông, ví dụ: [ngon_ngu_chung_ubiquitous_language_giua_nguoi_va_ai].\n"
         f"- Nếu KHÔNG trùng khớp với bất kỳ ứng viên nào, trả về: NONE.\n\n"
         f"Chỉ trả lời duy nhất định dạng [tên_ứng_viên] hoặc NONE, không giải thích thêm."
@@ -172,7 +241,7 @@ def _consult_fallback_llm(
             matched_stem = match.group(1).strip()
             if matched_stem in sources:
                 _logger.info(f"[Merger Fallback] BM25+LLM matched concept overlap with '{matched_stem}'")
-                return matched_stem, 0.90
+                return matched_stem, 0.96
     return None
 
 

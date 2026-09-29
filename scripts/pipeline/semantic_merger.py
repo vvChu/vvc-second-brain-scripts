@@ -26,6 +26,11 @@ from core.vector_store import VectorStore
 from pipeline.semantic_fallback import (
     load_and_sync_bm25_cache,
     find_semantic_overlap_fallback,
+    is_stub_or_low_confidence,
+    evaluate_dual_gate,
+    MERGE_GATE,
+    CANDIDATE_GATE_MIN,
+    MARGIN_THRESHOLD,
 )
 
 _logger = logging.getLogger("vvc.merger")
@@ -34,17 +39,18 @@ _logger = logging.getLogger("vvc.merger")
 SUBSUME_SENTINEL = Path("__SUBSUMED__")
 
 
-def find_semantic_overlap(new_text: str) -> tuple[str, float] | None:
-    """Find if a concept has extremely high semantic similarity with an existing one.
+def find_semantic_overlap(
+    new_text: str,
+    current_stem: str | None = None,
+    new_title: str = "",
+) -> tuple[str, float] | None:
+    """Find semantic overlap using BGE-M3 (1024-d) with Dual-Condition Gate.
 
-    Loads the pre-built embedding index and computes cosine similarity
-    via fast dot product on L2-normalized vectors.
-
-    Args:
-        new_text: Full text of the new concept note.
-
-    Returns:
-        Tuple of (existing_stem, similarity_score) if score >= 0.88, else None.
+    Rules:
+      - Filters out stubs, low-confidence notes, and current stem.
+      - Top-1 >= 0.95 and Margin (Top-1 - Top-2) >= 0.03 -> enters 3-Tier Merge.
+      - Top-1 >= 0.95 but Margin < 0.03 -> dense cluster queue (no online merge).
+      - Top-1 in [0.90, 0.95) -> audit logged to .merge_candidates.jsonl.
     """
     store = VectorStore.get_instance()
     if store is None or len(store) == 0:
@@ -52,14 +58,28 @@ def find_semantic_overlap(new_text: str) -> tuple[str, float] | None:
 
     query_emb = get_embedding(new_text)
     if query_emb is None:
-        _logger.info("[Merger] Embedding is unavailable. Activating BM25 + LLM fallback semantic overlap matching...")
+        _logger.info("[Merger] Embedding unavailable. Falling back to BM25...")
         return find_semantic_overlap_fallback(new_text)
 
-    matches = store.search(query_emb, top_k=1, threshold=0.88)
-    if matches:
-        return matches[0]
+    if store.embeddings.ndim == 2 and len(store.embeddings) > 0:
+        if store.embeddings.shape[1] != len(query_emb):
+            _logger.warning(
+                f"[Merger] Vector dimension mismatch: store={store.embeddings.shape[1]} vs query={len(query_emb)}. Falling back to BM25..."
+            )
+            return find_semantic_overlap_fallback(new_text)
 
-    return None
+    matches = store.search(query_emb, top_k=10, threshold=CANDIDATE_GATE_MIN)
+    if not matches:
+        return None
+
+    valid = [
+        (s, sc) for s, sc in matches
+        if not (current_stem and s == current_stem) and not is_stub_or_low_confidence(s)
+    ]
+    if not valid:
+        return None
+
+    return evaluate_dual_gate(valid, new_title)
 
 
 def _check_subsume(existing_content: str, new_content: str, existing_stem: str) -> bool:
@@ -265,7 +285,7 @@ def execute_cross_linking(path_a: Path, path_b: Path) -> None:
             target_stem = target_path.stem
             target_link = f"[[{target_stem}]]"
 
-            if target_stem not in related:
+            if target_stem not in related and len(related) < 10:
                 related.append(target_stem)
                 fm["related"] = related
 

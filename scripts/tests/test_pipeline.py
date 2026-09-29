@@ -381,7 +381,7 @@ def test_save_concept_deterministic_sanitization(tmp_path, monkeypatch):
     mock_concepts_dir.mkdir()
     mock_cfg = dataclasses.replace(cfg, concepts_dir=mock_concepts_dir)
     monkeypatch.setattr("pipeline.post_process.cfg", mock_cfg)
-    monkeypatch.setattr("pipeline.post_process.find_semantic_overlap", lambda content: None)
+    monkeypatch.setattr("pipeline.post_process.find_semantic_overlap", lambda *args, **kwargs: None)
     monkeypatch.setattr("pipeline.post_process._hot_insert_embedding", lambda path, content: None)
 
     raw_note = """---

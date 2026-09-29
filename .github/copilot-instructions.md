@@ -32,7 +32,7 @@ The system operates as an Autonomous Knowledge Operating System ("Zero-Touch" LL
 | **P5. Multi-Channel Ingestion** | YouTube 4-tier Native ASR, Podcast Faster-Whisper, Command JIT | `scripts/services/youtube/`, `scripts/services/command/` |
 | **P6. Adaptive AI Grid** | 4-tier routing, Circuit Breaker 503, WinError 206 stdin stream, CLI artifact | `scripts/core/llm/` |
 | **P7. Artifacts Coordination** | Lazy ArtifactEngine, 16:9 Excalidraw, Mermaid 4 Patterns | `scripts/services/worker_dispatcher.py`, `.agents/rules/diagramming_hygiene.md` |
-| **P8. Self-Healing Loops** | Semantic Merger (Cosine $\ge 0.88$), 2-tier Mtime, Sleep Consolidation | `scripts/pipeline/semantic_merger.py`, `scripts/sleep.py` |
+| **P8. Self-Healing Loops** | Semantic Merger (Cosine $\ge 0.95$ & Margin $\ge 0.03$), 2-tier Mtime, Sleep Consolidation | `scripts/pipeline/semantic_merger.py`, `scripts/sleep.py` |
 
 ---
 

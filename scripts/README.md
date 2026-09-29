@@ -150,7 +150,7 @@ flowchart TD
     D ===>|"Stage 4"| E["Self-Correction<br/>(Verbatim Blockquote Verification)"]
     E ===>|"Stage 5"| F{"Post-Process & 3-Tier Semantic Merger"}
 
-    F ===>|"MERGE (Cosine ≥ 0.88)"| G["Consolidated Concept Note<br/>(Multi-Evidence Hooks ≤ 3)"]
+    F ===>|"MERGE (Cosine ≥ 0.95 & Margin ≥ 0.03)"| G["Consolidated Concept Note<br/>(Multi-Evidence Hooks ≤ 3)"]
     F ===>|"SEPARATE"| H["New Permanent Concept Note<br/>(04 - Permanent/concepts/)"]
     F ===>|"SUBSUME"| I["Drop Redundant Concept<br/>(.state/.subsume_journal.jsonl)"]
 

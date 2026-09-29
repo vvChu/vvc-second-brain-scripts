@@ -57,7 +57,7 @@ Vault vận hành như một Hệ Điều Hành Tri Thức Tự Trị ("Zero-Tou
 - **P5. Thu Nạp Đa Kênh**: YouTube 4-tier Native ASR & Storyboard pHash, Podcast Faster-Whisper, Command JIT ([`scripts/services/youtube/`](file:///home/vvc/VvC_Notes/scripts/services/youtube/), [`scripts/services/command/`](file:///home/vvc/VvC_Notes/scripts/services/command/)).
 - **P6. Lưới AI Thích Ứng**: Lưới định tuyến 4 tầng, Circuit Breaker 503, WinError 206 stdin streaming, CLI artifact ingestion ([`scripts/core/llm/`](file:///home/vvc/VvC_Notes/scripts/core/llm/)).
 - **P7. Điều Phối Artifacts**: Lazy ArtifactEngine, Ngưỡng Vàng Lai 16:9, Mermaid 4 Patterns ([`scripts/services/worker_dispatcher.py`](file:///home/vvc/VvC_Notes/scripts/services/worker_dispatcher.py), [`.agents/rules/diagramming_hygiene.md`](file:///home/vvc/VvC_Notes/.agents/rules/diagramming_hygiene.md)).
-- **P8. Chu Trình Tự Hồi Phục**: Hợp nhất Cosine $\ge 0.88$ (SUBSUME/MERGE), Mtime 2 cấp độ, Weekly Sleep Consolidation ([`scripts/pipeline/semantic_merger.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/semantic_merger.py), [`scripts/sleep.py`](file:///home/vvc/VvC_Notes/scripts/sleep.py)).
+- **P8. Chu Trình Tự Hồi Phục**: Hợp nhất Cosine $\ge 0.95$ & Margin $\ge 0.03$ (Dual-Condition Gate SUBSUME/MERGE), Mtime 2 cấp độ, Weekly Sleep Consolidation ([`scripts/pipeline/semantic_merger.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/semantic_merger.py), [`scripts/sleep.py`](file:///home/vvc/VvC_Notes/scripts/sleep.py)).
 
 #### Bất Biến Vận Hành Active-Passive Single-Active Runner
 - **Primary Host**: Server Linux Spark (`spark-CCBA aarch64`, `100.83.192.30`) chạy 24/7 dưới sự quản lý của Systemd user services (`vvc-gdrive-mount.service`, `vvc-daemon.service`, `vvc-book-ingest.service`, `vvc-sleep.timer`).
@@ -213,7 +213,7 @@ Toàn bộ tài liệu tri thức trong Vault bắt buộc tuân thủ 10 bộ q
 
 Vault vận hành thông qua các Python background daemons theo mô hình **LLM Compiler Pattern**:
 - **Entry Points**: `scripts/daemon.py` (Watchdog xử lý ảnh và truy vấn), `book_ingest.py` (Watcher sách mới), `sleep.py` (Consolidation hàng tuần), `wiki_maintain.py` (Tái tạo MOCs).
-- **5-Stage Pipeline**: Stage 1 OCR (Vision API) $\rightarrow$ Stage 2 Ground Truth (BM25 chapter-scoped search) $\rightarrow$ Stage 3 Synthesis (LLM Concept Note) $\rightarrow$ Stage 4 Self-Correction (Blockquote verification) $\rightarrow$ Stage 5 Post-Process & Semantic Knowledge Merger (3-Tier Merge Control, Cosine $\ge 0.88$, Consolidated Pruning).
+- **5-Stage Pipeline**: Stage 1 OCR (Vision API) $\rightarrow$ Stage 2 Ground Truth (BM25 chapter-scoped search) $\rightarrow$ Stage 3 Synthesis (LLM Concept Note) $\rightarrow$ Stage 4 Self-Correction (Blockquote verification) $\rightarrow$ Stage 5 Post-Process & Semantic Knowledge Merger (3-Tier Merge Control, Dual-Condition Gate Cosine $\ge 0.95$ & Margin $\ge 0.03$, Consolidated Pruning).
 - **AI Infrastructure (3-Tier Routing & Local Antigravity CLI Opus Tier 1)**:
   - **Tier 1 (Primary)**: Antigravity CLI Driver cục bộ (`agy.exe` — `claude-opus-4-6-thinking` cho suy luận sâu, `gemini-3.8-flash-high` cho tổng hợp concept note; Zero VPN, Zero 429).
   - **Tier 2 (Fallback)**: AI Gateway (ccba-ai SDK, LiteLLM trên Server Spark qua Tailscale VPN: `claude-opus-4-6-thinking` trên Port 8045 / `gemini-3.8-flash-high` trên Port 8090).

@@ -36,7 +36,7 @@ Vault vận hành như một **Hệ Điều Hành Tri Thức Tự Trị** ("Zero
 - **P5. Thu Nạp Đa Kênh**: YouTube 4-tier Native ASR, Podcast Faster-Whisper, Command JIT ([`scripts/services/youtube/`](file:///home/vvc/VvC_Notes/scripts/services/youtube/), [`scripts/services/command/`](file:///home/vvc/VvC_Notes/scripts/services/command/))
 - **P6. Lưới AI Thích Ứng**: Lưới định tuyến 4 tầng, Circuit Breaker 503, WinError 206 stdin streaming, CLI artifact ingestion ([`scripts/core/llm/`](file:///home/vvc/VvC_Notes/scripts/core/llm/))
 - **P7. Điều Phối Artifacts**: Lazy ArtifactEngine, Ngưỡng Vàng Lai 16:9, Mermaid 4 Patterns ([`scripts/services/worker_dispatcher.py`](file:///home/vvc/VvC_Notes/scripts/services/worker_dispatcher.py), [`.agents/rules/diagramming_hygiene.md`](file:///home/vvc/VvC_Notes/.agents/rules/diagramming_hygiene.md))
-- **P8. Chu Trình Tự Hồi Phục**: Hợp nhất Cosine $\ge 0.88$ (SUBSUME/MERGE), Mtime 2 cấp độ, Weekly Sleep Consolidation ([`scripts/pipeline/semantic_merger.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/semantic_merger.py), [`scripts/sleep.py`](file:///home/vvc/VvC_Notes/scripts/sleep.py))
+- **P8. Chu Trình Tự Hồi Phục**: Hợp nhất Cosine $\ge 0.95$ & Margin $\ge 0.03$ (Dual-Condition Gate SUBSUME/MERGE), Mtime 2 cấp độ, Weekly Sleep Consolidation ([`scripts/pipeline/semantic_merger.py`](file:///home/vvc/VvC_Notes/scripts/pipeline/semantic_merger.py), [`scripts/sleep.py`](file:///home/vvc/VvC_Notes/scripts/sleep.py))
 
 ---
 

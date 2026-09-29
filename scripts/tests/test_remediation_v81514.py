@@ -178,3 +178,72 @@ def test_get_embeddings_batch_and_model_resolution():
         assert len(call_kwargs["json"]["input"]) == 2
 
 
+def test_dual_gate_isolated_pair_passes(tmp_path: Path):
+    """Isolated duplicate pair (Top-1 >= 0.95 and Margin >= 0.03) passes gate."""
+    from pipeline.semantic_fallback import evaluate_dual_gate
+
+    valid_matches = [("target_concept", 0.9650), ("second_concept", 0.9100)]
+    res = evaluate_dual_gate(valid_matches, "New Concept")
+    assert res == ("target_concept", 0.9650)
+
+
+def test_dual_gate_cluster_detected_and_queued(tmp_path: Path):
+    """Dense cluster (Top-1 >= 0.95 but Margin < 0.03) queues for review without merging."""
+    from pipeline.semantic_fallback import evaluate_dual_gate
+
+    orig_state = cfg.state_dir
+    object.__setattr__(cfg, "state_dir", tmp_path)
+    try:
+        valid_matches = [("target_concept", 0.9550), ("cluster_sibling", 0.9400)]
+        res = evaluate_dual_gate(valid_matches, "New Cluster Note")
+        assert res is None
+        cand_file = tmp_path / ".merge_candidates.jsonl"
+        assert cand_file.exists()
+        entry = json.loads(cand_file.read_text(encoding="utf-8").strip())
+        assert entry["category"] == "cluster"
+        assert entry["matched_stem"] == "target_concept"
+        assert entry["score"] == 0.955
+    finally:
+        object.__setattr__(cfg, "state_dir", orig_state)
+
+
+def test_dual_gate_candidate_in_90_95_logged(tmp_path: Path):
+    """Candidate in [0.90, 0.95) is audit-logged without online merge."""
+    from pipeline.semantic_fallback import evaluate_dual_gate
+
+    orig_state = cfg.state_dir
+    object.__setattr__(cfg, "state_dir", tmp_path)
+    try:
+        valid_matches = [("near_concept", 0.9250), ("other_concept", 0.8600)]
+        res = evaluate_dual_gate(valid_matches, "New Related Note")
+        assert res is None
+        cand_file = tmp_path / ".merge_candidates.jsonl"
+        assert cand_file.exists()
+        entry = json.loads(cand_file.read_text(encoding="utf-8").strip())
+        assert entry["category"] == "candidate"
+        assert entry["matched_stem"] == "near_concept"
+        assert entry["score"] == 0.925
+    finally:
+        object.__setattr__(cfg, "state_dir", orig_state)
+
+
+def test_ground_truth_rerank_respects_margin():
+    """Ground truth reranking preserves BM25 rank 0 when embedding margin < 0.03."""
+    from pipeline.ground_truth import _rerank_results
+
+    results = [
+        ("ch1", "BM25 rank 0 paragraph", 50.0),
+        ("ch1", "candidate paragraph slightly higher cosine", 30.0),
+    ]
+    # Candidate 1 has cosine 0.41, Rank 0 has cosine 0.40 -> margin 0.01 < 0.03
+    query_vec = [1.0, 0.0]
+    cand0_vec = [0.40, 0.9165]
+    cand1_vec = [0.41, 0.9121]
+
+    with patch("pipeline.ground_truth._get_embeddings_batch", return_value=[query_vec, cand0_vec, cand1_vec]):
+        ch, para, score = _rerank_results("query text", results)
+        assert para == "BM25 rank 0 paragraph"
+        assert score == 50.0
+
+
+
