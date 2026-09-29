@@ -18,7 +18,11 @@ from core.llm.gemini_client import (
 )
 from core.llm.vision_client import call_vision
 from core.llm.audio_client import call_audio
-from core.llm.embedding_client import get_embedding, get_embedding_via_gateway
+from core.llm.embedding_client import (
+    EmbeddingFatalError,
+    get_embedding,
+    get_embedding_via_gateway,
+)
 from core.llm.model_resolver import resolve_model, STATIC_LATEST_GEMINI_FLASH
 
 _logger = logging.getLogger("vvc.llm")

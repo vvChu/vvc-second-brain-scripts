@@ -26,16 +26,19 @@ _logger = logging.getLogger("vvc.health.title")
 def _update_all_links_vault_wide_batch(renames: dict[str, str]) -> None:
     """Global find and replace for a batch of wikilinks in a single pass."""
     escaped_keys = [re.escape(k) for k in renames.keys()]
-    pattern_str = rf"\[\[({'|'.join(escaped_keys)})([\|\]])"
+    sorted_keys = sorted(escaped_keys, key=len, reverse=True)
+    pattern_str = rf"\[\[({'|'.join(sorted_keys)})((?:#[^\]|\\]+)?)(\\?\||\])"
     pattern = re.compile(pattern_str)
 
     def replacer(match):
         old_stem = match.group(1)
         new_stem = renames.get(old_stem, old_stem)
-        suffix = match.group(2)
-        return f"[[{new_stem}{suffix}"
+        anchor = match.group(2) or ""
+        suffix = match.group(3)
+        return f"[[{new_stem}{anchor}{suffix}"
 
-    dirs_to_check = [cfg.concepts_dir, cfg.sources_dir, cfg.dump_file.parent]
+    topics_dir = cfg.vault_root / "04 - Permanent" / "topics"
+    dirs_to_check = [cfg.concepts_dir, cfg.sources_dir, cfg.dump_file.parent, topics_dir]
     updated_files = 0
     total_files = 0
 

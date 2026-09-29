@@ -28,7 +28,7 @@ from core.vector_store import VectorStore
 _logger = logging.getLogger("vvc.rag.hybrid_search")
 
 EMBEDDING_INDEX_PATH = cfg.state_dir / "_embedding_index.npz"
-EMBEDDING_DIM = 3072  # Gemini embedding-001
+EMBEDDING_DIM = 1024  # BAAI/bge-m3 (local DGX Spark)
 
 class IndexCache(TypedDict):
     embeddings: np.ndarray

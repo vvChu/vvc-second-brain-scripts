@@ -151,9 +151,11 @@ def _get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
     if not cfg.gateway_url or not cfg.gateway_api_key or not texts:
         return None
     import numpy as np, requests
+
     url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
     headers = {"Authorization": f"Bearer {cfg.gateway_api_key}", "Content-Type": "application/json"}
-    payload = {"model": "gemini-embed", "input": [t[:2000] for t in texts]}
+    model_name = getattr(cfg, "embedding_model", "bge-m3") or "bge-m3"
+    payload = {"model": model_name, "input": [t[:2000] for t in texts]}
     try:
         resp = requests.post(url, json=payload, headers=headers, timeout=12)
         resp.raise_for_status()
@@ -166,6 +168,7 @@ def _get_embeddings_batch(texts: list[str]) -> list[list[float]] | None:
     except Exception as e:
         _logger.warning(f"Batch embedding request failed: {e}. Falling back to BM25.")
         return None
+
 
 
 def _translate_query_to_english(ocr_text: str) -> str:

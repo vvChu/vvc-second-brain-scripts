@@ -1,4 +1,4 @@
-"""VvC Second Brain — Main Daemon (v8.15.13).
+"""VvC Second Brain — Main Daemon (v8.15.14).
 
 Watchdog-based daemon that monitors 05-Fleeting/ for new images
 and processes them through the 5-stage pipeline:

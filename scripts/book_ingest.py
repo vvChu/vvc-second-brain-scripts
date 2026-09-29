@@ -1,4 +1,4 @@
-"""VvC Second Brain — Book Ingestion Daemon (v8.15.13).
+"""VvC Second Brain — Book Ingestion Daemon (v8.15.14).
 
 Watches 03-Resources/books/ for new EPUB/PDF files.
 Converts to chunked markdown corpus for BM25 matching.

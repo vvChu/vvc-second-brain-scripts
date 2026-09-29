@@ -259,8 +259,10 @@ def _render_state_sections() -> list[str]:
                     "> | Tên Stub | Ngày tạo | Tuổi (ngày) | Liên kết từ |\n> |---|---|---|---|\n",
                 ])
                 for s in top:
-                    ref = ", ".join(f"[[{r}]]" for r in s.get("referrers", [])[:2])
-                    lines.append(f"> | `{s.get('stem', '?')}` | {s.get('created', '?')} | {s.get('age_days', '?')} | {ref} |\n")
+                    ref_list = s.get("linked_from") or s.get("referrers") or []
+                    ref = ", ".join(f"[[{r}]]" for r in ref_list[:2])
+                    date_created = s.get("date_created") or s.get("created") or "?"
+                    lines.append(f"> | `{s.get('stem', '?')}` | {date_created} | {s.get('age_days', '?')} | {ref} |\n")
                 lines.append("\n")
         except Exception:
             pass

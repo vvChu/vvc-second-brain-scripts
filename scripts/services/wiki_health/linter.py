@@ -51,7 +51,7 @@ class VaultLinter:
             if "_links" not in c:
                 try:
                     content = c["_path"].read_text(encoding="utf-8")
-                    c["_links"] = _LINK_PATTERN.findall(content)
+                    c["_links"] = [l.strip().rstrip("\\") for l in _LINK_PATTERN.findall(content) if l.strip()]
                 except OSError:
                     c["_links"] = []
 
@@ -108,12 +108,13 @@ class VaultLinter:
         for link in c.get("_links", []):
             if any(link.lower().endswith(ext) for ext in MEDIA_EXTENSIONS):
                 continue
-            normalized = normalize_stem(link)
+            clean_link = link.strip().rstrip("\\")
+            normalized = normalize_stem(clean_link)
             all_linked.add(normalized)
             if normalized not in self.existing_stems:
-                is_fm = link in rel_str or normalized in normalize_stem(rel_str)
+                is_fm = clean_link in rel_str or normalized in normalize_stem(rel_str)
                 origin = "frontmatter_related" if is_fm else "body"
-                broken_item = {"from": stem, "to": link, "origin": origin}
+                broken_item = {"from": stem, "to": clean_link, "origin": origin}
                 report["broken_links"].append(broken_item)
                 (report["broken_body_links"] if origin == "body" else report["prospective_related_seeds"]).append(broken_item)
 
@@ -167,7 +168,7 @@ class VaultLinter:
                 continue
             try:
                 for link in _LINK_PATTERN.findall(moc_file.read_text(encoding="utf-8")):
-                    all_linked.add(normalize_stem(link))
+                    all_linked.add(normalize_stem(link.strip().rstrip("\\")))
             except OSError:
                 pass
 
@@ -175,7 +176,7 @@ class VaultLinter:
             for src_file in cfg.sources_dir.rglob("*.md"):
                 try:
                     for link in _LINK_PATTERN.findall(src_file.read_text(encoding="utf-8")):
-                        all_linked.add(normalize_stem(link))
+                        all_linked.add(normalize_stem(link.strip().rstrip("\\")))
                 except OSError:
                     pass
 

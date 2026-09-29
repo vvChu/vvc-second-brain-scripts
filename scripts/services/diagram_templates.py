@@ -43,37 +43,19 @@ def load_templates() -> dict[str, Any]:
 
 def _fetch_template_embeddings(texts: list[str]) -> list[Any] | None:
     """Fetch embeddings from AI Gateway for context and candidate templates."""
-    try:
-        import numpy as np
-        import requests as req_lib
-    except ImportError:
+    if not texts:
         return None
+    from core.llm.embedding_client import get_embeddings_batch
 
-    if not cfg.gateway_url or not cfg.gateway_api_key:
-        return None
-
-    url = f"{cfg.gateway_url.rstrip('/')}/embeddings"
-    headers = {
-        "Authorization": f"Bearer {cfg.gateway_api_key}",
-        "Content-Type": "application/json",
-    }
     try:
-        payload = {"model": "gemini-embed", "input": texts}
-        resp = req_lib.post(url, json=payload, headers=headers, timeout=15)
-        resp.raise_for_status()
-
-        raw_embs = [
-            np.array(d["embedding"], dtype=np.float32)
-            for d in resp.json()["data"]
-        ]
-        for i in range(len(raw_embs)):
-            norm = np.linalg.norm(raw_embs[i])
-            if norm > 0:
-                raw_embs[i] /= norm
-        return raw_embs
+        results = get_embeddings_batch(texts, timeout=15.0)
+        if not results or any(r is None for r in results):
+            return None
+        return results
     except Exception as e:
         _logger.debug(f"Embedding request failed: {e}")
         return None
+
 
 
 def _find_best_embedding_match(

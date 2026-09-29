@@ -1,4 +1,4 @@
-"""Unit tests for Vault Living Architecture, Mental Model, and Constitution Integrity (v8.15.13).
+"""Unit tests for Vault Living Architecture, Mental Model, and Constitution Integrity (v8.15.14).
 
 Verifies that all context files, instructions, rules, and workspace metadata
 comply with the canonical schemas and guardrails.
@@ -107,7 +107,8 @@ def test_workspace_context_canonical_schema(repo_root: Path):
     # Project validations
     project = data["project"]
     assert project.get("name") == "vvc-second-brain"
-    assert "v8.15.13" in str(project.get("version"))
+    from core.__version__ import VERSION
+    assert VERSION in str(project.get("version"))
     assert project.get("archetype") == "knowledge_corpus"
     assert "hub_path" in project
     assert "hub_path_linux" in project

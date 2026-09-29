@@ -92,7 +92,9 @@ def _run_early_maintenance() -> None:
             _logger.error(f"Legal sync failed: {e}")
 
 
-def _run_health_and_healing(concepts: list[dict]) -> tuple[dict | None, list[dict]]:
+def _run_health_and_healing(
+    concepts: list[dict],
+) -> tuple[dict | None, list[dict], int, int]:
     """Run wiki linting, link healing, orthography, and tag enrichment."""
     _logger.info("[3/7] Wiki health check...")
     report = None
@@ -109,20 +111,37 @@ def _run_health_and_healing(concepts: list[dict]) -> tuple[dict | None, list[dic
         _logger.info("Wiki health module not available")
 
     _logger.info("[4/7] Auto-healing (links, orthography, titles & domains)...")
+    healed_links = 0
+    healed_typos = 0
     if _HAS_HEALTH:
         try:
-            heal_broken_links(report=report, max_heal_limit=15)
-            heal_orthography(concepts=concepts)
+            healed_links = heal_broken_links(report=report, max_heal_limit=15)
+            healed_typos = heal_orthography(concepts=concepts)
             standardize_titles(batch_size=15, concepts=concepts)
             enrich_domains(batch_size=30, concepts=concepts)
         except Exception as e:
             _logger.error(f"Healing failed: {e}")
 
-    return report, scan_all_concepts()
+    updated_concepts = scan_all_concepts()
+    if _HAS_HEALTH:
+        try:
+            report = lint_vault()
+            _logger.info(
+                f"Post-heal lint: {report['total_concepts']} concepts, "
+                f"{len(report['broken_links'])} broken links"
+            )
+        except Exception as e:
+            _logger.error(f"Post-heal lint failed: {e}")
+
+    return report, updated_concepts, healed_links, healed_typos
 
 
 def _run_synthesis_and_sync(
-    concepts: list[dict], sources: list[dict], report: dict | None
+    concepts: list[dict],
+    sources: list[dict],
+    report: dict | None,
+    healed_links: int = 0,
+    healed_typos: int = 0,
 ) -> None:
     """Run MOC rebuilds, synthesis report generation, and vector index sync."""
     _logger.info("[5/7] MOC rebuild...")
@@ -134,7 +153,13 @@ def _run_synthesis_and_sync(
 
     _logger.info("[6/7] Weekly synthesis...")
     try:
-        _write_weekly_synthesis(concepts=concepts, sources=sources, report=report)
+        _write_weekly_synthesis(
+            concepts=concepts,
+            sources=sources,
+            report=report,
+            healed_links=healed_links,
+            healed_typos=healed_typos,
+        )
     except Exception as e:
         _logger.error(f"Weekly synthesis failed: {e}")
 
@@ -161,8 +186,14 @@ def run_sleep_consolidation() -> None:
             _logger.info(f"Scanned {len(concepts)} concepts, {len(sources)} sources")
 
             _run_early_maintenance()
-            report, concepts = _run_health_and_healing(concepts)
-            _run_synthesis_and_sync(concepts, sources, report)
+            report, concepts, healed_links, healed_typos = _run_health_and_healing(concepts)
+            _run_synthesis_and_sync(
+                concepts,
+                sources,
+                report,
+                healed_links=healed_links,
+                healed_typos=healed_typos,
+            )
 
             log("sleep", "Sleep Consolidation completed")
             _logger.info("Sleep Consolidation complete")
@@ -174,6 +205,8 @@ def _write_weekly_synthesis(
     concepts: list[dict] | None = None,
     sources: list[dict] | None = None,
     report: dict | None = None,
+    healed_links: int = 0,
+    healed_typos: int = 0,
 ) -> None:
     """Generate a weekly synthesis report via SSOT generator."""
     if _HAS_HEALTH:
@@ -181,6 +214,8 @@ def _write_weekly_synthesis(
             report=report,
             concepts=concepts,
             sources=sources,
+            healed_links=healed_links,
+            healed_typos=healed_typos,
         )
         _logger.info("Weekly synthesis generated successfully via SSOT generator.")
     else:

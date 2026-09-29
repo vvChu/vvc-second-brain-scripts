@@ -72,6 +72,12 @@ class VaultConfig:
     gateway_synthesis_model: str = ""
     gateway_correction_model: str = ""
     gateway_image_model: str = ""
+    gateway_embedding_model: str = "bge-m3"
+
+    @property
+    def embedding_model(self) -> str:
+        """Alias for gateway_embedding_model."""
+        return self.gateway_embedding_model
 
     # --- Backend Selection ---
     backend: str = "gateway"
@@ -154,6 +160,7 @@ def _build_ai_gateway_params(gw: dict) -> dict[str, Any]:
         "gateway_synthesis_model": gw.get("synthesis_model", ""),
         "gateway_correction_model": gw.get("correction_model", ""),
         "gateway_image_model": os.environ.get("VVC_GATEWAY_IMAGE_MODEL", gw.get("image_model", "gemini-3.1-flash-image")),
+        "gateway_embedding_model": os.environ.get("VVC_GATEWAY_EMBEDDING_MODEL", gw.get("embedding_model", "bge-m3")),
     }
 
 

@@ -157,6 +157,15 @@ def _format_twitter_markdown(
         quoted_body = quote['text'].replace('\n', '\n> ')
         parts.append(f"### 💬 Trích dẫn từ @{q_screen} ({q_name})\n\n> {quoted_body}")
 
+    article = tweet_data.get("article")
+    if isinstance(article, dict):
+        art_title = article.get("title", "")
+        blocks = article.get("content", {}).get("blocks", [])
+        art_paras = [b.get("text", "") for b in blocks if b.get("text")]
+        art_body = "\n\n".join(art_paras)
+        if art_body:
+            parts.append(f"### 📄 Bài viết (X Article): {art_title}\n\n{art_body}")
+
     if photo_urls:
         img_lines = [f"- ![]({p})" for p in photo_urls[:4]]
         parts.append("## 🖼️ Hình ảnh đính kèm\n\n" + "\n".join(img_lines))

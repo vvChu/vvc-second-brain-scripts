@@ -104,13 +104,12 @@ def _record_stale_stubs(
                     "linked_from": incoming_hq_links[normalize_stem(stub["_stem"])][:3],
                 })
 
-    if stale_entries:
-        stale_file = cfg.state_dir / ".stale_stubs.json"
-        try:
-            stale_file.write_text(json.dumps(stale_entries, ensure_ascii=False, indent=2), encoding="utf-8")
-            _logger.info(f"[health] Recorded {len(stale_entries)} stale pending stubs to {stale_file.name}")
-        except Exception as e:
-            _logger.warning(f"Failed to write stale stubs cache: {e}")
+    stale_file = cfg.state_dir / ".stale_stubs.json"
+    try:
+        stale_file.write_text(json.dumps(stale_entries, ensure_ascii=False, indent=2), encoding="utf-8")
+        _logger.info(f"[health] Recorded {len(stale_entries)} stale pending stubs to {stale_file.name}")
+    except Exception as e:
+        _logger.warning(f"Failed to write stale stubs cache: {e}")
 
     return len(stale_entries)
 
@@ -123,6 +122,11 @@ def manage_stub_lifecycle() -> dict[str, int]:
     stubs = [c for c in concepts if c.get("confidence") == "low" and c.get("source_type") == "stub"]
     if not stubs:
         _logger.info("LinkHealer: No stub notes found in the vault.")
+        stale_file = cfg.state_dir / ".stale_stubs.json"
+        try:
+            stale_file.write_text("[]", encoding="utf-8")
+        except Exception:
+            pass
         return {"purged": 0, "stale": 0}
 
     stub_stems = {normalize_stem(c["_stem"]) for c in stubs}

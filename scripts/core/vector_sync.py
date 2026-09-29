@@ -20,7 +20,7 @@ import numpy as np
 
 from core.config import cfg
 from core.file_lock import CrossProcessFileLock
-from core.llm.embedding_client import get_embedding
+from core.llm.embedding_client import EmbeddingFatalError, get_embedding
 
 if TYPE_CHECKING:
     from core.vector_store import VectorStore
@@ -39,6 +39,13 @@ class CircuitBreaker:
     def record_success(self) -> None:
         """Reset consecutive error count on successful API call."""
         self.consecutive_errors = 0
+
+    def trip_immediately(self, reason: str = "") -> None:
+        """Immediately trip circuit breaker without backoff delay."""
+        _logger.error(
+            f"Fatal embedding error encountered ({reason}). Tripping circuit breaker immediately."
+        )
+        self.tripped = True
 
     def record_failure(self) -> None:
         """Record an API error, apply backoff delay, and trip if threshold reached."""
@@ -99,14 +106,23 @@ def _handle_new_embedding(
 ) -> None:
     """Request embedding and handle success or fallback upon error."""
     _logger.info(f"Embedding: {stem}")
-    emb = get_embedding(text_prefix)
+    try:
+        emb = get_embedding(text_prefix, raise_on_fatal=True)
+    except EmbeddingFatalError as fe:
+        cb.trip_immediately(str(fe))
+        emb = None
+    except Exception as e:
+        _logger.warning(f"Unexpected error getting embedding for '{stem}': {e}")
+        emb = None
+
     if emb is not None:
         ctx.new_sources.append(stem)
         ctx.new_texts.append(current_hash)
         ctx.new_embeddings.append(emb)
         cb.record_success()
     else:
-        cb.record_failure()
+        if not cb.tripped:
+            cb.record_failure()
         if in_index:
             idx = ctx.index_map[stem]
             ctx.new_sources.append(stem)
@@ -158,6 +174,17 @@ def _commit_sync_results(store: VectorStore, ctx: SyncContext, deleted_count: in
         _logger.warning("No valid embeddings to save.")
         return {"new": 0, "updated": 0, "deleted": deleted_count, "total": 0}
 
+    # Dimension Guard: Verify that all new vectors match expected dimension
+    if ctx.existing_embeddings and len(ctx.existing_embeddings) > 0:
+        expected_dim = ctx.existing_embeddings[0].shape[0]
+        for idx_e, emb in enumerate(ctx.new_embeddings):
+            if emb.shape[0] != expected_dim:
+                _logger.error(
+                    f"Dimension mismatch in vector sync: expected {expected_dim}, "
+                    f"got {emb.shape[0]} at index {idx_e} ({ctx.new_sources[idx_e]}). Aborting commit."
+                )
+                return {"new": 0, "updated": 0, "deleted": 0, "total": len(ctx.existing_sources), "aborted": True}
+
     if not store._atomic_save(ctx.new_embeddings, ctx.new_texts, ctx.new_sources):
         _logger.error("Failed to save embedding index.")
         return {"new": ctx.new_count, "updated": ctx.updated_count, "deleted": deleted_count, "total": 0}
@@ -199,13 +226,20 @@ def sync_vector_index(store: VectorStore, concepts: list[dict] | None = None) ->
 
             cb = CircuitBreaker()
             for fm in concepts:
+                if cb.tripped:
+                    _logger.error("Circuit breaker is tripped. Aborting full sync loop.")
+                    break
                 parsed = _parse_concept(fm)
                 if parsed is None:
                     continue
                 stem, current_hash, text_prefix = parsed
                 _process_concept_item(ctx, stem, current_hash, text_prefix, cb)
 
-            deleted_count = len(ctx.existing_sources) - len(ctx.valid_sources)
+            if cb.tripped:
+                _logger.error("Circuit breaker tripped during embedding sync. Hard lock: preserving existing index without overwrite.")
+                return {"new": 0, "updated": 0, "deleted": 0, "total": len(ctx.existing_sources), "aborted": True}
+
+            deleted_count = len(set(ctx.existing_sources) - ctx.valid_sources)
             if ctx.updated_count == 0 and ctx.new_count == 0 and deleted_count == 0:
                 _logger.info("Embedding index is already up to date.")
                 return {"new": 0, "updated": 0, "deleted": 0, "total": len(ctx.new_sources)}

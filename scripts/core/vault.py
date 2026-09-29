@@ -65,7 +65,7 @@ def _parse_concept_disk_entry(entry_path: str, stem: str, stat: os.stat_result) 
 
     raw_links = re.findall(r"\[\[([^\]|#\n]+)", content)
     fm["_stem"] = stem
-    fm["_links"] = [l.strip() for l in raw_links if l.strip()]
+    fm["_links"] = [l.strip().rstrip("\\") for l in raw_links if l.strip()]
 
     cache_data = {k: v for k, v in fm.items() if k != "_path"}
     cache_entry = {"mtime": stat.st_mtime, "size": stat.st_size, "data": cache_data}
@@ -193,7 +193,7 @@ def update_concept_cache(
             frontmatter = frontmatter or parse_frontmatter(content)
             if links is None:
                 raw_links = re.findall(r"\[\[([^\]|#\n]+)", content)
-                links = [l.strip() for l in raw_links if l.strip()]
+                links = [l.strip().rstrip("\\") for l in raw_links if l.strip()]
 
         if not frontmatter:
             return None

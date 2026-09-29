@@ -47,4 +47,5 @@ The system operates as an Autonomous Knowledge Operating System ("Zero-Touch" LL
 5. **Strict HTML Entity Context Isolation**: `#40;` và `#41;` are ONLY allowed inside ````mermaid` blocks. Outside mermaid, standard parentheses `()` must be used.
 6. **Architectural Budgets & Zero-Slack Ratchets (v8.15.13)**: All production Python files must be $\le 350$ lines and 100% functions must be $\le 50$ lines via AST analysis (0 legacy ratchets on both axes: `LEGACY_LINE_RATCHET = {}`, `LEGACY_FUNC_OVER_50_BUDGET = {}`). Proactively decompose functions reaching $\ge 40$ lines (anti-locality bias); never compromise function modularity to fit file length; decompose into deep packages instead.
 7. **Session Artifact Buffer (.md/scratch/)**: All transient agent artifacts (plans, tasks, walkthroughs, claim notices) MUST be stored in `.md/scratch/` to avoid dirtying git working tree.
+8. **Local BGE-M3 Vector Embedding (v8.15.14)**: Vault vector store operates on local `BAAI/bge-m3` (1024-d, FP16 on Server Spark GB10 via `rag-service` & LiteLLM Gateway), eliminating API key leakage risks; safe atomic cutover guarantees index integrity.
 
