@@ -1,4 +1,4 @@
-"""VvC Second Brain — Main Daemon (v8.15.14).
+"""VvC Second Brain — Main Daemon (v8.16.0).
 
 Watchdog-based daemon that monitors 05-Fleeting/ for new images
 and processes them through the 5-stage pipeline:
@@ -132,12 +132,13 @@ def _poll_command() -> None:
 
 
 def _poll_brain_dump() -> None:
-    """Poll Brain_Dump.md for new content in a non-blocking thread."""
+    """Poll Brain_Dump.md and inbox queue for new content in a non-blocking thread."""
     global _dump_in_progress
     if _dump_in_progress or not cfg.dump_file.exists():
         return
     mtime = cfg.dump_file.stat().st_mtime
-    if mtime <= _poller_state.dump_mtime:
+    from services.brain_dump.inbox_io import has_pending_inbox_or_conflicts
+    if mtime <= _poller_state.dump_mtime and not has_pending_inbox_or_conflicts():
         return
     _poller_state.dump_mtime = mtime
     _dump_in_progress = True
@@ -182,7 +183,9 @@ def _poll_loop() -> None:
         now = time.time()
         if now - last_hb >= 60.0:
             from core.log import update_heartbeat
+            from core.cross_machine_fencing import record_active_epoch
             update_heartbeat("Online", detail="Polling loop healthy")
+            record_active_epoch()
             last_hb = now
         if now - last_cmd >= COMMAND_POLL_INTERVAL:
             _poll_command()
@@ -284,6 +287,11 @@ def _graceful_shutdown(observer: Any, worker: threading.Thread, poller: threadin
     poller.join(timeout=5)
     if worker.is_alive():
         _logger.warning("Worker thread did not finish in time — forcing exit")
+    try:
+        from core.cross_machine_fencing import clear_active_epoch
+        clear_active_epoch()
+    except Exception:
+        pass
     _release_daemon_lock()
     log("lifecycle", f"Daemon v{__version__} stopped")
     _logger.info("Daemon stopped")
@@ -302,6 +310,12 @@ def main(argv: list[str] | None = None) -> None:
     if not _acquire_daemon_lock():
         _logger.warning("Another daemon instance is already running")
         return
+
+    try:
+        from core.cross_machine_fencing import record_active_epoch
+        record_active_epoch()
+    except Exception:
+        pass
 
     log("lifecycle", f"Daemon v{__version__} started")
     _logger.info("=" * 50)

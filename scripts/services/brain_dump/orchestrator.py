@@ -20,6 +20,7 @@ from services.orthography import orthographic_preprocess
 from services.brain_dump.inbox_io import (
     _find_pending_dump, _extract_inbox_sections,
     _commit_inbox_changes, _clear_inbox_only,
+    harvest_inbox_and_conflicts,
 )
 from services.brain_dump.url_registry import (
     _URL_PATTERN, _normalize_url, _check_override,
@@ -241,16 +242,25 @@ def _finalize_brain_dump(
             _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
 
 
-def handle_brain_dump() -> None:
-    """Process pending content in Brain_Dump.md."""
+def _read_pending_dump() -> str | None:
+    """Safely harvest and read pending dump text from Brain_Dump.md."""
+    try:
+        harvest_inbox_and_conflicts()
+    except Exception as harvest_err:
+        _logger.warning(f"Error harvesting inbox/conflicts: {harvest_err}")
+
     if not cfg.dump_file.exists():
-        return
+        return None
     try:
         content = cfg.dump_file.read_text(encoding="utf-8")
     except OSError:
-        return
+        return None
+    return _find_pending_dump(content)
 
-    dump_text = _find_pending_dump(content)
+
+def handle_brain_dump() -> None:
+    """Process pending content in Brain_Dump.md and inbox queue."""
+    dump_text = _read_pending_dump()
     if not dump_text:
         return
 

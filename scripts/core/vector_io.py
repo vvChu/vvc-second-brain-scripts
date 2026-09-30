@@ -23,17 +23,20 @@ _logger = logging.getLogger("vvc.vector_io")
 
 def _extract_legacy_texts(stems: list[str]) -> list[str]:
     """Read concept text prefixes for legacy format entries."""
+    from core.frontmatter import extract_concept_semantic_text
+
     texts: list[str] = []
     for stem in stems:
         fpath = cfg.concepts_dir / f"{stem}.md"
         if fpath.exists():
             try:
-                texts.append(fpath.read_text(encoding="utf-8")[:2000])
+                texts.append(extract_concept_semantic_text(fpath.read_text(encoding="utf-8"), max_chars=2000))
             except Exception:
                 texts.append("")
         else:
             texts.append("")
     return texts
+
 
 
 def _normalize_embeddings(raw_embs: np.ndarray) -> list[np.ndarray]:

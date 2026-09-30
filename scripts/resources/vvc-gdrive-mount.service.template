@@ -31,6 +31,10 @@ ExecStart=%h/.local/bin/rclone mount gdrive:VvC_Vault %h/mnt/gdrive/VvC_Vault \
     --dir-cache-time 72h \
     --drive-pacer-min-sleep 10ms \
     --drive-pacer-burst 200 \
+    --poll-interval 15s \
+    --rc \
+    --rc-addr=127.0.0.1:5572 \
+    --rc-no-auth \
     --umask 022 \
     --log-level INFO \
     --log-file=%h/VvC_Notes/scripts/logs/rclone.log

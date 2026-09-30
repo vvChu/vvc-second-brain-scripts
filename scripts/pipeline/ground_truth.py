@@ -232,13 +232,13 @@ def _prepare_search_query(ocr_text: str, book_name: str, corpus: list[tuple[str,
     return query
 
 
-def _rerank_results(query: str, results: list[tuple[str, str, float]]) -> tuple[str, str, float]:
-    """Re-rank BM25 candidate results using AI Gateway vector embeddings if available."""
+def _rerank_results(query: str, results: list[tuple[str, str, float]]) -> tuple[str, str, float, float]:
+    """Re-rank BM25 candidate results using vector embeddings with cosine tracking."""
     fallback_ch, fallback_para, fallback_score = results[0]
     embeddings = _get_embeddings_batch([query] + [r[1] for r in results])
     if not embeddings or len(embeddings) != len(results) + 1:
         _logger.info("Semantic re-ranking skipped — using BM25 top-1 as fallback.")
-        return fallback_ch, fallback_para, fallback_score
+        return fallback_ch, fallback_para, fallback_score, 0.0
 
     import numpy as np
     query_vec = np.array(embeddings[0], dtype=np.float32)
@@ -248,11 +248,12 @@ def _rerank_results(query: str, results: list[tuple[str, str, float]]) -> tuple[
     if best_idx != 0 and (similarities[best_idx] - similarities[0]) < 0.03:
         best_idx = 0
     ch, para, score = results[best_idx]
+    best_cos = float(similarities[best_idx])
     _logger.info(
-        f"Semantic re-ranking: best_idx={best_idx}, cosine={float(similarities[best_idx]):.4f}, "
+        f"Semantic re-ranking: best_idx={best_idx}, cosine={best_cos:.4f}, "
         f"chapter='{ch}' (BM25 rank was #{best_idx + 1}, score={score:.1f})"
     )
-    return ch, para, score
+    return ch, para, score, best_cos
 
 
 def find_ground_truth(ocr_text: str, book_name: str, *, page: int | None = None) -> GroundTruthResult:
@@ -267,10 +268,10 @@ def find_ground_truth(ocr_text: str, book_name: str, *, page: int | None = None)
     if not results:
         return GroundTruthResult("", 0.0, "", page)
 
-    ch, para, score = _rerank_results(query, results)
-    _logger.info(f"GT match: score={score:.1f}, chapter={ch}")
-    if score < 15.0:
-        _logger.warning(f"GT score too low ({score:.1f})")
+    ch, para, score, cosine = _rerank_results(query, results)
+    _logger.info(f"GT match: score={score:.1f}, cosine={cosine:.4f}, chapter={ch}")
+    if score < 15.0 or (0.0 < cosine < 0.65):
+        _logger.warning(f"GT match rejected (BM25={score:.1f} < 15 or Cosine={cosine:.4f} < 0.65)")
         return GroundTruthResult("", score, ch, page)
     return GroundTruthResult(para, score, ch, page)
 

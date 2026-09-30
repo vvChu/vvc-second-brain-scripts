@@ -241,9 +241,10 @@ def test_ground_truth_rerank_respects_margin():
     cand1_vec = [0.41, 0.9121]
 
     with patch("pipeline.ground_truth._get_embeddings_batch", return_value=[query_vec, cand0_vec, cand1_vec]):
-        ch, para, score = _rerank_results("query text", results)
+        ch, para, score, cosine = _rerank_results("query text", results)
         assert para == "BM25 rank 0 paragraph"
         assert score == 50.0
+        assert cosine == pytest.approx(0.40, abs=1e-3)
 
 
 

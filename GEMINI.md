@@ -1,4 +1,4 @@
-# 🧠 VvC Second Brain — Project Context (v8.15.14)
+# 🧠 VvC Second Brain — Project Context (v8.16.0)
 
 > [!NOTE] Context File Hierarchy
 > | File | Role | Authority |
@@ -16,7 +16,7 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 
 - **Philosophy**: AI agents = **librarians & compilers**. Human = **source provider**.
 - **Core Pattern**: Raw images/books/URLs → OCR → Ground Truth RAG → Atomic Concept Synthesis → Zettelkasten.
-- **Current version**: v8.15.14 — See `CHANGELOG.md` for full history.
+- **Current version**: v8.16.0 — See `CHANGELOG.md` for full history.
 
 ## Directory Structure
 
@@ -59,11 +59,12 @@ Personal knowledge management system ("Second Brain") built on Obsidian. Autonom
 - **Clean Wikilinks & Deterministic Defense** (v8.15.7 / v8.15.11): See `AGENTS.md` §4.4 & §5. Cấm tuyệt đối bọc backticks quanh wikilinks/embeds (ví dụ cú pháp bắt buộc dùng fenced code block); thoát pipe `[[slug\|alias]]` trong bảng nhưng giữ link trần; đồng bộ 100% số trích dẫn trong bảng với danh mục cuối bài; Zero-Fencing Examples trong prompt SLM; và tiền xử lý regex tất định (`clean_wikilink_quotes`) trước khi ghi đĩa.
 - **Stale Daemon & CLI Artifact Ingestion** (v8.15.9): See `AGENTS.md` §5. Cờ `--restart` bắt buộc khi nạp code mới; `_resolve_cli_artifact_content` tự động nuốt toàn văn artifact thay thế summary từ CLI stdout.
 - **Mermaid Edge Labels & HTML Entity Context Isolation** (v8.15.10): See `AGENTS.md` §4.4 & §4.10. Cấm chèn nhãn text vào giữa thân mũi tên (dùng `===>|"label"|`, `-.->|"label"|`, `<===>|"label"|`); chuẩn hóa toán tử `≥`/`≤`; thực thể HTML `#40;` và `#41;` CHỈ dùng bên trong khối ````mermaid`; bảng biểu Markdown bắt buộc dùng dấu ngoặc đơn tròn chuẩn `()`.
-- **Living Architecture & Mental Model** (v8.15.14): See `AGENTS.md` §1.1. Khảo sát 8 Trụ cột kiến trúc, 3 Đột phá Karpathy và Bất biến Active-Passive Single-Active Runner tại [`.md/vault_mental_model_and_architecture.md`](file:///home/vvc/VvC_Notes/.md/vault_mental_model_and_architecture.md), [[kien_truc_va_mental_model_vvc_second_brain|04 - Permanent/topics/kien_truc_va_mental_model_vvc_second_brain.md]] và SSoT [`.md/workspace_context.yaml`](file:///home/vvc/VvC_Notes/.md/workspace_context.yaml).
+- **Living Architecture & Mental Model** (v8.16.0): See `AGENTS.md` §1.1. Khảo sát 8 Trụ cột kiến trúc, 3 Đột phá Karpathy và Bất biến Active-Passive Single-Active Runner tại [`.md/vault_mental_model_and_architecture.md`](file:///home/vvc/VvC_Notes/.md/vault_mental_model_and_architecture.md), [[kien_truc_va_mental_model_vvc_second_brain|04 - Permanent/topics/kien_truc_va_mental_model_vvc_second_brain.md]] và SSoT [`.md/workspace_context.yaml`](file:///home/vvc/VvC_Notes/.md/workspace_context.yaml).
 - **Architectural Budgets & Zero-Slack Ratchets** (v8.15.13): See `AGENTS.md` §5. SSoT versioning qua `core.__version__`; trần tệp sản xuất $\le 350$ dòng và trần hàm AST $\le 50$ dòng (0 legacy ratchets toàn diện — 100% tuân thủ); Proactive Decomposition (ngưỡng sớm $\ge 40$ dòng cấm inline); cấm gộp hàm né trần tệp (bóc tách deep package); đồng bộ cây thư mục README sống và 0 rò rỉ đường dẫn máy (`test_architectural_budgets.py`, `test_codebase_cleanliness.py`).
 - **Session Artifact Buffer Isolation** (v8.15.13): See `AGENTS.md` §4.3. Mọi tệp tạm thời của phiên làm việc AI (plans, tasks, walkthroughs) bắt buộc lưu trong `.md/scratch/` để bảo toàn `git status clean`.
 - **Test Runner & Ratchet Governance** (v8.15.13): See `AGENTS.md` §5 & `scripts/README.md`. Trên Server Spark luôn chạy kiểm thử qua `scripts/.venv/bin/pytest` để tránh xung đột wrapper `$PATH`; mọi commit mới bắt buộc duy trì 0 legacy ratchets (`LEGACY_LINE_RATCHET = {}`, `LEGACY_FUNC_OVER_50_BUDGET = {}`), tuyệt đối cấm mở thêm ratchet để lách kiểm thử.
 - **Local BGE-M3 Vector Embedding** (v8.15.14): Nâng cấp toàn diện hạ tầng vector embedding từ Gemini Cloud (3072-d) sang mô hình cục bộ `BAAI/bge-m3` (1024-d) chạy trực tiếp trên GPU Server Spark (NVIDIA GB10 FP16); tái lập chỉ mục toàn bộ 2.852 concept notes với checkpointing, L2 unit norm, zero-downtime atomic swap, và triệt tiêu hoàn toàn rủi ro rò rỉ API Keys.
+- **Architectural Hardening & Multi-Device Fencing** (v8.16.0): See `AGENTS.md` §1.1 & §3.1. Hàng rào nhịp tim epoch `.spark_heartbeat_epoch.json` khử Split-Brain giữa Linux Spark và Windows; trường bắt buộc `origin: book | ocr | web | command` trong YAML frontmatter và RAG penalty 0.85x; trích xuất ngữ nghĩa có cấu trúc `extract_concept_semantic_text`; hàng đợi thu nạp `05 - Fleeting/inbox/` và tự động thu hoạch tệp xung đột Google Drive `Brain_Dump (*).md` sang `99 - Archive/inbox/`.
 
 
 

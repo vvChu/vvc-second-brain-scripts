@@ -115,7 +115,9 @@ def _run_health_and_healing(
     healed_typos = 0
     if _HAS_HEALTH:
         try:
-            healed_links = heal_broken_links(report=report, max_heal_limit=15)
+            broken_count = len(report.get("broken_links", [])) if report else 0
+            dynamic_limit = min(max(15, broken_count // 2), 100)
+            healed_links = heal_broken_links(report=report, max_heal_limit=dynamic_limit)
             healed_typos = heal_orthography(concepts=concepts)
             standardize_titles(batch_size=15, concepts=concepts)
             enrich_domains(batch_size=30, concepts=concepts)

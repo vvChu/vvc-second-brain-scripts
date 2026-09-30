@@ -97,14 +97,16 @@ def build_concept_frontmatter(
     status: str = "seed",
     related: list[str] | None = None,
     confidence: str = "high",
+    origin: str = "book",
 ) -> str:
-    """Build standardized concept note frontmatter (Canonical v8.3 schema)."""
+    """Build standardized concept note frontmatter (Canonical v8.3/v8.16 schema)."""
     today = date.today().isoformat()
     return build_frontmatter({
         "title": title,
         "aliases": aliases or [],
         "tags": ["knowledge", "type/concept"] + (tags or []),
         "type": "concept",
+        "origin": origin,
         "date_created": today,
         "date_modified": today,
         "source": source,
@@ -163,3 +165,43 @@ def normalize_stem(name: str) -> str:
     name = re.sub(r"_+", "_", name)
     name = name.strip("_")
     return name
+
+
+def extract_concept_semantic_text(content: str, max_chars: int = 2000) -> str:
+    """Extract semantically rich text prioritizing Core Idea, Title & Summary over raw YAML."""
+    fm = parse_frontmatter(content)
+    title = str(fm.get("title", "")).strip()
+    summary = str(fm.get("summary", "")).strip()
+    body = extract_body(content)
+
+    core_idea = ""
+    core_match = re.search(
+        r"^##\s+Core Idea\s*\n(.*?)(?=\n##|\n---|(?:\n\s*>\s*\[!info\])|\Z)",
+        body,
+        re.DOTALL | re.MULTILINE,
+    )
+    if core_match:
+        core_idea = core_match.group(1).strip()
+
+    primary_quote = ""
+    quote_match = re.search(r"^>\s*[\"“](.*?)[\"”]", body, re.MULTILINE)
+    if quote_match:
+        primary_quote = quote_match.group(1).strip()
+
+    parts: list[str] = []
+    if title:
+        parts.append(f"Title: {title}")
+    if summary:
+        parts.append(f"Summary: {summary}")
+    if core_idea:
+        parts.append(f"Core Idea:\n{core_idea}")
+    elif body:
+        clean_body = re.sub(r"^>.*", "", body, flags=re.MULTILINE).strip()
+        parts.append(f"Content:\n{clean_body}")
+
+    assembled = "\n\n".join(parts)
+    if len(assembled) < max_chars - 100 and primary_quote:
+        rem_budget = max_chars - len(assembled) - 20
+        assembled += f"\n\nQuote: {primary_quote[:rem_budget]}"
+
+    return assembled[:max_chars].strip()
