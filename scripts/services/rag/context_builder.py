@@ -61,6 +61,7 @@ def _load_explicit_doc(target_path: Path, stem: str) -> dict | None:
         "tags": fm.get("tags", []),
         "body": extract_body(raw_text).strip()[:3500].strip(),
         "priority": "explicit_user_reference",
+        "origin": fm.get("origin", "book"),
         "path": target_path,
     }
 
@@ -106,11 +107,19 @@ def resolve_explicit_references(query: str, max_docs: int = 2) -> list[dict]:
 
 
 def _format_doc_xml(
-    doc_id: int, file_name: str, title: str, summary: str, tags: Any, body: str, priority: str = ""
+    doc_id: int,
+    file_name: str,
+    title: str,
+    summary: str,
+    tags: Any,
+    body: str,
+    origin: str = "book",
+    priority: str = "",
 ) -> str:
     """Format single document into canonical XML tags for RAG context."""
     pfx = f' priority="{priority}"' if priority else ""
-    lines = [f'<document id="{doc_id}" file="{file_name}" title="{title}"{pfx}>\n']
+    orig_attr = f' origin="{origin}"' if origin else ""
+    lines = [f'<document id="{doc_id}" file="{file_name}" title="{title}"{orig_attr}{pfx}>\n']
     if summary:
         lines.append(f"TÓM TẮT: {summary}\n")
     if tags:
@@ -141,6 +150,7 @@ def _append_explicit_docs(
                 doc["summary"],
                 doc["tags"],
                 doc["body"],
+                origin=doc.get("origin", "book"),
                 priority="explicit_user_reference",
             )
         )
@@ -153,14 +163,23 @@ def _append_search_results(
     seen_files: set[str],
     seen_stems: set[str],
 ) -> None:
-    """Format and append hybrid search results to context."""
+    """Format and append hybrid search results to context with origin penalty."""
+    scored_items: list[tuple[float, Any, dict, str]] = []
     for r in results:
+        fm = parse_frontmatter(r.text)
+        origin = str(fm.get("origin", "book"))
+        effective_score = float(r.score) * (0.85 if origin == "command" else 1.0)
+        scored_items.append((effective_score, r, fm, origin))
+
+    # Multi-Key Deterministic Sorting: score desc, filename asc
+    scored_items.sort(key=lambda item: (-round(item[0], 4), item[1].source_file))
+
+    for _, r, fm, origin in scored_items:
         src_file = r.source_file
         src_stem = Path(src_file).stem
         if src_file.lower() in seen_files or src_stem.lower() in seen_stems:
             continue
 
-        fm = parse_frontmatter(r.text)
         title = fm.get("title", src_file)
         doc_id = len(context_parts) + 1
         rag_refs[doc_id] = (src_file, title)
@@ -174,8 +193,10 @@ def _append_search_results(
                 fm.get("summary", ""),
                 fm.get("tags", []),
                 extract_body(r.text),
+                origin=origin,
             )
         )
+
 
 
 def build_rag_context(query: str) -> tuple[str, dict[int, tuple[str, str]]]:

@@ -25,14 +25,14 @@ The system operates as an Autonomous Knowledge Operating System ("Zero-Touch" LL
 
 | Pillar | Technical Responsibility | Primary Files / Deep Seams |
 | :--- | :--- | :--- |
-| **P1. Operations & Single Runner** | Process coordination, split-brain protection, locks | `scripts/daemon.py`, `scripts/core/file_lock.py` |
+| **P1. Operations & Single Runner** | Process coordination, split-brain protection, locks | `scripts/daemon.py`, `scripts/core/file_lock.py`, `scripts/core/cross_machine_fencing.py` |
 | **P2. Storage Tiering** | Rclone VFS mount, local state/logs isolation | `scripts/config.yaml`, `scripts/.state/`, `scripts/logs/` |
-| **P3. Knowledge Kernel** | Canonical v8.3 Concept Notes, Multi-Evidence Hooks, Pruning | `scripts/core/frontmatter.py`, `scripts/core/prompts/pipeline.py` |
+| **P3. Knowledge Kernel** | Canonical v8.3/v8.16 Concept Notes (`origin` tag), Multi-Evidence Hooks, Pruning | `scripts/core/frontmatter.py`, `scripts/core/prompts/pipeline.py` |
 | **P4. Compilation Pipeline** | 5-stage pipeline: OCR $\rightarrow$ BM25 $\rightarrow$ Synthesis $\rightarrow$ Self-Correction $\rightarrow$ Merger | `scripts/pipeline/image_processor.py`, `scripts/pipeline/ground_truth.py` |
-| **P5. Multi-Channel Ingestion** | YouTube 4-tier Native ASR, Podcast Faster-Whisper, Command JIT | `scripts/services/youtube/`, `scripts/services/command/` |
+| **P5. Multi-Channel Ingestion** | YouTube 4-tier Native ASR, Podcast Faster-Whisper, Command JIT, Timestamped Inbox & Conflict Harvester | `scripts/services/youtube/`, `scripts/services/command/`, `scripts/services/brain_dump/` |
 | **P6. Adaptive AI Grid** | 4-tier routing, Circuit Breaker 503, WinError 206 stdin stream, CLI artifact | `scripts/core/llm/` |
 | **P7. Artifacts Coordination** | Lazy ArtifactEngine, 16:9 Excalidraw, Mermaid 4 Patterns | `scripts/services/worker_dispatcher.py`, `.agents/rules/diagramming_hygiene.md` |
-| **P8. Self-Healing Loops** | Semantic Merger (Cosine $\ge 0.95$ & Margin $\ge 0.03$), 2-tier Mtime, Sleep Consolidation | `scripts/pipeline/semantic_merger.py`, `scripts/sleep.py` |
+| **P8. Self-Healing Loops** | Semantic Merger (Cosine $\ge 0.95$ & Margin $\ge 0.03$), 2-tier Mtime, Dynamic Healing Sleep Consolidation | `scripts/pipeline/semantic_merger.py`, `scripts/sleep.py` |
 
 ---
 
@@ -48,4 +48,6 @@ The system operates as an Autonomous Knowledge Operating System ("Zero-Touch" LL
 6. **Architectural Budgets & Zero-Slack Ratchets (v8.15.13)**: All production Python files must be $\le 350$ lines and 100% functions must be $\le 50$ lines via AST analysis (0 legacy ratchets on both axes: `LEGACY_LINE_RATCHET = {}`, `LEGACY_FUNC_OVER_50_BUDGET = {}`). Proactively decompose functions reaching $\ge 40$ lines (anti-locality bias); never compromise function modularity to fit file length; decompose into deep packages instead.
 7. **Session Artifact Buffer (.md/scratch/)**: All transient agent artifacts (plans, tasks, walkthroughs, claim notices) MUST be stored in `.md/scratch/` to avoid dirtying git working tree.
 8. **Local BGE-M3 Vector Embedding (v8.15.14)**: Vault vector store operates on local `BAAI/bge-m3` (1024-d, FP16 on Server Spark GB10 via `rag-service` & LiteLLM Gateway), eliminating API key leakage risks; safe atomic cutover guarantees index integrity.
+9. **Multi-Device Fencing & Origin Provenance (v8.16.0)**: Heartbeat epoch `.spark_heartbeat_epoch.json` eliminates Split-Brain between Linux Spark and Windows; mandatory `origin: book | ocr | web | command` in YAML frontmatter tiers confidence and prevents RAG pollution (0.85x penalty for AI `origin="command"`); ingestion queue `05 - Fleeting/inbox/` and auto-harvesting of Google Drive conflicts `Brain_Dump (*).md` to `99 - Archive/inbox/`.
+
 

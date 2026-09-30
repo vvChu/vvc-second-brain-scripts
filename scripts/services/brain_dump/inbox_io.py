@@ -1,16 +1,20 @@
 """VvC Second Brain — Brain Dump: Inbox I/O operations.
 
-Handles reading and writing to the Brain_Dump.md file:
+Handles reading and writing to the Brain_Dump.md file and inbox queue:
 - _find_pending_dump: Find unprocessed brain dump content
 - _extract_inbox_sections: Parse ## Inbox sections
 - _commit_inbox_changes: Single-write commit of all changes
 - _clear_inbox_only: Clear processed text without generating concepts
+- harvest_inbox_and_conflicts: Harvest timestamped inbox & conflict dump files
 """
 
 from __future__ import annotations
 
 import logging
 import re
+import shutil
+from datetime import datetime
+from pathlib import Path
 
 from core.config import cfg
 
@@ -128,3 +132,103 @@ def _clear_inbox_only(dump_text: str) -> None:
             cfg.dump_file.write_text(new_content, encoding="utf-8")
         except OSError:
             pass
+
+
+def _archive_file(file_path: Path) -> None:
+    """Safely archive a processed inbox or conflict file to 99 - Archive/inbox/."""
+    archive_dir = cfg.archive_dir / "inbox"
+    archive_dir.mkdir(parents=True, exist_ok=True)
+    target = archive_dir / file_path.name
+    if target.exists():
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        target = archive_dir / f"{file_path.stem}_{timestamp}{file_path.suffix}"
+    try:
+        shutil.move(str(file_path), str(target))
+        _logger.info(f"Archived {file_path.name} -> {target.relative_to(cfg.vault_root)}")
+    except OSError as e:
+        _logger.warning(f"Failed to archive {file_path.name}: {e}")
+
+
+def _extract_inbox_payload(file_path: Path) -> str:
+    """Extract pending payload text from an inbox or conflict file."""
+    try:
+        text = file_path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+    if not text:
+        return ""
+    _, inbox, _ = _extract_inbox_sections(text)
+    return inbox if inbox else text
+
+
+def _find_candidate_files() -> list[Path]:
+    """Find all timestamped inbox files and conflict Brain_Dump files deterministically."""
+    candidates: list[Path] = []
+    inbox_dir = cfg.fleeting_dir / "inbox"
+    if inbox_dir.exists():
+        candidates.extend(sorted(inbox_dir.glob("*.md"), key=lambda p: p.name))
+    if cfg.fleeting_dir.exists():
+        for p in sorted(cfg.fleeting_dir.glob("*.md"), key=lambda p: p.name):
+            name_lower = p.name.lower()
+            if name_lower.startswith("brain_dump (") or "conflict" in name_lower:
+                candidates.append(p)
+    return candidates
+
+
+def has_pending_inbox_or_conflicts() -> bool:
+    """Quick check if there are pending inbox notes or conflict dump files."""
+    return bool(_find_candidate_files())
+
+
+
+def _append_harvested_text(harvested_texts: list[str]) -> bool:
+    """Append harvested text chunks to Brain_Dump.md ## Inbox section."""
+    if not harvested_texts or not cfg.dump_file.exists():
+        return False
+    try:
+        content = cfg.dump_file.read_text(encoding="utf-8")
+        before, inbox, after = _extract_inbox_sections(content)
+        combined_payload = "\n".join(harvested_texts)
+        if before and (inbox or after):
+            new_inbox = f"\n{inbox}\n\n{combined_payload}\n" if inbox else f"\n{combined_payload}\n"
+            cfg.dump_file.write_text(before + new_inbox + after, encoding="utf-8")
+        else:
+            cfg.dump_file.write_text(f"{content.rstrip()}\n\n## Inbox\n{combined_payload}\n", encoding="utf-8")
+        return True
+    except OSError as e:
+        _logger.error(f"Failed to append harvested inbox text to Brain_Dump.md: {e}")
+        return False
+
+
+def harvest_inbox_and_conflicts() -> int:
+    """Harvest pending text from 05 - Fleeting/inbox and conflict files into Brain_Dump.md."""
+    from core.daemon_utils import is_file_stable
+
+    candidates = _find_candidate_files()
+    if not candidates:
+        return 0
+
+    harvested_texts: list[str] = []
+    files_to_archive: list[Path] = []
+
+    for path in candidates:
+        if not is_file_stable(path, wait_s=1.0):
+            continue
+        payload = _extract_inbox_payload(path)
+        if payload:
+            harvested_texts.append(payload)
+        files_to_archive.append(path)
+
+    if not files_to_archive:
+        return 0
+
+    if harvested_texts:
+        if not _append_harvested_text(harvested_texts):
+            return 0
+
+    for path in files_to_archive:
+        _archive_file(path)
+
+    _logger.info(f"Harvested {len(files_to_archive)} inbox/conflict files into Brain_Dump.md")
+    return len(files_to_archive)
+

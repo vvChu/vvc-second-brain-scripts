@@ -1,4 +1,4 @@
-# VvC Daemon Pipeline — Text Processing Context (v8.15.14)
+# VvC Daemon Pipeline — Text Processing Context (v8.16.0)
 
 > [!NOTE] Role of This File
 > This file is the **Pipeline Mode Override**. It is loaded automatically (JIT) when an AI agent operates inside the `scripts/` directory.
@@ -38,7 +38,7 @@ In this mode, enforce these rules with maximum strictness:
 - Single-shot response (no follow-ups)
 - Preserve all structural markers (`[HIGHLIGHTED]`, `[CONTEXT]`, YAML frontmatter, etc.)
 
-## Architecture Reference (v8.15.14 — Autonomous Local BGE-M3 Vector Embedding & Zero-Downtime Safe Cutover)
+## Architecture Reference (v8.16.0 — Architectural Hardening: Multi-Device Fencing, Core Idea Semantic Embedding, Ingestion Queue & Origin Tagging)
 
 ### LLM Routing (3-Tier Cascade)
 - **Reasoning Tier 1 (Primary)**: Antigravity CLI cục bộ (`agy.exe`) — `claude-opus-4-6-thinking` (Zero VPN, Zero 429, ~6.5s)

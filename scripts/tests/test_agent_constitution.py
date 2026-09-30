@@ -1,4 +1,4 @@
-"""Unit tests for Vault Living Architecture, Mental Model, and Constitution Integrity (v8.15.14).
+"""Unit tests for Vault Living Architecture, Mental Model, and Constitution Integrity (v8.16.0).
 
 Verifies that all context files, instructions, rules, and workspace metadata
 comply with the canonical schemas and guardrails.

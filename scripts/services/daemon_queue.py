@@ -34,8 +34,14 @@ def is_fleeting_candidate(path: Path) -> bool:
     ext = path.suffix.lower()
     if ext not in IMAGE_EXTENSIONS and ext != ".md":
         return False
-    if ext == ".md" and path.name in ("Command.md", "Brain_Dump.md"):
-        return False
+    if ext == ".md":
+        name_lower = path.name.lower()
+        if name_lower in ("command.md", "brain_dump.md"):
+            return False
+        if path.parent.name.lower() == "inbox":
+            return False
+        if name_lower.startswith("brain_dump"):
+            return False
     # Skip internal files with leading underscore unless they are TOC or cover images
     if path.name.startswith("_") and not (
         path.name.lower().startswith("_toc") or path.name.lower().startswith("_cover")

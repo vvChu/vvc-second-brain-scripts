@@ -20,6 +20,7 @@ import numpy as np
 
 from core.config import cfg
 from core.file_lock import CrossProcessFileLock
+from core.frontmatter import extract_concept_semantic_text
 from core.llm.embedding_client import EmbeddingFatalError, get_embedding
 
 if TYPE_CHECKING:
@@ -90,7 +91,7 @@ def _parse_concept(fm: dict) -> tuple[str, str, str] | None:
     try:
         full_content = fpath.read_text(encoding="utf-8")
         current_hash = f"hash:{hashlib.md5(full_content.encode('utf-8')).hexdigest()}"
-        text_prefix = full_content[:2000]
+        text_prefix = extract_concept_semantic_text(full_content, max_chars=2000)
         return stem, current_hash, text_prefix
     except Exception:
         return None

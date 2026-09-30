@@ -1,4 +1,4 @@
-# ⚙️ VvC Second Brain — Pipeline Scripts (v8.15.14)
+# ⚙️ VvC Second Brain — Pipeline Scripts (v8.16.0)
 
 Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (Andrej Karpathy, 2026), operating as an autonomous "Zero-Touch" LLM OS.
 
@@ -6,7 +6,7 @@ Autonomous knowledge ingestion pipeline following the **LLM Compiler Pattern** (
 > - **Full Constitution & Rules**: [`AGENTS.md`](../AGENTS.md) (Authoritative Source of Truth)
 > - **Pipeline Mode Override**: [`scripts/GEMINI.md`](GEMINI.md) (Automated daemon JIT prompt instructions)
 > - **Complete Version History**: [`CHANGELOG.md`](../CHANGELOG.md) (All releases and architectural seam milestones)
-> - **Current Milestone**: `v8.15.14 — Autonomous Local BGE-M3 Vector Embedding & Zero-Downtime Safe Cutover` (609/609 tests passed, 0 regressions).
+> - **Current Milestone**: `v8.16.0 — Architectural Hardening: Multi-Device Fencing, Core Idea Semantic Embedding, Ingestion Queue & Origin Tagging`.
 
 ---
 
