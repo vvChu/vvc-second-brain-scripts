@@ -4,7 +4,7 @@ Builds and maintains MOC pages, Domain MOCs, and the Master Index.
 
 Usage:
     python wiki_maintain.py          # Manual full rebuild
-    from wiki_maintain import rebuild_all, rebuild_incremental
+    from wiki_maintain import rebuild_all, rebuild_incremental, rebuild_batch
 """
 
 from __future__ import annotations
@@ -156,21 +156,32 @@ def _rebuild_incremental_domains(
             _safe_write_text(moc_path, content)
 
 
-def rebuild_incremental(concept: dict | Path) -> None:
-    """Incrementally update only affected MOCs and Master Index for a new/modified concept.
-
-    Much faster than rebuild_all: avoids scanning or rewriting unaffected MOCs.
-    """
-    concept_data = _resolve_incremental_concept_data(concept)
-    if not concept_data:
+def rebuild_batch(concepts: list[dict | Path]) -> None:
+    """Batch-update affected MOCs and Master Index for multiple concepts in a single pass."""
+    resolved_list = []
+    for c in concepts:
+        cdata = _resolve_incremental_concept_data(c)
+        if cdata:
+            resolved_list.append(cdata)
+    if not resolved_list:
         return
 
     all_concepts = scan_all_concepts()
     all_sources = scan_all_sources()
 
-    _rebuild_incremental_sources(concept_data, all_concepts, all_sources)
-    _rebuild_incremental_domains(concept_data, all_concepts, all_sources)
+    for cdata in resolved_list:
+        _rebuild_incremental_sources(cdata, all_concepts, all_sources)
+        _rebuild_incremental_domains(cdata, all_concepts, all_sources)
+
     _build_master_index(all_concepts, all_sources)
+
+
+def rebuild_incremental(concept: dict | Path) -> None:
+    """Incrementally update only affected MOCs and Master Index for a new/modified concept.
+
+    Much faster than rebuild_all: avoids scanning or rewriting unaffected MOCs.
+    """
+    rebuild_batch([concept])
 
 
 def _cleanup_stale_mocs(active_paths: set[Path], preserved_names: set[str]) -> None:

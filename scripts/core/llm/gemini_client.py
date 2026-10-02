@@ -193,9 +193,13 @@ def _resolve_cli_target_model(model: str, timeout: int) -> tuple[str, int]:
     ):
         target_model = f"{target_model}-high"
 
+    is_reasoning = any(
+        kw in target_model.lower()
+        for kw in ("-high", "thinking", "opus", "reasoning")
+    )
     effective_timeout = (
         getattr(cfg, "reasoning_timeout", 600)
-        if (("thinking" in target_model.lower() or "opus" in target_model.lower()) and timeout <= 60)
+        if (is_reasoning and timeout <= 180)
         else timeout
     )
     return target_model, effective_timeout
@@ -229,7 +233,7 @@ def call_gemini_cli(prompt: str, *, model: str = "", timeout: int = 60) -> str:
         return ""
 
     target_model, effective_timeout = _resolve_cli_target_model(model, timeout)
-    use_stream_json = len(prompt) > 30000
+    use_stream_json = len(prompt) > 10000
     mode_label = "stream-json (stdin)" if use_stream_json else "print (-p)"
     _logger.info(f"[Antigravity CLI] Routed to: {target_model} | Mode: {mode_label} ({len(prompt)} chars)")
 

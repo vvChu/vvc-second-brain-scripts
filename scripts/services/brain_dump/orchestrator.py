@@ -233,13 +233,16 @@ def _finalize_brain_dump(
 
     if saved_stems:
         try:
-            from wiki_maintain import rebuild_incremental
-            for stem, _ in saved_stems:
-                c_file = cfg.concepts_dir / f"{stem}.md"
-                if c_file.exists():
-                    rebuild_incremental(c_file)
+            from wiki_maintain import rebuild_batch
+            concept_files = [
+                cfg.concepts_dir / f"{stem}.md"
+                for stem, _ in saved_stems
+                if (cfg.concepts_dir / f"{stem}.md").exists()
+            ]
+            if concept_files:
+                rebuild_batch(concept_files)
         except Exception as e:
-            _logger.warning(f"Brain dump incremental MOC rebuild failed: {e}")
+            _logger.warning(f"Brain dump batch MOC rebuild failed: {e}")
 
 
 def _read_pending_dump() -> str | None:

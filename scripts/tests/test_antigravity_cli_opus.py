@@ -149,3 +149,28 @@ def test_call_gemini_cli_elevates_timeout_for_opus(monkeypatch):
     assert captured_args["timeout"] == cfg.reasoning_timeout
     assert "--print-timeout" in captured_args["args"]
     assert f"{cfg.reasoning_timeout}s" in captured_args["args"]
+
+
+def test_call_gemini_cli_elevates_timeout_for_flash_high(monkeypatch):
+    """Verify call_gemini_cli auto-elevates timeout for gemini-*-high models and uses stdin streaming >10k."""
+    captured = {}
+
+    def mock_run(args, **kwargs):
+        captured["args"] = args
+        captured["timeout"] = kwargs.get("timeout")
+        captured["input"] = kwargs.get("input")
+        mock_res = MagicMock()
+        mock_res.returncode = 0
+        mock_res.stdout = '{"status": "SUCCESS", "response": "OK"}'
+        return mock_res
+
+    monkeypatch.setattr(gemini_client, "_resolve_cli_path", lambda: "agy.exe")
+    monkeypatch.setattr(gemini_client.subprocess, "run", mock_run)
+
+    long_prompt = "x" * 12000
+    gemini_client.call_gemini_cli(long_prompt, model="gemini-3.8-flash-high", timeout=120)
+
+    assert captured["timeout"] == cfg.reasoning_timeout
+    assert captured["input"] is not None
+    assert "--input-format" in captured["args"]
+    assert "stream-json" in captured["args"]

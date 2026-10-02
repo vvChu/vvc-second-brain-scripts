@@ -308,6 +308,52 @@ def test_rebuild_incremental(tmp_path, monkeypatch):
     assert "My Concept" in index_content
 
 
+def test_rebuild_batch(tmp_path, monkeypatch):
+    """Test rebuild_batch updates multiple source MOCs and Master Index in a single pass."""
+    import dataclasses
+    from core.config import cfg
+    from wiki_maintain import rebuild_batch
+
+    concepts_dir = tmp_path / "concepts"
+    concepts_dir.mkdir(parents=True)
+    sources_dir = tmp_path / "sources"
+    sources_dir.mkdir(parents=True)
+    moc_dir = tmp_path / "moc"
+    moc_dir.mkdir(parents=True)
+    state_dir = tmp_path / ".state"
+    state_dir.mkdir(parents=True)
+    index_file = moc_dir / "index.md"
+
+    mock_cfg = dataclasses.replace(
+        cfg,
+        concepts_dir=concepts_dir,
+        sources_dir=sources_dir,
+        moc_dir=moc_dir,
+        state_dir=state_dir,
+        index_file=index_file,
+    )
+    monkeypatch.setattr("core.vault.cfg", mock_cfg)
+    monkeypatch.setattr("wiki_maintain.cfg", mock_cfg)
+    monkeypatch.setattr("core.vault._CONCEPTS_CACHE_FILE", state_dir / "_vault_concepts_cache.json")
+    monkeypatch.setattr("core.vault._SOURCES_CACHE_FILE", state_dir / "_vault_sources_cache.json")
+
+    (sources_dir / "2026-01-01_Book_A.md").write_text("---\ntitle: 'Book A'\naliases: ['Book A']\n---\n", encoding="utf-8")
+    (sources_dir / "2026-01-01_Book_B.md").write_text("---\ntitle: 'Book B'\naliases: ['Book B']\n---\n", encoding="utf-8")
+
+    note_a = concepts_dir / "concept_a.md"
+    note_a.write_text("---\ntitle: 'Concept A'\ntags: ['domain/ai']\nsource: '2026-01-01_Book_A.md'\n---\n", encoding="utf-8")
+    note_b = concepts_dir / "concept_b.md"
+    note_b.write_text("---\ntitle: 'Concept B'\ntags: ['domain/ai']\nsource: '2026-01-01_Book_B.md'\n---\n", encoding="utf-8")
+
+    rebuild_batch([note_a, note_b])
+
+    assert (moc_dir / "sources" / "MOC_Book_A.md").exists()
+    assert (moc_dir / "sources" / "MOC_Book_B.md").exists()
+    assert index_file.exists()
+    idx_text = index_file.read_text(encoding="utf-8")
+    assert "Concept A" in idx_text and "Concept B" in idx_text
+
+
 def test_rebuild_incremental_domain_moc(tmp_path, monkeypatch):
     """Test incremental rebuild triggers Domain MOC generation when threshold is met."""
     import dataclasses

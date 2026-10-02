@@ -75,9 +75,9 @@ def _finalize_synthesis(file_path: Path, saved_paths: list[Path]) -> None:
     """Archive processed file and trigger incremental MOC rebuild."""
     _archive_file(file_path)
     try:
-        from wiki_maintain import rebuild_incremental
-        for sp in saved_paths:
-            rebuild_incremental(sp)
+        from wiki_maintain import rebuild_batch
+        if saved_paths:
+            rebuild_batch(saved_paths)
     except ImportError:
         pass
 

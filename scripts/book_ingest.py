@@ -154,9 +154,16 @@ def _start_watchdog_with_retry(path: Path, handler, max_retries: int = 6):
         try:
             if not path.exists():
                 raise OSError(f"Watch path not found: {path}")
-            obs = Observer()
-            obs.schedule(handler, str(path), recursive=False)
-            obs.start()
+            try:
+                obs = Observer()
+                obs.schedule(handler, str(path), recursive=False)
+                obs.start()
+            except OSError as inotify_err:
+                _logger.warning(f"Book inotify Observer failed ({inotify_err}); falling back to PollingObserver")
+                from watchdog.observers.polling import PollingObserver
+                obs = PollingObserver()
+                obs.schedule(handler, str(path), recursive=False)
+                obs.start()
             _logger.info(f"Book watchdog started: {path}")
             return obs
         except Exception as e:
